@@ -1,0 +1,74 @@
+package shell
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/proc"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/pathroot"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/shellsession"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/background"
+)
+
+func newShell(t *testing.T) (*Executor, *pathroot.Root) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	root, err := pathroot.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { root.Close() })
+	session := shellsession.New(root)
+	return New(session, background.New(root, session)), root
+}
+
+// A command that finished is not reported as aborted, even when its context
+// ends at the same time.
+func TestShellFinishedCommandNotAborted(t *testing.T) {
+	ex, root := newShell(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for range 20 {
+		var exit *agentv1.ShellStreamExit
+		send := func(m *agentv1.ExecClientMessage) error {
+			if m.GetShellStream().GetExit() != nil {
+				exit = m.GetShellStream().GetExit()
+			}
+			return nil
+		}
+		sh, err := ex.startShell(&agentv1.ShellArgs{Command: "true", Timeout: 1}, root.Dir(), shellsession.State{}, send)
+		if err != nil {
+			t.Fatal(err)
+		}
+		<-sh.done
+		if err := sh.wait(ctx); err != nil {
+			t.Fatal(err)
+		}
+		proc.CloseLogged(sh.snapshot)
+		proc.CloseLogged(sh.fallback)
+		if exit == nil || exit.Aborted {
+			t.Fatal(exit)
+		}
+	}
+}
+
+// Output split inside a UTF-8 sequence is held back until the sequence is
+// complete.
+func TestStreamWriterKeepsUTF8Whole(t *testing.T) {
+	var got strings.Builder
+	o := &shellOutput{send: func(m *agentv1.ExecClientMessage) error {
+		got.WriteString(m.GetShellStream().GetStdout().GetData())
+		return nil
+	}}
+	w := &streamWriter{out: o, event: stdoutEvent}
+	data := []byte("hello h\u00e9llo \u4e16\u754c \U0001F30D") // 2-, 3- and 4-byte UTF-8 sequences
+	for _, b := range data {
+		w.Write([]byte{b})
+	}
+	w.flush()
+	if got.String() != string(data) {
+		t.Fatalf("broken utf8: %q", got.String())
+	}
+}

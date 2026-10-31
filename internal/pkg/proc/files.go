@@ -2,6 +2,7 @@ package proc
 
 import (
 	"errors"
+	"io"
 	"log"
 	"os"
 )
@@ -35,4 +36,15 @@ func RemoveLogged(path string) {
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Printf("remove %s: %v", path, err)
 	}
+}
+
+// ReadAtMost reads up to n bytes at off; a short read at the end of the file
+// is not an error.
+func ReadAtMost(f *os.File, n, off int64) ([]byte, error) {
+	b := make([]byte, n)
+	read, err := f.ReadAt(b, off)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return b[:read], nil
 }

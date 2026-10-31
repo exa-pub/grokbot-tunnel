@@ -16,10 +16,10 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/config"
-	"github.com/exa-pub/grokbot-tunnel/internal/executor"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
-	"github.com/exa-pub/grokbot-tunnel/internal/permission"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/permission"
 )
 
 type fakeCloud struct {
@@ -118,7 +118,7 @@ func TestQueueAckDedupCredentialRecoveryAndShutdown(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "hello"), []byte("world"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	ex, err := executor.New(root, policy)
+	ex, err := localexec.New(root, policy.Allow)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,11 +17,11 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/config"
-	"github.com/exa-pub/grokbot-tunnel/internal/executor"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
-	"github.com/exa-pub/grokbot-tunnel/internal/permission"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/permission"
 )
 
 func testSession(t *testing.T) *session {
@@ -341,7 +341,7 @@ func stubSession(t *testing.T, c *stubCloud, now *time.Time) *session {
 	s.pv.Now = func() time.Time { return *now }
 	cl := rpc.NewGrokBotServiceClient(srv.Client(), srv.URL)
 	s.pv.User, s.pv.Channel = cl, cl
-	ex, err := executor.New(t.TempDir(), s.pv.Policy)
+	ex, err := localexec.New(t.TempDir(), s.pv.Policy.Allow)
 	if err != nil {
 		t.Fatal(err)
 	}

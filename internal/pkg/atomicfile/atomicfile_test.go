@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -65,4 +66,30 @@ func TestWriteCheckFailureKeepsTarget(t *testing.T) {
 func TestWriteMissingDirectory(t *testing.T) {
 	err := atomicfile.Write(filepath.Join(t.TempDir(), "missing", "f"), nil, atomicfile.Options{})
 	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestWriteInStaysInRoot(t *testing.T) {
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	defer root.Close()
+	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(dir, "escape")))
+	require.NoError(t, atomicfile.WriteIn(root, "f", []byte("in"), atomicfile.Options{Mode: 0o640, SyncDir: true}))
+	b, err := os.ReadFile(filepath.Join(dir, "f"))
+	require.NoError(t, err)
+	assert.Equal(t, "in", string(b))
+	st, err := os.Stat(filepath.Join(dir, "f"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o640), st.Mode().Perm())
+	require.Error(t, atomicfile.WriteIn(root, "escape/f", nil, atomicfile.Options{}))
+}
+
+func TestWriteUmask(t *testing.T) {
+	old := syscall.Umask(0o077)
+	defer syscall.Umask(old)
+	path := filepath.Join(t.TempDir(), "f")
+	require.NoError(t, atomicfile.Write(path, nil, atomicfile.Options{Mode: 0o644, Umask: true}))
+	st, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), st.Mode().Perm())
 }

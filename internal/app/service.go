@@ -11,8 +11,8 @@ import (
 
 	"github.com/exa-pub/grokbot-tunnel/internal/auth"
 	"github.com/exa-pub/grokbot-tunnel/internal/config"
-	"github.com/exa-pub/grokbot-tunnel/internal/permission"
 	"github.com/exa-pub/grokbot-tunnel/internal/service"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/permission"
 )
 
 // InstallOptions configure Install.

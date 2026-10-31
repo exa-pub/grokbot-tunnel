@@ -12,8 +12,8 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/app"
 	"github.com/exa-pub/grokbot-tunnel/internal/auth"
 	"github.com/exa-pub/grokbot-tunnel/internal/client"
-	"github.com/exa-pub/grokbot-tunnel/internal/permission"
 	"github.com/exa-pub/grokbot-tunnel/internal/service"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/permission"
 )
 
 // version is the release version, set at build time with

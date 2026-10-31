@@ -10,14 +10,15 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/tty"
 	"github.com/exa-pub/grokbot-tunnel/internal/auth"
 	"github.com/exa-pub/grokbot-tunnel/internal/computer"
 	"github.com/exa-pub/grokbot-tunnel/internal/config"
-	"github.com/exa-pub/grokbot-tunnel/internal/executor"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
-	"github.com/exa-pub/grokbot-tunnel/internal/permission"
 	"github.com/exa-pub/grokbot-tunnel/internal/service"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/permission"
 )
 
 // ConnectOptions configure Connect.
@@ -59,8 +60,8 @@ func Connect(ctx context.Context, opts ConnectOptions) error {
 		return err
 	}
 	defer release()
-	policy := &permission.Policy{Mode: opts.Permission, In: os.Stdin, Out: os.Stderr}
-	ex, err := executor.New(opts.Root, policy)
+	policy := &permission.Policy{Mode: opts.Permission, Prompter: tty.Terminal{In: os.Stdin, Out: os.Stderr}}
+	ex, err := localexec.New(opts.Root, policy.Allow)
 	if err != nil {
 		return err
 	}

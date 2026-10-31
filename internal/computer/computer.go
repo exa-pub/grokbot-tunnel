@@ -19,11 +19,11 @@ import (
 
 	"github.com/exa-pub/grokbot-tunnel/internal/auth"
 	"github.com/exa-pub/grokbot-tunnel/internal/config"
-	"github.com/exa-pub/grokbot-tunnel/internal/executor"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
-	"github.com/exa-pub/grokbot-tunnel/internal/permission"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/permission"
 )
 
 const (
@@ -91,7 +91,7 @@ type Provider struct {
 	Channel      rpc.GrokBotServiceClient // authenticated with the computer credential
 	Store        *config.Store
 	Machine      config.Machine
-	Executor     *executor.Executor
+	Executor     *localexec.Executor
 	Policy       *permission.Policy
 	Debug        bool
 	Backend      string

@@ -132,7 +132,7 @@ func TestPinnedBusyResponse(t *testing.T) {
 
 // Invariant 6 (≠ "canceled before it started"): a request canceled while it
 // waits in the backlog, by a cancel frame or by shutdown, is closed with
-// executor.Canceled: exec gets streamClose{id:0} with no text, other kinds get
+// frames.Canceled: exec gets streamClose{id:0} with no text, other kinds get
 // their error frame with "context canceled". This pins current behavior that
 // differs from the desktop, whose od(req, yae) sends exec throw{id:0, yae}
 // and file requests a fileError{yae}, where yae is "Cancel(l)ed before it
