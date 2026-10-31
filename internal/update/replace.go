@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/atomicfile"
 )
 
 const verifyTimeout = 10 * time.Second
@@ -27,30 +29,12 @@ func Executable() (string, error) {
 // Replace atomically replaces the binary at path with bin after checking that
 // bin runs and reports version. A failure leaves path untouched.
 func Replace(ctx context.Context, path string, bin []byte, version string) error {
-	dir := filepath.Dir(path)
-	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".update-")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	defer os.Remove(tmp)
-	if _, err = f.Write(bin); err == nil {
-		err = f.Sync()
-	}
-	if err == nil {
-		err = f.Chmod(0o755) //nolint:gosec // executables must be executable
-	}
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	if err = verify(ctx, tmp, version); err != nil {
-		return err
-	}
 	// The running process keeps the old file open; renaming over it is safe.
-	return os.Rename(tmp, path)
+	return atomicfile.Write(path, bin, atomicfile.Options{
+		Mode:   0o755, // executables must be executable
+		Prefix: "." + filepath.Base(path) + ".update-",
+		Check:  func(tmp string) error { return verify(ctx, tmp, version) },
+	})
 }
 
 // verify runs bin --version, which catches a wrong architecture, a noexec

@@ -8,6 +8,8 @@ import (
 	"syscall"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/proc"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 // background starts cmd in its own session with output going to a terminal
@@ -31,7 +33,7 @@ func (e *Executor) background(ctx context.Context, cmd, path string) (_ *agentv1
 	}
 	defer func() {
 		if err != nil {
-			closeLogged(f)
+			proc.CloseLogged(f)
 		}
 	}()
 	gate, release, err := os.Pipe()
@@ -44,8 +46,8 @@ func (e *Executor) background(ctx context.Context, cmd, path string) (_ *agentv1
 	if err != nil {
 		return nil, err
 	}
-	defer closeLogged(replay) // the child keeps its own descriptors
-	defer closeLogged(command)
+	defer proc.CloseLogged(replay) // the child keeps its own descriptors
+	defer proc.CloseLogged(command)
 	sh := userShell()
 	c := shellCommand(sh, st, cwd, sh.args("-c", sh.backgroundScript(), "grok-background")...)
 	c.Env = withGitConfig(c.Env)
@@ -56,24 +58,24 @@ func (e *Executor) background(ctx context.Context, cmd, path string) (_ *agentv1
 	if err = c.Start(); err != nil {
 		return nil, err
 	}
-	statusAt, err := writeTerminalHeader(f, cwd, cmd, c.Process.Pid, warning)
+	statusAt, err := terminalfile.WriteHeader(f, cwd, cmd, c.Process.Pid, warning)
 	if err == nil {
 		_, err = release.WriteString("\n")
 	}
 	if err != nil {
-		kill(c)
-		wait(c)
+		proc.Kill(c)
+		proc.Wait(c)
 		return nil, err
 	}
 	go closeTerminal(n, f, c, statusAt)
-	return &agentv1.BackgroundShellSpawnSuccess{ShellId: n, Command: cmd, WorkingDirectory: cwd, Pid: pid(c)}, nil
+	return &agentv1.BackgroundShellSpawnSuccess{ShellId: n, Command: cmd, WorkingDirectory: cwd, Pid: proc.PID(c)}, nil
 }
 
 // closeTerminal appends the footer to terminal file n once c has exited.
 func closeTerminal(n uint32, f *os.File, c *exec.Cmd, statusAt int64) {
-	wait(c)
-	if err := appendTerminalExit(f, c.ProcessState, statusAt); err != nil {
+	proc.Wait(c)
+	if err := terminalfile.AppendExit(f, proc.ExitCode(c.ProcessState), statusAt); err != nil {
 		log.Printf("terminal %d: %v", n, err)
 	}
-	closeLogged(f)
+	proc.CloseLogged(f)
 }

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/proc"
 )
 
 // Foreground commands share one shell state: cwd, exported environment,
@@ -334,11 +336,11 @@ func (e *Executor) initShell(ctx context.Context) error {
 }
 
 func (e *Executor) profileState() (shellState, error) {
-	snapshot, err := tempFile("grok-shell-state-", "")
+	snapshot, err := proc.TempFile("grok-shell-state-", "")
 	if err != nil {
 		return shellState{}, err
 	}
-	defer closeLogged(snapshot)
+	defer proc.CloseLogged(snapshot)
 	sh := userShell()
 	c := shellCommand(sh, shellState{}, e.Root, sh.args("-ilc", sh.initScript(), "grokbot-init")...)
 	// A new session keeps the interactive shell away from the CLI's terminal.
@@ -353,11 +355,11 @@ func (e *Executor) profileState() (shellState, error) {
 	go func() {
 		select {
 		case <-ctx.Done():
-			kill(c)
+			proc.Kill(c)
 		case <-done:
 		}
 	}()
-	wait(c)
+	proc.Wait(c)
 	close(done)
 	if ctx.Err() != nil {
 		return shellState{}, errors.New("profile did not finish within 10s")

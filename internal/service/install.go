@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/atomicfile"
 )
 
 // Install writes the units for c, enables them and restarts the tunnel. The
@@ -87,21 +89,7 @@ func (m *Manager) writeUnit(name, content string) error {
 	if err := os.MkdirAll(m.Scope.Dir, 0o755); err != nil { //nolint:gosec // unit directories are world-readable
 		return err
 	}
-	f, err := os.CreateTemp(m.Scope.Dir, ".tmp-"+name+"-")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if _, err = f.WriteString(content); err == nil {
-		err = f.Chmod(0o644)
-	}
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	if err = os.Rename(f.Name(), path); err != nil {
+	if err := atomicfile.Write(path, []byte(content), atomicfile.Options{Mode: 0o644, Prefix: ".tmp-" + name + "-"}); err != nil {
 		return err
 	}
 	if old == nil {

@@ -19,6 +19,8 @@ import (
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/permission"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 // Size limits for files and for a single exec result message.
@@ -31,33 +33,12 @@ const (
 	downloadChunk      = 1 << 20
 	streamChunk        = 16 << 10
 	defaultListTimeout = 5 * time.Second
-	terminalsDir       = "terminals"
 	// waitDelay bounds how long a finished command's output is still
 	// forwarded while background jobs it started hold its pipes open.
 	waitDelay = time.Second
 )
 
 var errOutsideRoot = errors.New("path is outside the allowed local-exec root")
-
-// ErrUnknownFrame answers a request frame the desktop does not parse, in its
-// words.
-//
-//nolint:revive,staticcheck // user-facing sentence
-var ErrUnknownFrame = errors.New("This computer's local-exec daemon does not understand that request frame; update the desktop app.")
-
-// Unrecognized reports whether f is a request the desktop answers with
-// ErrUnknownFrame before scheduling it: a frame of no known type, a URL
-// transfer (put/get file to/from URL, which neither advertises) or AI tool
-// discovery for an unknown source.
-func Unrecognized(f *aiserverv1.GrokBotUserComputerRequestFrame) bool {
-	switch v := f.Frame.(type) {
-	case nil, *aiserverv1.GrokBotUserComputerRequestFrame_PutFileToUrl, *aiserverv1.GrokBotUserComputerRequestFrame_GetFileFromUrl:
-		return true
-	case *aiserverv1.GrokBotUserComputerRequestFrame_DiscoverAiTool:
-		return v.DiscoverAiTool.Source != sourceCodex && v.DiscoverAiTool.Source != sourceClaudeCode
-	}
-	return false
-}
 
 // fileTooLarge refuses a file of size bytes in the desktop's words.
 func fileTooLarge(size int64) error {
@@ -66,9 +47,6 @@ func fileTooLarge(size int64) error {
 	return fmt.Errorf("File is %s, which exceeds Grok Bot's %s limit for reading or transferring a single file over local-exec. "+
 		"Read a slice with offset/limit, or use a shell command (grep, head, tail) to extract just what you need.", mib(size), mib(MaxFile))
 }
-
-// Sink delivers response frames to the server.
-type Sink func(*aiserverv1.GrokBotUserComputerResponseFrame) error
 
 // reply sends one exec result message of the given kind, e.g. "readResult".
 type reply func(*agentv1.ExecClientMessage) error
@@ -115,7 +93,7 @@ func New(root string, policy *permission.Policy) (*Executor, error) {
 }
 
 // TerminalsFolder is where background command output files are written.
-func (e *Executor) TerminalsFolder() string { return filepath.Join(e.Root, terminalsDir) }
+func (e *Executor) TerminalsFolder() string { return filepath.Join(e.Root, terminalfile.Dir) }
 
 // Close releases the root directory handle.
 func (e *Executor) Close() error { return e.Files.Close() }
@@ -163,37 +141,6 @@ func (e *Executor) cwd(path string) (dir, warning string, err error) {
 	return resolved, "", nil
 }
 
-// Reject answers f with err in the form the request type expects.
-func Reject(f *aiserverv1.GrokBotUserComputerRequestFrame, err error, sink Sink) error {
-	resp := &aiserverv1.GrokBotUserComputerResponseFrame{RequestId: f.RequestId}
-	switch {
-	case f.GetExec() != nil, f.Frame == nil, f.GetPutFileToUrl() != nil, f.GetGetFileFromUrl() != nil:
-		return sendControl(f.RequestId, throwMessage(0, err), nil, sink)
-	case f.GetMessagesOp() != nil:
-		resp.Frame = &aiserverv1.GrokBotUserComputerResponseFrame_MessagesError{
-			MessagesError: &aiserverv1.GrokBotUserComputerMessagesError{Error: err.Error()},
-		}
-	case f.GetLocalTool() != nil:
-		resp.Frame = &aiserverv1.GrokBotUserComputerResponseFrame_LocalToolResult{
-			LocalToolResult: &aiserverv1.GrokBotUserComputerLocalToolResult{Status: "failed", Error: err.Error()},
-		}
-	default:
-		resp.Frame = &aiserverv1.GrokBotUserComputerResponseFrame_FileError{
-			FileError: &aiserverv1.GrokBotUserComputerFileError{Error: err.Error()},
-		}
-	}
-	return sink(resp)
-}
-
-func fileFrame(requestID string, data []byte, seq uint32, last bool) *aiserverv1.GrokBotUserComputerResponseFrame {
-	return &aiserverv1.GrokBotUserComputerResponseFrame{
-		RequestId: requestID,
-		Frame: &aiserverv1.GrokBotUserComputerResponseFrame_File{
-			File: &aiserverv1.GrokBotUserComputerFile{Data: data, Seq: seq, Last: last},
-		},
-	}
-}
-
 // describe returns a human-readable action for the permission prompt, or ""
 // if the exec request is not supported. Every server-supplied string is
 // quoted, so control characters cannot rewrite what the prompt shows.
@@ -228,8 +175,8 @@ type authorization interface {
 
 func parse(f *aiserverv1.GrokBotUserComputerRequestFrame) (request, error) {
 	r := request{msg: &agentv1.ExecServerMessage{}}
-	if Unrecognized(f) {
-		return r, ErrUnknownFrame
+	if frames.Unrecognized(f) {
+		return r, frames.ErrUnknownFrame
 	}
 	var auth authorization
 	switch v := f.Frame.(type) {
@@ -261,7 +208,7 @@ func parse(f *aiserverv1.GrokBotUserComputerRequestFrame) (request, error) {
 // Handle checks permission for f, runs it and streams the results to sink.
 // Failures are reported to sink; the returned error means sink itself failed.
 // server selects server-authoritative permission checks.
-func (e *Executor) Handle(ctx context.Context, f *aiserverv1.GrokBotUserComputerRequestFrame, server bool, sink Sink) error {
+func (e *Executor) Handle(ctx context.Context, f *aiserverv1.GrokBotUserComputerRequestFrame, server bool, sink frames.Sink) error {
 	switch f.Frame.(type) {
 	case *aiserverv1.GrokBotUserComputerRequestFrame_Cancel, *aiserverv1.GrokBotUserComputerRequestFrame_RetireApproval:
 		return nil // handled by the scheduler
@@ -273,27 +220,27 @@ func (e *Executor) Handle(ctx context.Context, f *aiserverv1.GrokBotUserComputer
 		err = e.Policy.Allow(ctx, req.action, server, req.approved)
 	}
 	if err != nil {
-		return Reject(f, err, sink)
+		return frames.Reject(f, err, sink)
 	}
 	if ctx.Err() != nil {
-		return Canceled(f, sink)
+		return frames.Canceled(f, sink)
 	}
 	if f.GetExec() != nil {
 		return e.controlled(ctx, f, req.msg, sink)
 	}
 	if err = e.run(ctx, f, sink); err != nil {
-		return Reject(f, err, sink)
+		return frames.Reject(f, err, sink)
 	}
 	return nil
 }
 
-func (e *Executor) run(ctx context.Context, f *aiserverv1.GrokBotUserComputerRequestFrame, sink Sink) error {
+func (e *Executor) run(ctx context.Context, f *aiserverv1.GrokBotUserComputerRequestFrame, sink frames.Sink) error {
 	switch v := f.Frame.(type) {
 	case *aiserverv1.GrokBotUserComputerRequestFrame_Upload:
 		if err := e.upload(v.Upload.Path, v.Upload.Data); err != nil {
 			return err
 		}
-		return sink(fileFrame(f.RequestId, nil, 0, true))
+		return sink(frames.File(f.RequestId, nil, 0, true))
 	case *aiserverv1.GrokBotUserComputerRequestFrame_Download:
 		return e.download(ctx, f.RequestId, v.Download.Path, sink)
 	case *aiserverv1.GrokBotUserComputerRequestFrame_DiscoverAiTool:
@@ -301,7 +248,7 @@ func (e *Executor) run(ctx context.Context, f *aiserverv1.GrokBotUserComputerReq
 		if err != nil {
 			return err
 		}
-		return sink(fileFrame(f.RequestId, data, 0, true))
+		return sink(frames.File(f.RequestId, data, 0, true))
 	}
 	return nil
 }

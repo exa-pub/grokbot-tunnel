@@ -20,6 +20,8 @@ import (
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/compattest"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/textcodec"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 func clientMessages(t *testing.T, frames []*aiserverv1.GrokBotUserComputerResponseFrame) []*agentv1.ExecClientMessage {
@@ -47,7 +49,7 @@ func controlMessage(t *testing.T, f *aiserverv1.GrokBotUserComputerResponseFrame
 	}
 	return m
 }
-func TestReferenceRangesAndTerminalHeader(t *testing.T) {
+func TestReferenceRanges(t *testing.T) {
 	ref := compattest.Load(t)
 	e := setup(t)
 	for _, tc := range ref.Ranges {
@@ -57,10 +59,6 @@ func TestReferenceRangesAndTerminalHeader(t *testing.T) {
 		}
 	}
 	readStreamingReference(t, e, ref)
-	started, _ := time.Parse(time.RFC3339, "2026-01-01T00:00:00.000Z")
-	if got := terminalHeader("/workspace", "printf hello", 42, started); got != ref.TerminalHeader {
-		t.Fatalf("header mismatch: %q vs %q", got, ref.TerminalHeader)
-	}
 }
 
 // readReference reads text through the executor with the reference read
@@ -90,16 +88,13 @@ func readStreamingReference(t *testing.T, e *Executor, ref *compattest.PureFunct
 		got := readReference(t, e, text, tc.Args)
 		if got == nil || got.GetContent() != want || got.TotalLines != tc.Result.TotalLines || got.Truncated != tc.Result.Truncated || got.RangeApplied != tc.Result.RangeApplied {
 			t.Errorf("streaming %.40q %s: got %d units truncated=%v lines=%d range=%v, want %d units %+v",
-				text, tc.Args, utf16Len(got.GetContent()), got.GetTruncated(), got.GetTotalLines(), got.GetRangeApplied(), utf16Len(want), tc.Result.Truncated)
+				text, tc.Args, textcodec.UTF16Len(got.GetContent()), got.GetTruncated(), got.GetTotalLines(), got.GetRangeApplied(), textcodec.UTF16Len(want), tc.Result.Truncated)
 		}
 	}
 	for _, tc := range ref.Fallback {
 		raw, err := hex.DecodeString(tc.Hex)
 		if err != nil {
 			t.Fatal(err)
-		}
-		if got := lossyUTF8(raw); got != tc.Lossy || mostlyUTF8(got) != tc.MostlyUtf8 {
-			t.Errorf("fallback %s: lossy %q mostly=%v, want %q %v", tc.Hex, got, mostlyUTF8(got), tc.Lossy, tc.MostlyUtf8)
 		}
 		want := tc.Lossy
 		if !tc.MostlyUtf8 {
@@ -309,7 +304,7 @@ func TestListingTimeoutAndTerminalMetadata(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	metadata := terminalMetadata(data)
+	metadata := terminalfile.Metadata(data)
 	if metadata == nil || len(metadata.LastCommands) != 1 || metadata.LastCommands[0].GetExitCode() != 0 || metadata.GetCwd() != e.Root {
 		t.Fatal(string(data), metadata)
 	}
@@ -334,17 +329,6 @@ func TestShellOptionsPersist(t *testing.T) {
 	}
 	if output.String() != "options-ok" {
 		t.Fatal(output.String(), e.state.options)
-	}
-}
-
-func TestTerminalMixedEncoding(t *testing.T) {
-	header := terminalHeader("/workspace", "printf hi", 42, time.Unix(0, 0))
-	body := []byte{0xff, 0xfe, 'h', 0, 'i', 0}
-	footer := "\n---\nexit_code: 0\nended_at: 2026-01-01T00:00:00.000Z\n---\n"
-	raw := append(append([]byte(header), body...), []byte(footer)...)
-	text, err := decodeTerminalText(raw, "")
-	if err != nil || text != header+"hi"+footer {
-		t.Fatal(text, err)
 	}
 }
 

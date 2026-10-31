@@ -4,9 +4,9 @@ import (
 	"log"
 	"os"
 	"sync"
-	"unicode/utf8"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/textcodec"
 )
 
 func shellMessage(s *agentv1.ShellStream) *agentv1.ExecClientMessage {
@@ -86,18 +86,18 @@ func (w *streamWriter) Write(b []byte) (int, error) {
 		// The held-back bytes still go out, as the desktop flushes its decoder.
 		w.trimmed = true
 		if len(w.partial) > 0 {
-			o.err = o.emit(w.event, lossyUTF8(w.partial))
+			o.err = o.emit(w.event, textcodec.LossyUTF8(w.partial))
 		}
 		w.partial = nil
 		return len(b), nil
 	}
 	w.sent += len(b)
 	data := append(w.partial, b...)
-	n := completeLen(data)
+	n := textcodec.CompleteLen(data)
 	w.partial = append([]byte(nil), data[n:]...)
 	for data = data[:n]; len(data) > 0; {
-		n := chunkLen(data)
-		if err := o.emit(w.event, lossyUTF8(data[:n])); err != nil {
+		n := textcodec.ChunkLen(data, streamChunk)
+		if err := o.emit(w.event, textcodec.LossyUTF8(data[:n])); err != nil {
 			o.err = err
 			break
 		}
@@ -111,36 +111,7 @@ func (w *streamWriter) flush() {
 	w.out.mu.Lock()
 	defer w.out.mu.Unlock()
 	if len(w.partial) > 0 && !w.out.detached && !w.out.finished && w.out.err == nil {
-		w.out.err = w.out.emit(w.event, lossyUTF8(w.partial))
+		w.out.err = w.out.emit(w.event, textcodec.LossyUTF8(w.partial))
 	}
 	w.partial = nil
-}
-
-// completeLen returns the length of b without a trailing incomplete UTF-8
-// sequence.
-func completeLen(b []byte) int {
-	for i := len(b) - 1; i >= 0 && i >= len(b)-utf8.UTFMax; i-- {
-		if utf8.RuneStart(b[i]) {
-			if utf8.FullRune(b[i:]) {
-				return len(b)
-			}
-			return i
-		}
-	}
-	return len(b)
-}
-
-// chunkLen returns at most streamChunk bytes, cut at a rune boundary.
-func chunkLen(b []byte) int {
-	if len(b) <= streamChunk {
-		return len(b)
-	}
-	n := streamChunk
-	for n > 0 && !utf8.RuneStart(b[n]) {
-		n--
-	}
-	if n == 0 {
-		return streamChunk
-	}
-	return n
 }

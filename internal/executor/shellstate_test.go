@@ -9,10 +9,11 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/proc"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 // eachShell runs f with $SHELL set to bash and, if available, zsh
@@ -353,8 +354,8 @@ func TestShellFinishedCommandNotAborted(t *testing.T) {
 		if err := sh.wait(ctx); err != nil {
 			t.Fatal(err)
 		}
-		closeLogged(sh.snapshot)
-		closeLogged(sh.fallback)
+		proc.CloseLogged(sh.snapshot)
+		proc.CloseLogged(sh.fallback)
 		if exit == nil || exit.Aborted {
 			t.Fatal(exit)
 		}
@@ -407,7 +408,7 @@ func TestTerminalFooterAndStatus(t *testing.T) {
 			if !strings.Contains(data[len(data)-60:], "\n---\nexit_code: "+tc.code+"\nended_at: ") {
 				t.Fatalf("%s %q: %q", kind, tc.command, data[max(0, len(data)-120):])
 			}
-			if strings.Count(data, "status: ") != 1 || !strings.Contains(data, statusField(tc.status)+"\n") {
+			if strings.Count(data, "status: ") != 1 || !strings.Contains(data, terminalfile.StatusField(tc.status)+"\n") {
 				t.Fatalf("%s %q: status not %s", kind, tc.command, tc.status)
 			}
 		}
@@ -420,7 +421,7 @@ func waitTerminal(t *testing.T, e *Executor, name string) string {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		data, _ := os.ReadFile(filepath.Join(e.Root, "terminals", name))
-		if strings.HasSuffix(string(data), envelopeEnd) && strings.Contains(string(data[max(0, len(data)-100):]), "ended_at: ") {
+		if terminalfile.Ended(data) {
 			return string(data)
 		}
 		if time.Now().After(deadline) {
@@ -436,14 +437,6 @@ func TestBackgroundReportsMissingCwd(t *testing.T) {
 	data := waitTerminal(t, e, "1.txt")
 	if !strings.Contains(data, "---\nworking directory missing does not exist") || !strings.Contains(data, "instead\nran") {
 		t.Fatalf("%q", data)
-	}
-}
-
-func TestTerminalTextInvalidEnvelope(t *testing.T) {
-	raw := "---\ncommand: \"\xff\"\nstatus: completed\n---\nout\n---\nexit_code: 0\xfe\nended_at: x\n---\n"
-	text, err := decodeTerminalText([]byte(raw), "")
-	if err != nil || !utf8.ValidString(text) || !strings.Contains(text, "out") {
-		t.Fatalf("%q %v", text, err)
 	}
 }
 

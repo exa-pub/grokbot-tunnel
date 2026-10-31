@@ -20,10 +20,10 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/auth"
 	"github.com/exa-pub/grokbot-tunnel/internal/config"
 	"github.com/exa-pub/grokbot-tunnel/internal/executor"
-	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
 	"github.com/exa-pub/grokbot-tunnel/internal/permission"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
 )
 
 const (
@@ -342,7 +342,7 @@ func (s *session) queue(f *responseFrame) {
 	s.pending = append(s.pending, f)
 }
 
-// queueSink adapts queue to executor.Sink.
+// queueSink adapts queue to frames.Sink.
 func (s *session) queueSink(f *responseFrame) error {
 	s.queue(f)
 	return nil
@@ -355,7 +355,7 @@ func (s *session) take(f *responseFrame) bool {
 		return false
 	}
 	if s.canceled.has(f.RequestId) {
-		f = canceledFile(f)
+		f = frames.CanceledFile(f)
 	}
 	s.queue(f)
 	return len(s.pending) >= submitBatch
@@ -363,14 +363,14 @@ func (s *session) take(f *responseFrame) bool {
 
 // reject answers a request that will not run.
 func (s *session) reject(f *requestFrame, reason error) {
-	if err := executor.Reject(f, reason, s.queueSink); err != nil {
+	if err := frames.Reject(f, reason, s.queueSink); err != nil {
 		log.Printf("reject %s: %v", f.RequestId, err)
 	}
 }
 
 // closeCanceled answers a request canceled before it started.
 func (s *session) closeCanceled(f *requestFrame) {
-	if err := executor.Canceled(f, s.queueSink); err != nil {
+	if err := frames.Canceled(f, s.queueSink); err != nil {
 		log.Printf("cancel %s: %v", f.RequestId, err)
 	}
 }
@@ -378,41 +378,7 @@ func (s *session) closeCanceled(f *requestFrame) {
 // dropped reports whether a reply belongs to a canceled request. Control
 // and terminal frames still go through so the request's stream is closed.
 func (s *session) dropped(f *responseFrame) bool {
-	return s.canceled.has(f.RequestId) && f.GetControl() == nil && !terminal(f)
-}
-
-// terminal reports whether f is the final frame of a non-exec request.
-func terminal(f *responseFrame) bool {
-	return f.GetFileError() != nil || f.GetMessagesError() != nil || f.GetLocalToolResult() != nil || f.GetFile().GetLast()
-}
-
-// closes reports whether f ends its request's stream.
-func closes(f *responseFrame) bool {
-	if terminal(f) {
-		return true
-	}
-	if f.GetControl() == nil {
-		return false
-	}
-	var msg agentv1.ExecClientControlMessage
-	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal([]byte(f.GetControl().MessageJson), &msg); err != nil {
-		return false
-	}
-	return msg.GetStreamClose() != nil || msg.GetThrow() != nil
-}
-
-// canceledFile replaces the last chunk of a canceled transfer, whose earlier
-// chunks were dropped, with the error a canceled request reports.
-func canceledFile(f *responseFrame) *responseFrame {
-	if f.GetFile() == nil {
-		return f
-	}
-	return &responseFrame{
-		RequestId: f.RequestId,
-		Frame: &aiserverv1.GrokBotUserComputerResponseFrame_FileError{
-			FileError: &aiserverv1.GrokBotUserComputerFileError{Error: context.Canceled.Error()},
-		},
-	}
+	return s.canceled.has(f.RequestId) && f.GetControl() == nil && !frames.Final(f)
 }
 
 func (s *session) run(ctx context.Context) error {
@@ -544,7 +510,7 @@ func (s *session) keepAlive() {
 		}
 	}
 	for _, f := range s.pending {
-		if f.GetMessagesAccepted() != nil || closes(f) {
+		if f.GetMessagesAccepted() != nil || frames.Closes(f) {
 			ids[f.RequestId] = false
 		}
 	}
@@ -997,12 +963,12 @@ func (s *session) accept(f *requestFrame, server bool) {
 	case f.GetRetireApproval() != nil:
 	case s.tasks[f.RequestId] != nil || s.requests.has(f.RequestId):
 		// Already queued or running.
-	case executor.Unrecognized(f):
+	case frames.Unrecognized(f):
 		// Answered before admission, like the desktop's poll loop, which
 		// leaves a frame without a request id unanswered.
 		if f.RequestId != "" {
 			s.requests.add(f.RequestId)
-			s.reject(f, executor.ErrUnknownFrame)
+			s.reject(f, frames.ErrUnknownFrame)
 		}
 	case s.active >= maxActive && len(s.backlog) >= maxBacklog:
 		s.requests.add(f.RequestId)
@@ -1015,21 +981,15 @@ func (s *session) accept(f *requestFrame, server bool) {
 	}
 }
 
-// keep reports whether a pending frame of a canceled request must still be
-// delivered, the same frames dropped lets through.
-func keep(f *responseFrame) bool {
-	return f.GetControl() != nil || terminal(f)
-}
-
 // cancel stops a request and discards its undelivered results. The request
 // is remembered so a late or repeated delivery does not start it again.
 func (s *session) cancel(id string) {
 	s.canceled.add(id)
 	s.requests.add(id)
-	s.pending = slices.DeleteFunc(s.pending, func(r *responseFrame) bool { return r.RequestId == id && !keep(r) })
+	s.pending = slices.DeleteFunc(s.pending, func(r *responseFrame) bool { return r.RequestId == id && !frames.Keep(r) })
 	for i, r := range s.pending {
 		if r.RequestId == id {
-			s.pending[i] = canceledFile(r)
+			s.pending[i] = frames.CanceledFile(r)
 		}
 	}
 	s.backlog = slices.DeleteFunc(s.backlog, func(queued string) bool { return queued == id })

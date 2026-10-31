@@ -17,6 +17,8 @@ import (
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/permission"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 func setup(t *testing.T) *Executor {
@@ -291,14 +293,6 @@ func TestShellEnvironmentMarkersOnce(t *testing.T) {
 	}
 }
 
-func TestTerminalExitCodeOverflow(t *testing.T) {
-	header := terminalHeader("/w", "x", 1, time.Unix(0, 0))
-	m := terminalMetadata([]byte(header + "\n---\nexit_code: 4294967297\nended_at: x\n---\n"))
-	if m == nil || len(m.LastCommands) != 0 || m.CurrentCommand == nil {
-		t.Fatal(m)
-	}
-}
-
 func TestQueuedShellCancelsWhileWaiting(t *testing.T) {
 	e := setup(t)
 	done := make(chan struct{})
@@ -504,16 +498,16 @@ func TestShellOwnSession(t *testing.T) {
 // until the branch is removed.
 func TestTerminalReadMaxChars(t *testing.T) {
 	e := setup(t)
-	if err := e.Files.MkdirAll(terminalsDir, 0o700); err != nil {
+	if err := e.Files.MkdirAll(terminalfile.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	text := terminalHeader("/w", "x", 1, time.Unix(0, 0)) + "0123456789\n"
-	if err := os.WriteFile(filepath.Join(e.Root, terminalsDir, "1.txt"), []byte(text), 0o600); err != nil {
+	text := terminalfile.Header("/w", "x", 1, time.Unix(0, 0)) + "0123456789\n"
+	if err := os.WriteFile(filepath.Join(e.Root, terminalfile.Dir, "1.txt"), []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	read := func(args string) *agentv1.ReadSuccess {
 		t.Helper()
-		frames := collect(t, e, execFrame(`{"id":1,"readArgs":{"path":"`+terminalsDir+`/1.txt",`+args+`}}`))
+		frames := collect(t, e, execFrame(`{"id":1,"readArgs":{"path":"`+terminalfile.Dir+`/1.txt",`+args+`}}`))
 		return clientMessages(t, frames)[0].GetReadResult().GetSuccess()
 	}
 	if r := read(`"maxChars":5`); r.GetContent() != text[:7] || !r.Truncated {
@@ -551,22 +545,22 @@ func TestUnrecognizedFrames(t *testing.T) {
 		{RequestId: "r", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_PutFileToUrl{PutFileToUrl: &aiserverv1.GrokBotUserComputerPutFileToUrl{Path: "x", Url: "https://example.invalid/"}}},
 		{RequestId: "r", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_GetFileFromUrl{GetFileFromUrl: &aiserverv1.GrokBotUserComputerGetFileFromUrl{Path: "x", Url: "https://example.invalid/"}}},
 	} {
-		if !Unrecognized(f) {
+		if !frames.Unrecognized(f) {
 			t.Fatal("recognized", f)
 		}
-		frames := collect(t, e, f)
+		out := collect(t, e, f)
 		var msg agentv1.ExecClientControlMessage
-		if len(frames) != 1 || frames[0].GetControl() == nil || protojson.Unmarshal([]byte(frames[0].GetControl().MessageJson), &msg) != nil ||
-			msg.GetThrow().GetId() != 0 || msg.GetThrow().GetError() != ErrUnknownFrame.Error() {
-			t.Fatal(frames)
+		if len(out) != 1 || out[0].GetControl() == nil || protojson.Unmarshal([]byte(out[0].GetControl().MessageJson), &msg) != nil ||
+			msg.GetThrow().GetId() != 0 || msg.GetThrow().GetError() != frames.ErrUnknownFrame.Error() {
+			t.Fatal(out)
 		}
 	}
 	f := &aiserverv1.GrokBotUserComputerRequestFrame{RequestId: "r", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_DiscoverAiTool{DiscoverAiTool: &aiserverv1.GrokBotUserComputerDiscoverAiTool{Source: "cursor"}}}
-	if frames := collect(t, e, f); !Unrecognized(f) || len(frames) != 1 || frames[0].GetFileError().GetError() != ErrUnknownFrame.Error() {
-		t.Fatal(frames)
+	if out := collect(t, e, f); !frames.Unrecognized(f) || len(out) != 1 || out[0].GetFileError().GetError() != frames.ErrUnknownFrame.Error() {
+		t.Fatal(out)
 	}
-	f.GetDiscoverAiTool().Source = sourceCodex
-	if Unrecognized(f) || Unrecognized(execFrame(`{}`)) {
+	f.GetDiscoverAiTool().Source = frames.SourceCodex
+	if frames.Unrecognized(f) || frames.Unrecognized(execFrame(`{}`)) {
 		t.Fatal("known frame unrecognized")
 	}
 }

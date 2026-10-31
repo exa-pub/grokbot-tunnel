@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,15 +13,12 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unicode/utf16"
 	"unicode/utf8"
 
-	"golang.org/x/text/encoding/charmap"
-	"golang.org/x/text/encoding/ianaindex"
-	"golang.org/x/text/encoding/unicode"
-	"golang.org/x/text/transform"
-
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/textcodec"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 const (
@@ -41,9 +37,6 @@ const (
 	// readChunk is the size of the chunks the desktop reads text files in;
 	// content beyond max_chars may run up to one chunk further.
 	readChunk = 64 << 10
-	// sniffSize is how much of a file that is not UTF-8 decides between lossy
-	// UTF-8 and Latin-1.
-	sniffSize = 1 << 20
 )
 
 // binaryExtensions are returned as data instead of text.
@@ -54,8 +47,6 @@ const (
 	msgBinaryFile = "File is binary and cannot be read as text"
 	msgDirectory  = "Path is a directory, not a file"
 )
-
-var errBinaryFile = errors.New("file is binary")
 
 func (e *Executor) upload(path string, data []byte) error {
 	rel, err := e.relative(path)
@@ -185,7 +176,7 @@ func (e *Executor) open(path string) (*os.File, error) {
 
 // download streams the file in chunks. The size is fixed when the download
 // starts, so a growing file is cut and a shrinking one ends early.
-func (e *Executor) download(ctx context.Context, requestID, path string, sink Sink) error {
+func (e *Executor) download(ctx context.Context, requestID, path string, sink frames.Sink) error {
 	f, err := e.open(path)
 	if err != nil {
 		return err
@@ -208,7 +199,7 @@ func (e *Executor) download(ctx context.Context, requestID, path string, sink Si
 		}
 		remaining -= int64(n)
 		last := remaining == 0 || err != nil
-		if err := sink(fileFrame(requestID, b[:n], seq, last)); err != nil {
+		if err := sink(frames.File(requestID, b[:n], seq, last)); err != nil {
 			return err
 		}
 		if last {
@@ -288,7 +279,7 @@ func (e *Executor) readResult(ctx context.Context, rel string, x *agentv1.ReadAr
 		success.Output = &agentv1.ReadSuccess_Data{Data: b}
 	} else {
 		text, err := decodeFile(rel, b, x.GetEncodingHint())
-		if errors.Is(err, errBinaryFile) {
+		if errors.Is(err, textcodec.ErrBinary) {
 			return invalidFile(path, msgBinaryFile), nil
 		}
 		if err != nil {
@@ -323,11 +314,11 @@ type fileText struct {
 
 // decodeFile decodes text, keeping the envelope of terminal files as UTF-8.
 func decodeFile(rel string, b []byte, hint string) (fileText, error) {
-	if filepath.Dir(rel) == terminalsDir && terminalHeaderEnd(b) >= 0 {
-		text, err := decodeTerminalText(b, hint)
+	if filepath.Dir(rel) == terminalfile.Dir && terminalfile.HeaderEnd(b) >= 0 {
+		text, err := terminalfile.Decode(b, hint)
 		return fileText{text: text, terminal: true, base: -1}, err
 	}
-	text, base, err := decodeText(b, hint)
+	text, base, err := textcodec.Decode(b, hint)
 	return fileText{text: text, base: base}, err
 }
 
@@ -349,11 +340,11 @@ func setTextRange(r *agentv1.ReadSuccess, f fileText, x *agentv1.ReadArgs) {
 		selected = stripCR(lines, start, selected)
 	}
 	content := strings.Join(selected, "\n")
-	if units >= 0 && utf16Len(content) > units {
-		content, r.Truncated = truncateUTF16(content, units), true
+	if units >= 0 && textcodec.UTF16Len(content) > units {
+		content, r.Truncated = textcodec.TruncateUTF16(content, units), true
 	}
 	if len(content) > maxTextRead {
-		content = truncateUTF8(content, maxTextRead)
+		content = textcodec.TruncateUTF8(content, maxTextRead)
 		r.Truncated = true
 	}
 	r.Output = &agentv1.ReadSuccess_Content{Content: content}
@@ -414,11 +405,11 @@ func limitChars(lines []string, first, last, maxChars, base int) ([]string, bool
 			for n > 0 && !utf8.RuneStart(line[n]) {
 				n-- // a character the chunk cuts belongs to the next one
 			}
-			if n > 0 && count+sep+utf16Len(line[:n])-1 > maxChars {
+			if n > 0 && count+sep+textcodec.UTF16Len(line[:n])-1 > maxChars {
 				return append(lines[first:i:i], line[:n]), true
 			}
 		}
-		count += sep + utf16Len(line)
+		count += sep + textcodec.UTF16Len(line)
 		if i < len(lines)-1 && strings.HasSuffix(line, "\r") {
 			count--
 		}
@@ -428,144 +419,6 @@ func limitChars(lines []string, first, last, maxChars, base int) ([]string, bool
 		at += len(line) + 1
 	}
 	return lines[first:last], false
-}
-
-// utf16Len returns the length of s in UTF-16 code units, as JavaScript
-// counts characters.
-func utf16Len(s string) int {
-	n := 0
-	for _, r := range s {
-		n += utf16.RuneLen(r)
-	}
-	return n
-}
-
-// truncateUTF16 cuts s to at most n UTF-16 code units without splitting a
-// character.
-func truncateUTF16(s string, n int) string {
-	units := 0
-	for i, r := range s {
-		if units += utf16.RuneLen(r); units > n {
-			return s[:i]
-		}
-	}
-	return s
-}
-
-// truncateUTF8 cuts s to at most n bytes at a rune boundary.
-func truncateUTF8(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
-}
-
-// decodeText decodes b using the encoding hint. Without a hint it honors a
-// UTF-16 BOM and strips a UTF-8 BOM; invalid UTF-8 is decoded as lossy UTF-8
-// or, if it does not look like UTF-8, as Latin-1. It also returns the offset
-// in b from which the text holds b's bytes as they are, or -1.
-func decodeText(b []byte, hint string) (string, int, error) {
-	if decoder := textDecoder(b, hint); decoder != nil {
-		out, _, err := transform.Bytes(decoder, b)
-		return string(out), -1, err
-	}
-	base := 0
-	if bytes.HasPrefix(b, []byte{0xef, 0xbb, 0xbf}) {
-		b, base = b[3:], 3
-	}
-	if bytes.IndexByte(b, 0) >= 0 {
-		return "", -1, errBinaryFile
-	}
-	if utf8.Valid(b) {
-		return string(b), base, nil
-	}
-	if mostlyUTF8(lossyUTF8(sniff(b))) {
-		return lossyUTF8(b), -1, nil
-	}
-	out, _, err := transform.Bytes(charmap.ISO8859_1.NewDecoder(), b)
-	return string(out), -1, err
-}
-
-// sniff returns the start of b that decides how invalid UTF-8 is decoded,
-// without a character that the cut leaves incomplete.
-func sniff(b []byte) []byte {
-	if len(b) <= sniffSize {
-		return b
-	}
-	b = b[:sniffSize]
-	for i := len(b) - 1; i >= len(b)-utf8.UTFMax; i-- {
-		if utf8.RuneStart(b[i]) {
-			if !utf8.FullRune(b[i:]) {
-				b = b[:i]
-			}
-			break
-		}
-	}
-	return b
-}
-
-// lossyUTF8 decodes b, replacing each maximal invalid subsequence with
-// U+FFFD as a WHATWG decoder does.
-func lossyUTF8(b []byte) string {
-	out, _, err := transform.Bytes(unicode.UTF8.NewDecoder(), b)
-	if err != nil {
-		return strings.ToValidUTF8(string(b), "�") // not expected: the decoder replaces
-	}
-	return string(out)
-}
-
-// mostlyUTF8 reports whether text decoded from invalid UTF-8 has more
-// characters beyond ASCII than replacement characters, as the desktop
-// decides: a run of them loses its last two to a replacement character that
-// follows, and the two after one do not count.
-func mostlyUTF8(text string) bool {
-	const skip = 2
-	replaced, valid, run, skipped := 0, 0, 0, 0
-	for _, r := range text {
-		for range utf16.RuneLen(r) {
-			switch {
-			case r < utf8.RuneSelf:
-				valid, run, skipped = valid+run, 0, 0
-			case r == utf8.RuneError:
-				replaced++
-				valid, run, skipped = valid+max(0, run-skip), 0, skip
-			case skipped > 0:
-				skipped--
-			default:
-				run++
-			}
-		}
-	}
-	return valid+run > replaced
-}
-
-// textDecoder returns the decoder for hint, or nil to treat b as UTF-8.
-func textDecoder(b []byte, hint string) transform.Transformer {
-	switch strings.ToLower(hint) {
-	case "utf-16", "utf-16le", "utf16le":
-		return unicode.UTF16(unicode.LittleEndian, unicode.UseBOM).NewDecoder()
-	case "utf-16be", "utf16be":
-		return unicode.UTF16(unicode.BigEndian, unicode.UseBOM).NewDecoder()
-	case "latin1", "latin-1", "iso-8859-1":
-		return charmap.ISO8859_1.NewDecoder()
-	case "windows-1252":
-		return charmap.Windows1252.NewDecoder()
-	case "", "utf8", "utf-8", "utf-8-bom", "utf8bom", "utf-8 bom":
-		switch {
-		case bytes.HasPrefix(b, []byte{0xff, 0xfe}):
-			return unicode.UTF16(unicode.LittleEndian, unicode.UseBOM).NewDecoder()
-		case bytes.HasPrefix(b, []byte{0xfe, 0xff}):
-			return unicode.UTF16(unicode.BigEndian, unicode.UseBOM).NewDecoder()
-		}
-		return nil
-	}
-	if encoding, err := ianaindex.MIME.Encoding(hint); err == nil && encoding != nil {
-		return encoding.NewDecoder()
-	}
-	return nil
 }
 
 // splitLines splits like the desktop: a trailing newline yields an empty

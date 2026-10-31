@@ -11,6 +11,8 @@ import (
 	"time"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/proc"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 // shellCwd resolves the working directory, defaulting to the one the previous
@@ -78,8 +80,8 @@ func (e *Executor) shell(ctx context.Context, x *agentv1.ShellArgs, send reply) 
 	// from the current state.
 	go func() {
 		<-sh.done
-		closeLogged(sh.snapshot)
-		closeLogged(sh.fallback)
+		proc.CloseLogged(sh.snapshot)
+		proc.CloseLogged(sh.fallback)
 	}()
 	return err
 }
@@ -127,7 +129,7 @@ func (e *Executor) startShell(x *agentv1.ShellArgs, cwd string, st shellState, s
 		}
 		sh.out.file = sh.file
 	}
-	if sh.snapshot, err = tempFile("grok-shell-state-", ""); err != nil {
+	if sh.snapshot, err = proc.TempFile("grok-shell-state-", ""); err != nil {
 		return nil, err
 	}
 	if sh.fallback, err = os.CreateTemp("", "grok-shell-state-"); err != nil {
@@ -137,8 +139,8 @@ func (e *Executor) startShell(x *agentv1.ShellArgs, cwd string, st shellState, s
 	if err != nil {
 		return nil, err
 	}
-	defer closeLogged(replay) // the child keeps its own descriptors
-	defer closeLogged(command)
+	defer proc.CloseLogged(replay) // the child keeps its own descriptors
+	defer proc.CloseLogged(command)
 	user := userShell()
 	sh.cmd = shellCommand(user, st, cwd, user.args("-c", user.foregroundScript(), "grokbot-shell", sh.fallback.Name())...)
 	sh.cmd.Env = withGitConfig(sh.cmd.Env)
@@ -166,8 +168,8 @@ func (sh *runningShell) start() error {
 	}
 	stderr, stderrW, err := os.Pipe()
 	if err != nil {
-		closeLogged(stdout)
-		closeLogged(stdoutW)
+		proc.CloseLogged(stdout)
+		proc.CloseLogged(stdoutW)
 		return err
 	}
 	sh.cmd.Stdout, sh.cmd.Stderr = stdoutW, stderrW
@@ -175,19 +177,19 @@ func (sh *runningShell) start() error {
 	err = sh.cmd.Start()
 	// Only the command keeps the write ends, so the drainers see EOF once it
 	// and its children are gone.
-	closeLogged(stdoutW)
-	closeLogged(stderrW)
+	proc.CloseLogged(stdoutW)
+	proc.CloseLogged(stderrW)
 	if err == nil && sh.file != nil {
-		sh.statusAt, err = writeTerminalHeader(sh.file, sh.cwd, sh.args.Command, sh.cmd.Process.Pid, "")
+		sh.statusAt, err = terminalfile.WriteHeader(sh.file, sh.cwd, sh.args.Command, sh.cmd.Process.Pid, "")
 	}
 	sh.out.mu.Unlock()
 	if err != nil && sh.cmd.Process != nil {
-		kill(sh.cmd)
-		wait(sh.cmd)
+		proc.Kill(sh.cmd)
+		proc.Wait(sh.cmd)
 	}
 	if err != nil {
-		closeLogged(stdout)
-		closeLogged(stderr)
+		proc.CloseLogged(stdout)
+		proc.CloseLogged(stderr)
 		return err
 	}
 	sh.drained.Add(2)
@@ -200,7 +202,7 @@ func (sh *runningShell) start() error {
 // finished.
 func (sh *runningShell) drain(r *os.File, w *streamWriter) {
 	defer sh.drained.Done()
-	defer closeLogged(r)
+	defer proc.CloseLogged(r)
 	if _, err := io.Copy(w, r); err != nil {
 		log.Printf("shell output: %v", err)
 	}
@@ -208,21 +210,21 @@ func (sh *runningShell) drain(r *os.File, w *streamWriter) {
 
 func (sh *runningShell) closeFiles() {
 	if sh.file != nil {
-		closeLogged(sh.file)
+		proc.CloseLogged(sh.file)
 	}
 	if sh.snapshot != nil {
-		closeLogged(sh.snapshot)
+		proc.CloseLogged(sh.snapshot)
 	}
 	if sh.fallback != nil {
-		removeLogged(sh.fallback.Name())
-		closeLogged(sh.fallback)
+		proc.RemoveLogged(sh.fallback.Name())
+		proc.CloseLogged(sh.fallback)
 	}
 }
 
 // reap waits for the process and its output and finalizes the output.
 func (sh *runningShell) reap() {
-	wait(sh.cmd)
-	removeLogged(sh.fallback.Name())
+	proc.Wait(sh.cmd)
+	proc.RemoveLogged(sh.fallback.Name())
 	drained := make(chan struct{})
 	go func() {
 		sh.drained.Wait()
@@ -236,10 +238,10 @@ func (sh *runningShell) reap() {
 	sh.stderr.flush()
 	sh.out.finish()
 	if sh.file != nil {
-		if err := appendTerminalExit(sh.file, sh.cmd.ProcessState, sh.statusAt); err != nil {
+		if err := terminalfile.AppendExit(sh.file, proc.ExitCode(sh.cmd.ProcessState), sh.statusAt); err != nil {
 			log.Printf("terminal %d: %v", sh.shellID, err)
 		}
-		closeLogged(sh.file)
+		proc.CloseLogged(sh.file)
 	}
 	close(sh.done)
 }
@@ -255,9 +257,9 @@ func (sh *runningShell) exited() bool {
 }
 
 func (sh *runningShell) wait(ctx context.Context) error {
-	soft, stopSoft := timer(sh.args.Timeout)
+	soft, stopSoft := proc.Timer(sh.args.Timeout)
 	defer stopSoft()
-	hard, stopHard := timer(sh.args.GetHardTimeout())
+	hard, stopHard := proc.Timer(sh.args.GetHardTimeout())
 	defer stopHard()
 	reason := agentv1.ShellAbortReason_SHELL_ABORT_REASON_UNSPECIFIED
 	select {
@@ -293,7 +295,7 @@ func (sh *runningShell) detach() error {
 			select {
 			case <-sh.done:
 			case <-time.After(max(remaining, time.Millisecond)):
-				kill(sh.cmd)
+				proc.Kill(sh.cmd)
 			}
 		}()
 	}
@@ -302,7 +304,7 @@ func (sh *runningShell) detach() error {
 			ShellId:          sh.shellID,
 			Command:          sh.args.Command,
 			WorkingDirectory: sh.cwd,
-			Pid:              pid(sh.cmd),
+			Pid:              proc.PID(sh.cmd),
 			Reason:           agentv1.ShellBackgroundReason_SHELL_BACKGROUND_REASON_TIMEOUT.Enum(),
 		},
 	}}))
@@ -314,7 +316,7 @@ func (sh *runningShell) detach() error {
 func (sh *runningShell) finish(reason agentv1.ShellAbortReason) error {
 	aborted := reason != agentv1.ShellAbortReason_SHELL_ABORT_REASON_UNSPECIFIED
 	if aborted {
-		kill(sh.cmd)
+		proc.Kill(sh.cmd)
 		<-sh.done
 	}
 	if err := sh.out.sendErr(); err != nil {
@@ -332,7 +334,7 @@ func (sh *runningShell) finish(reason agentv1.ShellAbortReason) error {
 			}
 		}
 	}
-	code := max(0, exitCode(sh.cmd.ProcessState))
+	code := max(0, proc.ExitCode(sh.cmd.ProcessState))
 	return sh.out.send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_Exit{Exit: &agentv1.ShellStreamExit{
 		Code:        uint32(code), //nolint:gosec // non-negative
 		Cwd:         cwd,

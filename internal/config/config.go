@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/atomicfile"
 )
 
 // Auth holds the user's OAuth tokens and selected identity.
@@ -94,21 +96,7 @@ func (s *Store) Save(name string, v any) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(s.Dir, ".tmp-")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if _, err = f.Write(b); err == nil {
-		err = f.Sync()
-	}
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), s.path(name))
+	return atomicfile.Write(s.path(name), b, atomicfile.Options{Prefix: ".tmp-"})
 }
 
 // lockPoll is how often Lock retries while another process holds the lock.

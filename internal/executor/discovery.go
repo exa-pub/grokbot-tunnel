@@ -18,13 +18,12 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf16"
+
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
 )
 
 // AI tools whose setup can be discovered.
-const (
-	sourceCodex      = "codex"
-	sourceClaudeCode = "claude_code"
-)
+const ()
 
 const (
 	discoveryTimeout = 10 * time.Second
@@ -264,13 +263,13 @@ func (e *Executor) discoveryLayout(source string) (discoveryLayout, error) {
 		}
 	}
 	switch source {
-	case sourceCodex:
+	case frames.SourceCodex:
 		l := discoveryLayout{root: filepath.Join(home, ".codex"), promptDir: "prompts", sessionDir: "sessions", sessionDepth: 4}
 		if dir := envOverride(e.CodexHome, "CODEX_HOME"); dir != "" {
 			l.root = dir
 		}
 		return l, nil
-	case sourceClaudeCode:
+	case frames.SourceClaudeCode:
 		l := discoveryLayout{
 			root:         filepath.Join(home, ".claude"),
 			global:       filepath.Join(home, ".claude.json"),
@@ -371,7 +370,7 @@ func (d *discoverer) path(elem ...string) string {
 }
 
 func (d *discoverer) mcpAndPlugins() error {
-	if d.source == sourceCodex {
+	if d.source == frames.SourceCodex {
 		b, err := readConfig(d.ctx, d.path("config.toml"))
 		if err != nil {
 			return err
@@ -512,7 +511,7 @@ func (d *discoverer) history() error {
 			continue
 		}
 		text, ts := h.Text, h.TS
-		if d.source == sourceClaudeCode {
+		if d.source == frames.SourceClaudeCode {
 			text, ts = h.Display, h.Timestamp
 		}
 		text = strings.TrimSpace(pastedText.ReplaceAllString(text, " "))

@@ -21,6 +21,7 @@ import (
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
 	"github.com/exa-pub/grokbot-tunnel/internal/permission"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
 )
 
 func testSession(t *testing.T) *session {
@@ -447,7 +448,7 @@ func TestCanceledRunningRequestReportsTerminalFrame(t *testing.T) {
 	s := testSession(t)
 	download := &aiserverv1.GrokBotUserComputerRequestFrame_Download{Download: &aiserverv1.GrokBotUserComputerDownload{Path: "x"}}
 	s.canceled.add("run")
-	if err := executor.Reject(&requestFrame{RequestId: "run", Frame: download}, context.Canceled, func(f *responseFrame) error { s.take(f); return nil }); err != nil {
+	if err := frames.Reject(&requestFrame{RequestId: "run", Frame: download}, context.Canceled, func(f *responseFrame) error { s.take(f); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if len(s.pending) != 1 || s.pending[0].GetFileError() == nil {
@@ -665,7 +666,7 @@ func TestUnrecognizedFrameAnsweredWhenBusy(t *testing.T) {
 	s.active = maxActive
 	s.backlog = make([]string, maxBacklog)
 	s.accept(&requestFrame{RequestId: "url", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_PutFileToUrl{PutFileToUrl: &aiserverv1.GrokBotUserComputerPutFileToUrl{}}}, false)
-	if len(s.tasks) != 0 || len(s.pending) != 1 || !closes(s.pending[0]) || !strings.Contains(s.pending[0].GetControl().GetMessageJson(), "does not understand that request frame") {
+	if len(s.tasks) != 0 || len(s.pending) != 1 || !frames.Closes(s.pending[0]) || !strings.Contains(s.pending[0].GetControl().GetMessageJson(), "does not understand that request frame") {
 		t.Fatal(s.tasks, s.pending)
 	}
 	s.accept(&requestFrame{RequestId: "url", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_PutFileToUrl{PutFileToUrl: &aiserverv1.GrokBotUserComputerPutFileToUrl{}}}, false)
