@@ -499,6 +499,9 @@ func TestShellOwnSession(t *testing.T) {
 
 // A terminal file read whole keeps two characters more than max_chars, like
 // the desktop's terminal reader; ranges are not limited.
+// Invariant 21, Go+: the desktop has no terminal-file branch in local-exec
+// read and reads <root>/terminals/<n>.txt as plain text (rnd-v2 Q1). Pinned
+// until the branch is removed.
 func TestTerminalReadMaxChars(t *testing.T) {
 	e := setup(t)
 	if err := e.Files.MkdirAll(terminalsDir, 0o700); err != nil {
@@ -565,5 +568,24 @@ func TestUnrecognizedFrames(t *testing.T) {
 	f.GetDiscoverAiTool().Source = sourceCodex
 	if Unrecognized(f) || Unrecognized(execFrame(`{}`)) {
 		t.Fatal("known frame unrecognized")
+	}
+}
+
+// A server-supplied path or working directory must not be able to fake a
+// different action in the permission prompt (bug 1 of the 2026-10-31 review).
+func TestDescribeQuotesServerStrings(t *testing.T) {
+	for in, want := range map[string]string{
+		`{"shellStreamArgs":{"command":"ls","workingDirectory":"/tmp\r\u001b[2KRun \"true\" in /home"}}`: `Run "ls" in "/tmp\r\x1b[2KRun \"true\" in /home"`,
+		`{"backgroundShellSpawnArgs":{"command":"ls","workingDirectory":"/a\nb"}}`:                       `Run background "ls" in "/a\nb"`,
+		`{"readArgs":{"path":"/a\r\u001b[2KRead /b"}}`:                                                   `Read "/a\r\x1b[2KRead /b"`,
+		`{"lsArgs":{"path":"/a\u202eb"}}`:                                                                `List "/a\u202eb"`,
+	} {
+		msg := &agentv1.ExecServerMessage{}
+		if err := protojson.Unmarshal([]byte(in), msg); err != nil {
+			t.Fatal(err)
+		}
+		if got := describe(msg); got != want {
+			t.Errorf("describe(%s) = %s, want %s", in, got, want)
+		}
 	}
 }

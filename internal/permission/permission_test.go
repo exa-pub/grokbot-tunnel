@@ -106,3 +106,17 @@ func TestQueuedPromptHonorsCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPromptEscapesControlCharacters(t *testing.T) {
+	for in, want := range map[string]string{
+		"Run x":                    "Run x",
+		"Read /a\r\x1b[2KRead /b":  `Read /a\r\x1b[2KRead /b`,
+		"List \u202egpj.exe":       `List \u202egpj.exe`,
+		"Run \"ls\" in /tmp/\nyes": `Run "ls" in /tmp/\nyes`,
+		"Read /домашний":           "Read /домашний",
+	} {
+		if got := printable(in); got != want {
+			t.Errorf("printable(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

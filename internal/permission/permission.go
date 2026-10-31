@@ -9,8 +9,10 @@ import (
 	"io"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
@@ -117,7 +119,7 @@ func (p *Policy) Allow(ctx context.Context, action string, server, approved bool
 	if err := flushInput(p.In); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "%s? [y/N/a] ", action)
+	fmt.Fprintf(out, "%s? [y/N/a] ", printable(action))
 	answer, err := p.readLine(ctx)
 	if err != nil {
 		fmt.Fprintln(out)
@@ -131,6 +133,21 @@ func (p *Policy) Allow(ctx context.Context, action string, server, approved bool
 		return nil
 	}
 	return ErrRefused
+}
+
+// printable escapes every non-printable rune in s, so no input can move the
+// cursor, erase the line or reorder text on the user's terminal.
+func printable(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsPrint(r) {
+			b.WriteRune(r)
+			continue
+		}
+		q := strconv.QuoteRune(r)
+		b.WriteString(q[1 : len(q)-1])
+	}
+	return b.String()
 }
 
 func (p *Policy) promptSlot() chan struct{} {

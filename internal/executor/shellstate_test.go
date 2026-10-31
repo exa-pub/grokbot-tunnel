@@ -197,13 +197,15 @@ func TestBackgroundReplaysForegroundState(t *testing.T) {
 		if !strings.Contains(string(data), "bg-fn-ok") || strings.Count(string(data), "exit_code:") != 1 {
 			t.Fatalf("%q", data)
 		}
-		// Background commands do not change the foreground state.
+		// Background commands do not change the foreground state. ≠: on the
+		// desktop a background command that ends without abort writes its
+		// state back to the shared session (rnd-v2/q4-background-state.md).
 		expectStdout(t, e, `printf %s "$BG_VAR"`, "1")
 	})
 }
 
 func TestParseSnapshotRejectsTruncated(t *testing.T) {
-	full := "/w\x00A=1\x00SHLVL=3\x00_=/usr/bin/env\x00\x00" + sectionOptions + "\x00set -o noclobber\nset -o errexit\nset -o monitor\nset +o nounset\nshopt -s login_shell\nshopt -s nullglob\n\x00" +
+	full := "/w\x00A=1\x00SHLVL=3\x00_=/usr/bin/env\x00\x00" + sectionEnvSaved + "\x00\x00" + sectionOptions + "\x00set -o noclobber\nset -o errexit\nset -o monitor\nset +o nounset\nshopt -s login_shell\nshopt -s nullglob\n\x00" +
 		sectionFunctions + "\x00f () { :; }\n\x00" + sectionEnd + "\x00"
 	st, ok := parseSnapshot([]byte(full))
 	if !ok || strings.Join(st.env, " ") != "A=1" || strings.Join(st.options, "|") != "set -o noclobber|shopt -s nullglob" || st.functions != "f () { :; }\n" {
@@ -215,6 +217,29 @@ func TestParseSnapshotRejectsTruncated(t *testing.T) {
 	if _, ok := parseSnapshot([]byte("relative\x00A=1\x00" + sectionEnd + "\x00")); ok {
 		t.Fatal("relative cwd accepted")
 	}
+}
+
+func TestParseSnapshotWithoutSavedEnv(t *testing.T) {
+	st, ok := parseSnapshot([]byte("/w\x00A=1\x00\x00" + sectionOptions + "\x00\x00" + sectionFunctions + "\x00\x00" + sectionEnd + "\x00"))
+	if !ok || st.env != nil {
+		t.Fatal(ok, st)
+	}
+}
+
+// When /usr/bin/env fails in the state dump, the next command keeps the
+// previous environment instead of starting with an empty one (bug 2 of the
+// 2026-10-31 review). A variable above the kernel's 128 KiB limit for a single
+// string makes execve fail with E2BIG.
+func TestShellKeepsEnvWhenDumpFails(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		expectStdout(t, e, "export GROK_KEEP=1", "")
+		r := runShell(t, e, `export GROK_BIG="$(printf '%0200000d' 0)"; export GROK_KEEP=2`)
+		if !strings.Contains(r.stderr, "environment could not be saved") {
+			t.Fatalf("no notice: %q", r.stderr)
+		}
+		expectStdout(t, e, `printf '%s|%s' "$GROK_KEEP" "${PATH:+path}"`, "1|path")
+	})
 }
 
 func TestShellOptionsAndFunctionsPersist(t *testing.T) {

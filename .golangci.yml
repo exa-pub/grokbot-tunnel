@@ -26,6 +26,7 @@ linters:
     - funlen
     - lll
     - gosec
+    - testifylint
 
   settings:
     errcheck:
@@ -65,6 +66,9 @@ linters:
     prealloc:
       simple: true
       for-loops: true
+
+    testifylint:
+      enable-all: true
 
     revive:
       rules:

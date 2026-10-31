@@ -5,7 +5,7 @@ LDFLAGS   := -s -w -X $(PKG)/internal/cli.version=$(VERSION)
 PLATFORMS := linux/amd64 linux/arm64
 GOLANGCI_LINT ?= golangci-lint
 
-.PHONY: all build test test-race lint proto proto-check dist clean
+.PHONY: all build test test-race e2e lint proto proto-check dist clean
 
 all: lint test build
 
@@ -30,8 +30,13 @@ dist:
 test:
 	go test ./...
 
+# COVERPROFILE=coverage.out also writes a coverage profile.
 test-race:
-	go test -race ./...
+	go test -race $(if $(COVERPROFILE),-coverprofile=$(COVERPROFILE)) ./...
+
+# Runs the built binary against the fake backend in tests/e2e/fakesand.
+e2e:
+	go test -tags e2e -count=1 ./tests/e2e/...
 
 lint:
 	$(GOLANGCI_LINT) run ./...

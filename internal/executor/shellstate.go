@@ -52,6 +52,7 @@ const (
 	initTimeout = 10 * time.Second
 	// sectionPrefix tags the non-environment parts of a state snapshot.
 	sectionPrefix    = "GROK_SHELL_"
+	sectionEnvSaved  = sectionPrefix + "ENV_SAVED"
 	sectionOptions   = sectionPrefix + "OPTIONS"
 	sectionFunctions = sectionPrefix + "FUNCTIONS"
 	sectionEnd       = sectionPrefix + "END"
@@ -176,10 +177,10 @@ func (s shell) args(flags, script, name string, params ...string) []string {
 	return append(append(args, flags, script, name), params...)
 }
 
-// dump writes the state as NUL-separated cwd and environment, then tagged
-// option and function sections and an end tag. Command output cannot be
-// mistaken for state, and state is replayed from a file, not parsed back from
-// output.
+// dump writes the state as NUL-separated cwd and environment, a tag that the
+// environment was written in full, then tagged option and function sections
+// and an end tag. Command output cannot be mistaken for state, and state is
+// replayed from a file, not parsed back from output.
 func (s shell) dump() string {
 	options := `builtin set +o; builtin shopt -p`
 	if s.zsh {
@@ -187,7 +188,7 @@ func (s shell) dump() string {
 	}
 	return strings.Join([]string{
 		`builtin printf '%s\0' "$PWD"`,
-		`/usr/bin/env -0`,
+		`/usr/bin/env -0 && builtin printf '\0` + sectionEnvSaved + `\0'`,
 		`builtin printf '\0` + sectionOptions + `\0'`,
 		options,
 		`builtin printf '\0` + sectionFunctions + `\0'`,
@@ -387,8 +388,15 @@ func (e *Executor) adoptState(snapshot, fallback *os.File, cwd string) (*shellSt
 			"changes to the working directory, environment, options and functions were not kept.\n"
 	}
 	notice := ""
+	if st.env == nil {
+		// /usr/bin/env failed, for example on a variable above the kernel's
+		// 128 KiB limit. Keep the environment the command started with.
+		st.env = e.shellState().env
+		notice = "The environment could not be saved after this command; the next command starts with the " +
+			"environment this one started with.\n"
+	}
 	if !e.validCwd(st.cwd) {
-		notice = fmt.Sprintf("Working directory %s is outside %s or no longer exists; the next command starts in %s.\n",
+		notice += fmt.Sprintf("Working directory %s is outside %s or no longer exists; the next command starts in %s.\n",
 			st.cwd, e.Root, cwd)
 		st.cwd = cwd
 	}
@@ -426,7 +434,8 @@ func readSnapshot(f *os.File) ([]byte, error) {
 }
 
 // parseSnapshot decodes the state written by shell.dump. A snapshot without
-// the end tag was cut short and is rejected.
+// the end tag was cut short and is rejected. A snapshot whose environment was
+// not written in full has a nil env.
 func parseSnapshot(b []byte) (shellState, bool) {
 	b, complete := bytes.CutSuffix(b, []byte("\x00"+sectionEnd+"\x00"))
 	if !complete {
@@ -438,8 +447,13 @@ func parseSnapshot(b []byte) (shellState, bool) {
 	}
 	st := shellState{cwd: parts[0], env: []string{}}
 	sections := map[string]string{}
+	envSaved := false
 	for i := 1; i < len(parts); i++ {
 		part := parts[i]
+		if part == sectionEnvSaved && len(sections) == 0 {
+			envSaved = true
+			continue
+		}
 		if strings.HasPrefix(part, sectionPrefix) && !strings.Contains(part, "=") {
 			if i+1 < len(parts) {
 				sections[part] = parts[i+1]
@@ -447,9 +461,12 @@ func parseSnapshot(b []byte) (shellState, bool) {
 			}
 			continue
 		}
-		if len(sections) == 0 && strings.Contains(part, "=") && !isVolatileVar(part) {
+		if !envSaved && len(sections) == 0 && strings.Contains(part, "=") && !isVolatileVar(part) {
 			st.env = append(st.env, part)
 		}
+	}
+	if !envSaved {
+		st.env = nil
 	}
 	st.options = parseOptions(sections[sectionOptions])
 	st.functions = sections[sectionFunctions]
