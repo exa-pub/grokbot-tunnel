@@ -12,11 +12,11 @@ import (
 
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/tty"
 	"github.com/exa-pub/grokbot-tunnel/internal/auth"
-	"github.com/exa-pub/grokbot-tunnel/internal/computer"
 	"github.com/exa-pub/grokbot-tunnel/internal/config"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
 	"github.com/exa-pub/grokbot-tunnel/internal/service"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/computer"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/permission"
 )
@@ -79,15 +79,17 @@ func Connect(ctx context.Context, opts ConnectOptions) error {
 	stopNotify := context.AfterFunc(ctx, func() { notify(notifier, "STOPPING=1") })
 	defer stopNotify()
 	pv := computer.Provider{
-		User:         u.grokbot,
-		Channel:      e.computerChannel(),
-		Store:        e.store,
-		Machine:      e.machine,
-		Executor:     ex,
-		Policy:       policy,
-		Debug:        opts.Debug,
-		Backend:      e.base,
-		AccountScope: auth.AccountScope(u.tokens.Snapshot()),
+		User:            u.grokbot,
+		Channel:         e.computerChannel(),
+		Store:           e.store,
+		Machine:         e.machine,
+		Handler:         ex,
+		LocalRoot:       ex.Root,
+		TerminalsFolder: ex.TerminalsFolder(),
+		Standing:        policy.Standing,
+		Debug:           opts.Debug,
+		Backend:         e.base,
+		AccountScope:    auth.AccountScope(u.tokens.Snapshot()),
 	}
 	return pv.Run(ctx)
 }

@@ -1,9 +1,9 @@
 package computer
 
-// Characterization tests for phase 0 of the refactor: they pin the current
-// observable behavior of the session, including where it knowingly differs
-// from the desktop, so that splitting computer.go cannot change it silently.
-// Invariant numbers refer to grok-bot-map.md §4.
+// Characterization tests from phase 0 of the refactor: they pin the observable
+// behavior of the session, including where it knowingly differs from the
+// desktop. Invariant numbers refer to grok-bot-map.md §4. Invariant 11 (the
+// keep-alive ID set) is pinned by replies.TestKeepAlive.
 
 import (
 	"fmt"
@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/config"
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
 )
 
 func pinnedExec(id string) *requestFrame {
@@ -81,8 +81,8 @@ func pinnedFrames(frames []*responseFrame, id string) []*responseFrame {
 // busy text (f4e), in the frame its kind uses for errors, and is not queued.
 func TestPinnedBusyResponse(t *testing.T) {
 	const busy = "The user's computer is busy with other requests right now; try again shortly."
-	require.Equal(t, 8, maxActive)
-	require.Equal(t, 64, maxBacklog)
+	require.Equal(t, 8, admission.MaxActive)
+	require.Equal(t, 64, admission.MaxBacklog)
 	for _, tc := range []struct {
 		name  string
 		frame *requestFrame
@@ -109,23 +109,24 @@ func TestPinnedBusyResponse(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := testSession(t)
-			s.active = maxActive
-			for i := range maxBacklog {
+			withCredential(s, "c", false)
+			occupy(t, s, "busy", admission.MaxActive)
+			for i := range admission.MaxBacklog {
 				s.accept(pinnedExec(fmt.Sprint(i)), false)
 			}
-			require.Len(t, s.backlog, maxBacklog)
-			require.Empty(t, s.pending)
+			require.Equal(t, admission.MaxBacklog, s.admit.Backlog())
+			require.Empty(t, s.out.Pending())
 
 			s.accept(tc.frame, false)
-			require.Len(t, s.pending, 1)
-			assert.Equal(t, "extra", s.pending[0].RequestId)
-			tc.check(t, s.pending[0])
-			assert.NotContains(t, s.tasks, "extra")
-			assert.Len(t, s.backlog, maxBacklog)
+			require.Len(t, s.out.Pending(), 1)
+			assert.Equal(t, "extra", s.out.Pending()[0].RequestId)
+			tc.check(t, s.out.Pending()[0])
+			assert.NotContains(t, s.admit.Tasks(), "extra")
+			assert.Equal(t, admission.MaxBacklog, s.admit.Backlog())
 
 			// A redelivery of the refused request is not answered again.
 			s.accept(tc.frame, false)
-			assert.Len(t, s.pending, 1)
+			assert.Len(t, s.out.Pending(), 1)
 		})
 	}
 }
@@ -178,37 +179,37 @@ func TestPinnedCancelBeforeStart(t *testing.T) {
 	triggers := []struct {
 		name    string
 		cancel  func(s *session)
-		backlog []string // left in s.backlog afterwards
+		backlog int // IDs left in the backlog afterwards
 	}{
 		{"cancel frame", func(s *session) {
 			s.accept(&requestFrame{RequestId: "r", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_Cancel{
 				Cancel: &aiserverv1.GrokBotUserComputerCancel{},
 			}}, false)
-		}, nil},
-		// No credential and no workers: shutdown queues the frames but has
-		// nothing to submit them with, so they stay pending for inspection.
-		// It drops the task but leaves its id in the backlog, where
-		// startJobs would skip it.
+		}, 0},
+		// Without a credential shutdown queues the frames but has nothing to
+		// submit them with, so they stay pending for inspection. It drops the
+		// task but leaves its id in the backlog, where startJobs would skip it.
 		{"shutdown", func(s *session) {
-			s.active = 0
+			s.cred.Restore(config.Computer{})
 			s.shutdown()
-		}, []string{"r"}},
+		}, 1},
 	}
 	for _, tr := range triggers {
 		for _, tc := range cases {
 			t.Run(tr.name+"/"+tc.name, func(t *testing.T) {
 				s := testSession(t)
-				s.active = maxActive
+				withCredential(s, "c", false)
+				occupy(t, s, "busy", admission.MaxActive)
 				s.accept(tc.frame("r"), false)
-				require.Equal(t, []string{"r"}, s.backlog)
-				require.Nil(t, s.tasks["r"].cancel, "task started")
+				require.Equal(t, 1, s.admit.Backlog())
+				require.False(t, s.admit.Tasks()["r"], "task started")
 
 				tr.cancel(s)
-				assert.ElementsMatch(t, tr.backlog, s.backlog)
-				assert.NotContains(t, s.tasks, "r")
-				require.Len(t, s.pending, 1)
-				assert.Equal(t, "r", s.pending[0].RequestId)
-				tc.check(t, s.pending[0])
+				assert.Equal(t, tr.backlog, s.admit.Backlog())
+				assert.NotContains(t, s.admit.Tasks(), "r")
+				require.Len(t, s.out.Pending(), 1)
+				assert.Equal(t, "r", s.out.Pending()[0].RequestId)
+				tc.check(t, s.out.Pending()[0])
 			})
 		}
 	}
@@ -234,35 +235,28 @@ func TestPinnedShutdownFinalFlush(t *testing.T) {
 	var now time.Time
 	c := &stubCloud{}
 	s := stubSession(t, c, &now)
-	s.credential = config.Computer{Credential: "c", ExpiresAtMS: now.Add(time.Hour).UnixMilli()}
+	withCredential(s, "c", false)
 
-	s.queue(closeFrame("finished"))
+	s.out.Add(closeFrame("finished"))
 	require.NoError(t, s.sink(pinnedClient("buffered")))
-	s.active = maxActive
-	s.accept(pinnedExec("queued"), false)
-	require.Equal(t, []string{"queued"}, s.backlog)
-
+	occupy(t, s, "busy", admission.MaxActive-1)
 	// A started request whose worker answers its cancellation.
-	s.tasks["running"] = &task{frame: pinnedExec("running"), cancel: func() {}}
-	s.active = 1
-	go func() {
-		<-s.work.Done()
-		_ = s.sink(closeFrame("running"))
-		s.done <- "running"
-	}()
+	occupy(t, s, "close-running", 1)
+	s.accept(pinnedExec("queued"), false)
+	require.Equal(t, 1, s.admit.Backlog())
 
 	start := time.Now()
 	s.shutdown()
 	assert.Less(t, time.Since(start), finalFlushGrace, "shutdown waited for a grace")
 
-	assert.Empty(t, s.pending)
-	assert.Empty(t, s.tasks)
-	assert.Zero(t, s.active)
+	assert.Empty(t, s.out.Pending())
+	assert.Empty(t, s.admit.Tasks())
+	assert.Zero(t, s.admit.Active())
 	c.mu.Lock()
 	submitted := c.submitted
 	c.mu.Unlock()
 	require.Len(t, submitted, 4)
-	for _, id := range []string{"finished", "running"} {
+	for _, id := range []string{"finished", "close-running0"} {
 		got := pinnedFrames(submitted, id)
 		require.Len(t, got, 1, id)
 		assert.NotNil(t, pinnedControl(t, got[0]).GetStreamClose(), id)
@@ -275,52 +269,4 @@ func TestPinnedShutdownFinalFlush(t *testing.T) {
 	msg := pinnedControl(t, got[0])
 	require.NotNil(t, msg.GetStreamClose())
 	assert.Zero(t, msg.GetStreamClose().GetId())
-}
-
-// Invariant 11 (≠ keep-alive id set): keepAlive queues one empty
-// messagesAccepted{} for each started task and each request whose replies
-// are still pending, but not for requests waiting in the backlog, requests
-// whose closing frame is pending, canceled requests, or without a
-// credential. This pins current behavior that differs from the desktop,
-// which keeps alive backlog + unsent replies + the submit in flight, but not
-// the inflight (started) requests, over a separate RPC. Frames of a submit in
-// flight stay in pending until accepted, so they count as unsent here.
-func TestPinnedKeepAliveIDSet(t *testing.T) {
-	started := func(s *session) { s.tasks["r"] = &task{frame: pinnedExec("r"), cancel: func() {}} }
-	for _, tc := range []struct {
-		name  string
-		setup func(s *session)
-		want  int // messagesAccepted frames pending for "r" afterwards
-	}{
-		{"started task", started, 1},
-		{"unsent reply of finished request", func(s *session) { s.queue(pinnedClient("r")) }, 1},
-		{"unsent reply of started task", func(s *session) { started(s); s.queue(pinnedClient("r")) }, 1},
-		{"waiting in backlog", func(s *session) {
-			s.active = maxActive
-			s.accept(pinnedExec("r"), false)
-			require.Equal(t, []string{"r"}, s.backlog)
-		}, 0},
-		{"stream close pending", func(s *session) { s.queue(pinnedClient("r")); s.queue(closeFrame("r")) }, 0},
-		{"started task canceled", func(s *session) { started(s); s.cancel("r") }, 0},
-		{"keep-alive already pending", func(s *session) {
-			started(s)
-			s.keepAlive()
-		}, 1},
-		{"no credential", func(s *session) { started(s); s.credential.Credential = "" }, 0},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			s := testSession(t)
-			s.credential.Credential = "c"
-			tc.setup(s)
-			s.keepAlive()
-			n := 0
-			for _, f := range pinnedFrames(s.pending, "r") {
-				if f.GetMessagesAccepted() != nil {
-					assert.Zero(t, proto.Size(f.GetMessagesAccepted()), "keep-alive is not empty")
-					n++
-				}
-			}
-			assert.Equal(t, tc.want, n)
-		})
-	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,8 +12,8 @@ import (
 
 	"github.com/exa-pub/grokbot-tunnel/internal/auth"
 	"github.com/exa-pub/grokbot-tunnel/internal/config"
-	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
 )
 
 // tickWatch is tick that also applies the end of a watch stream that fails
@@ -24,7 +23,7 @@ func tickWatch(t *testing.T, s *session) error {
 	if err := tick(t, s); err != nil {
 		return err
 	}
-	if !s.watchAlive {
+	if !s.stream.Alive() {
 		return nil
 	}
 	select {
@@ -87,20 +86,17 @@ func TestProvenCredentialRejected(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("not connected")
 	}
-	if !s.proven {
-		t.Fatal("connected credential not proven")
-	}
-	s.invalidate(connect.NewError(connect.CodeUnauthenticated, errors.New("expired")))
-	if !s.nextRenew.IsZero() || s.nextDial != now.Add(channelRetry) {
-		t.Fatal("proven credential treated as a failed issue", s.nextRenew, s.nextDial)
+	s.invalidate("", connect.NewError(connect.CodeUnauthenticated, errors.New("expired")))
+	if s.stream.NextDial() != now.Add(channelRetry) {
+		t.Fatal("watch not held back for channelRetry", s.stream.NextDial())
 	}
 	tick(t, s)
-	if issues, _, _ := c.counts(); issues != 2 || s.watchAlive {
-		t.Fatal("not reissued, or dialed before channelRetry", issues, s.watchAlive)
+	if issues, _, _ := c.counts(); issues != 2 || s.stream.Alive() {
+		t.Fatal("not reissued, or dialed before channelRetry", issues, s.stream.Alive())
 	}
 	now = now.Add(channelRetry)
 	tick(t, s)
-	if !s.watchAlive {
+	if !s.stream.Alive() {
 		t.Fatal("watch not redialed after channelRetry")
 	}
 }
@@ -111,24 +107,24 @@ func TestSlowIssueKeepsSessionWorking(t *testing.T) {
 	var now time.Time
 	c := &stubCloud{blockIssue: make(chan struct{}), ttl: time.Hour}
 	s := stubSession(t, c, &now)
-	s.credential = config.Computer{Credential: "old", ExpiresAtMS: now.Add(4 * time.Minute).UnixMilli()}
+	s.cred.Restore(config.Computer{Credential: "old", ExpiresAtMS: now.Add(4 * time.Minute).UnixMilli()})
 	start := time.Now()
-	if err := s.onTick(context.Background()); err != nil || !s.issuing {
-		t.Fatal("renewal not started", err)
+	s.onTick()
+	if !s.cred.Issuing() {
+		t.Fatal("renewal not started")
 	}
-	s.queue(closeFrame("a"))
-	s.onTick(context.Background())
-	if time.Since(start) > time.Second || !s.submitting {
+	s.out.Add(closeFrame("a"))
+	s.onTick()
+	if time.Since(start) > time.Second || !s.out.Submitting() {
 		t.Fatal("issue blocked the session")
 	}
-	r := <-s.submitted
-	s.onSubmitted(r)
-	if len(s.pending) != 0 {
+	s.onSubmitted(<-s.submitted)
+	if len(s.out.Pending()) != 0 {
 		t.Fatal("submit with the old credential failed")
 	}
 	close(c.blockIssue)
-	if err := settle(t, s); err != nil || s.credential.Credential != "1" {
-		t.Fatal("new credential not adopted", err, s.credential.Credential)
+	if err := settle(t, s); err != nil || s.cred.Current().Credential != "1" {
+		t.Fatal("new credential not adopted", err, s.cred.Current().Credential)
 	}
 }
 
@@ -147,7 +143,7 @@ func TestUnwritableStoreKeepsCredential(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(dir, 0o700) }) //nolint:errcheck,gosec // best effort for TempDir cleanup
 	tick(t, s)
 	tick(t, s)
-	if s.credential.Credential == "" || !s.watchAlive {
+	if s.cred.Current().Credential == "" || !s.stream.Alive() {
 		t.Fatal("credential dropped because it could not be cached")
 	}
 }
@@ -156,21 +152,19 @@ func TestUnwritableStoreKeepsCredential(t *testing.T) {
 // approval. If the credential is dropped before it starts, it must not fall
 // back to the local policy, which might allow what the server refused.
 func TestServerModeFixedWhenAccepted(t *testing.T) {
-	var now time.Time
-	s := stubSession(t, &stubCloud{}, &now)
-	s.credential = config.Computer{Credential: "c", ExpiresAtMS: now.Add(time.Hour).UnixMilli(), ServerAuthoritative: true}
-	marker := filepath.Join(s.pv.Executor.Root, "ran")
-	s.active = maxActive
-	s.accept(&requestFrame{RequestId: "r", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_Exec{Exec: &aiserverv1.GrokBotUserComputerExec{
-		ServerMessageJson: `{"id":1,"shellStreamArgs":{"command":"touch ran"}}`,
-	}}}, true)
-	s.invalidate(connect.NewError(connect.CodeUnauthenticated, errors.New("expired")))
-	s.active = 0
+	s := testSession(t)
+	withCredential(s, "c", true)
+	occupy(t, s, "busy", admission.MaxActive)
+	s.accept(execFrame("r"), true)
+	s.invalidate("", connect.NewError(connect.CodeUnauthenticated, errors.New("expired")))
+	s.cancel("busy0") // frees a slot
+	s.admit.Finish("busy0")
 	s.startJobs()
-	if s.active != 0 || len(s.tasks) != 0 || len(s.pending) != 1 || !strings.Contains(s.pending[0].GetControl().GetMessageJson(), "stopped serving") {
-		t.Fatal("request not rejected", s.pending)
+	pending := s.out.Pending()
+	if s.admit.Active() != admission.MaxActive-1 || len(pending) != 1 || !strings.Contains(pending[0].GetControl().GetMessageJson(), "stopped serving") {
+		t.Fatal("request not rejected", pending)
 	}
-	if _, err := os.Stat(marker); err == nil {
-		t.Fatal("request ran under the local policy")
+	if _, ok := s.admit.Tasks()["r"]; ok {
+		t.Fatal("request kept")
 	}
 }

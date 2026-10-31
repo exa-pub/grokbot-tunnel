@@ -129,7 +129,7 @@ func TestQueueAckDedupCredentialRecoveryAndShutdown(t *testing.T) {
 			return next(ctx, r)
 		}
 	})
-	pv := &Provider{User: rpc.NewGrokBotServiceClient(server.Client(), server.URL, connect.WithInterceptors(userInterceptor)), Channel: rpc.NewGrokBotServiceClient(server.Client(), server.URL), Store: &config.Store{Dir: t.TempDir()}, Machine: config.Machine{MachineID: "m", Label: "test"}, Executor: ex, Policy: policy}
+	pv := &Provider{User: rpc.NewGrokBotServiceClient(server.Client(), server.URL, connect.WithInterceptors(userInterceptor)), Channel: rpc.NewGrokBotServiceClient(server.Client(), server.URL), Store: &config.Store{Dir: t.TempDir()}, Machine: config.Machine{MachineID: "m", Label: "test"}, Handler: ex, LocalRoot: ex.Root, TerminalsFolder: ex.TerminalsFolder(), Standing: policy.Standing}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
