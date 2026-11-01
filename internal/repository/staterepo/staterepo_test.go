@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,5 +94,99 @@ func TestMachineRecordsHost(t *testing.T) {
 	os.Remove(id)
 	if HostID() != "" {
 		t.Fatal(HostID())
+	}
+}
+
+// fakeHostname makes hostname return *name.
+func fakeHostname(t *testing.T, name *string) {
+	t.Helper()
+	old := hostname
+	hostname = func() string { return *name }
+	t.Cleanup(func() { hostname = old })
+}
+
+// The default label is the current host name, as the desktop registers it;
+// only a chosen label is saved.
+func TestMachineLabelFollowsHostname(t *testing.T) {
+	host := " box-1\n"
+	fakeHostname(t, &host)
+	s := &Store{Dir: filepath.Join(t.TempDir(), "store")}
+	m, err := s.Machine()
+	if err != nil || m.Label != "box-1" {
+		t.Fatal(m, err)
+	}
+	b, _ := os.ReadFile(filepath.Join(s.Dir, "machine.json"))
+	if strings.Contains(string(b), "label") {
+		t.Fatal(string(b))
+	}
+	host = ""
+	if m, err = s.Machine(); err != nil || m.Label != runtime.GOOS {
+		t.Fatal(m, err)
+	}
+	host = strings.Repeat("h", 120)
+	if m, err = s.Machine(); err != nil || m.Label != strings.Repeat("h", 100) {
+		t.Fatal(m, err)
+	}
+
+	// A chosen label stays across renames; saving the default saves none.
+	host = "box-2"
+	m.Label = "  my box "
+	if err = s.Save("machine", m); err != nil {
+		t.Fatal(err)
+	}
+	host = "box-3"
+	if m, err = s.Machine(); err != nil || m.Label != "my box" {
+		t.Fatal(m, err)
+	}
+	m.Label = "box-3"
+	if err = s.Save("machine", m); err != nil {
+		t.Fatal(err)
+	}
+	host = "box-4"
+	if m, err = s.Machine(); err != nil || m.Label != "box-4" {
+		t.Fatal(m, err)
+	}
+}
+
+// Files written before label_set always hold a label: the host name, unless
+// the user chose another. They are rewritten in the current format.
+func TestMachineLabelMigration(t *testing.T) {
+	host := "box"
+	fakeHostname(t, &host)
+	for _, tc := range []struct {
+		saved, want string
+		set         bool
+	}{
+		{"box", "box", false},
+		{"box ", "box", false},
+		{"custom", "custom", true},
+		{"", "box", false},
+	} {
+		s := &Store{Dir: filepath.Join(t.TempDir(), "store")}
+		os.MkdirAll(s.Dir, 0o700)
+		old := `{"machine_id":"m","label":"` + tc.saved + `","host_id":"h"}`
+		os.WriteFile(filepath.Join(s.Dir, "machine.json"), []byte(old), 0o600)
+		m, err := s.Machine()
+		if err != nil || m.Label != tc.want || m.MachineID != "m" || m.HostID != "h" {
+			t.Fatal(tc, m, err)
+		}
+		var f machineFile
+		if err = s.Load("machine", &f); err != nil || f.LabelSet != tc.set || f.LabelSet != (f.Label != "") {
+			t.Fatal(tc, f, err)
+		}
+		// The rename after the migration shows whether the label was kept.
+		host = "renamed"
+		if m, _ = s.Machine(); tc.set != (m.Label == tc.want) {
+			t.Fatal(tc, m)
+		}
+		host = "box"
+	}
+}
+
+// Documents are written durably: a rotated refresh token must survive a
+// power failure.
+func TestSaveSyncsDirectory(t *testing.T) {
+	if !writeOptions.SyncDir {
+		t.Fatal("rename not synced")
 	}
 }

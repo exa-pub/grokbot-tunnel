@@ -1,13 +1,15 @@
 // Package shell runs foreground commands for the agent and streams their
 // output, like the desktop's local-exec shell stream executor
-// (LocalShellStreamExecutor): one command at a time in the shared shell
-// session, soft and hard timeouts, cancellation, and on a soft timeout with
-// TIMEOUT_BEHAVIOR_BACKGROUND a move to the background with the output going
-// to a terminal file.
+// (LocalShellStreamExecutor): commands run in parallel in the shared shell
+// session, with soft and hard timeouts, cancellation, and on a soft timeout
+// with TIMEOUT_BEHAVIOR_BACKGROUND a move to the background with the output
+// going to a terminal file.
 package shell
 
 import (
 	"context"
+	"math"
+	"strings"
 	"time"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
@@ -21,8 +23,9 @@ const (
 	// defaultTimeout is the desktop's soft timeout when none is given (W_r).
 	defaultTimeout = 30_000 // ms
 	// waitDelay bounds how long a finished command's output is still
-	// forwarded while background jobs it started hold its pipes open.
-	waitDelay = time.Second
+	// forwarded while background jobs it started hold its pipes open, like
+	// the desktop's closeTimeout.
+	waitDelay = 5 * time.Second
 )
 
 // Executor runs foreground commands in a shell session.
@@ -38,16 +41,13 @@ func New(session *shellsession.Session, background *background.Executor) *Execut
 }
 
 // Execute runs a foreground command in its own process group and streams its
-// output. Foreground commands run one at a time and share cwd, environment,
-// options and functions. On the soft timeout (softTimeout) the command is
-// either killed or, with TIMEOUT_BEHAVIOR_BACKGROUND, left running with its
-// output going to a terminal file. isBackground only changes the soft
-// timeout, as on the desktop.
+// output. Commands run in parallel, each from the session's state of the
+// moment it starts (see shellsession). On the soft timeout (softTimeout) the
+// command is either killed or, with TIMEOUT_BEHAVIOR_BACKGROUND, left running
+// with its output going to a terminal file. isBackground only changes the
+// soft timeout, as on the desktop. Without a working directory, a command
+// whose session cwd no longer exists does not run, as on the desktop.
 func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send execstream.Send) error {
-	if err := ex.session.Acquire(ctx); err != nil {
-		return err
-	}
-	defer ex.session.Release()
 	if err := ex.session.Init(ctx); err != nil {
 		return err
 	}
@@ -65,19 +65,38 @@ func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send exec
 	if err := send(shellMessage(&agentv1.ShellStream{Event: start})); err != nil {
 		return err
 	}
-	sh, err := ex.startShell(x, cwd, st, send)
+	started := time.Now()
+	if strings.TrimSpace(x.WorkingDirectory) == "" {
+		gone, err := shellsession.Gone(cwd)
+		if err != nil {
+			return err
+		}
+		if gone != "" {
+			if err := send(shellMessage(stderrEvent(gone))); err != nil {
+				return err
+			}
+			exit := &agentv1.ShellStreamExit{Code: 1, Cwd: ex.session.CurrentCwd(), LocalExecutionTimeMs: elapsedMs(started)}
+			return send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_Exit{Exit: exit}}))
+		}
+	}
+	sh, err := ex.startShell(x, cwd, st, started, send)
 	if err != nil {
 		return err
 	}
 	err = sh.wait(ctx)
-	if sh.final != nil {
-		ex.session.SetState(*sh.final)
-	}
 	go func() {
 		<-sh.done
 		shellsession.CloseStateFiles(sh.snapshot, sh.fallback)
 	}()
 	return err
+}
+
+// elapsedMs is localExecutionTimeMs of the desktop's exit: the milliseconds
+// since start, rounded.
+func elapsedMs(start time.Time) *int32 {
+	ms := time.Since(start).Round(time.Millisecond).Milliseconds()
+	v := int32(min(max(ms, 0), math.MaxInt32)) //nolint:gosec // clamped
+	return &v
 }
 
 // softTimeout returns the soft timeout in milliseconds, like the desktop's
@@ -94,9 +113,14 @@ func softTimeout(x *agentv1.ShellArgs) int32 {
 	return defaultTimeout
 }
 
-func (ex *Executor) startShell(x *agentv1.ShellArgs, cwd string, st shellsession.State, send execstream.Send) (_ *runningShell, err error) {
-	sh := &runningShell{ex: ex, args: x, cwd: cwd, out: &shellOutput{send: send}, done: make(chan struct{}), started: time.Now()}
+func (ex *Executor) startShell(
+	x *agentv1.ShellArgs, cwd string, st shellsession.State, started time.Time, send execstream.Send,
+) (_ *runningShell, err error) {
+	sh := &runningShell{ex: ex, args: x, cwd: cwd, state: st, out: &shellOutput{send: send}, done: make(chan struct{}), started: started}
 	sh.out.hold = sh.canBackground()
+	if threshold := x.GetFileOutputThresholdBytes(); threshold > 0 {
+		sh.out.full = &fullOutput{root: ex.session.Root(), threshold: threshold}
+	}
 	if sh.snapshot, sh.fallback, err = shellsession.StateFiles(); err != nil {
 		return nil, err
 	}
@@ -105,8 +129,9 @@ func (ex *Executor) startShell(x *agentv1.ShellArgs, cwd string, st shellsession
 			shellsession.CloseStateFiles(sh.snapshot, sh.fallback)
 		}
 	}()
+	env := shellsession.RequestEnv(ex.session.Root().Dir(), x.GetConversationId(), x.GetRequestId())
 	var release func()
-	if sh.cmd, release, err = shellsession.Foreground(st, cwd, x.Command, sh.snapshot, sh.fallback); err != nil {
+	if sh.cmd, release, err = shellsession.Foreground(st, cwd, x.Command, env, sh.snapshot, sh.fallback); err != nil {
 		return nil, err
 	}
 	defer release() // the child keeps its own descriptors

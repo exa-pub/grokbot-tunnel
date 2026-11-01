@@ -19,9 +19,10 @@ func (s *session) onIssued(r issued) error {
 		}
 		return nil
 	}
-	// The next tick dials with the new credential once the loop allows.
+	// The next tick dials with the new credential once the loop allows; the
+	// new credential polls at once.
 	s.stopWatch()
-	s.poll.Request()
+	s.poll.Reset()
 	return nil
 }
 

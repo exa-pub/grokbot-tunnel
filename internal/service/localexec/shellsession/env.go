@@ -1,13 +1,69 @@
 package shellsession
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
 // agentEnv marks processes started on behalf of the agent.
 var agentEnv = []string{"CURSOR_AGENT=1", "SAND_AGENT=1"}
+
+// transcriptsDir is the desktop's agent transcripts directory below the
+// project, which on local-exec is the root (ioe).
+const transcriptsDir = "agent-transcripts"
+
+// evalMarkers make the desktop hash a request ID (GZt).
+var evalMarkers = []string{"eval-cursorbench", "cursorbench", "sand-eval", "eval-harness"}
+
+// RequestEnv returns the variables the desktop's shell core executor (dS)
+// adds for a command of a request: CURSOR_CONVERSATION_ID and
+// CURSOR_REQUEST_ID when given, and AGENT_TRANSCRIPTS below root.
+func RequestEnv(root, conversationID, requestID string) []string {
+	var env []string
+	if conversationID != "" {
+		env = append(env, "CURSOR_CONVERSATION_ID="+conversationEnv(conversationID))
+	}
+	if requestID != "" {
+		env = append(env, "CURSOR_REQUEST_ID="+requestEnv(requestID))
+	}
+	return append(env, "AGENT_TRANSCRIPTS="+filepath.Join(root, transcriptsDir))
+}
+
+// conversationEnv encodes a conversation ID like the desktop's aoe:
+// encodeURIComponent with "%" as "_", at most 200 characters.
+func conversationEnv(id string) string {
+	const unreserved = "-_.!~*'()"
+	var b strings.Builder
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || strings.IndexByte(unreserved, c) >= 0 {
+			b.WriteByte(c)
+		} else {
+			fmt.Fprintf(&b, "_%02X", c)
+		}
+	}
+	s := b.String()
+	if len(s) > 200 {
+		s = s[:200]
+	}
+	return s
+}
+
+// requestEnv returns a request ID like the desktop's DVe: the SHA-256 of an
+// evaluation run's ID, any other as it is.
+func requestEnv(id string) string {
+	for _, marker := range evalMarkers {
+		if strings.Contains(id, marker) {
+			sum := sha256.Sum256([]byte(id))
+			return hex.EncodeToString(sum[:])
+		}
+	}
+	return id
+}
 
 // plainEnv asks programs for plain output, as the desktop's shells do. It
 // joins the CLI's environment; a saved state carries it on, so commands can

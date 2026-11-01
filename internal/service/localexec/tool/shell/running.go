@@ -30,6 +30,7 @@ type runningShell struct {
 	ex       *Executor
 	args     *agentv1.ShellArgs
 	cwd      string
+	state    shellsession.State // the state the command started with
 	cmd      *exec.Cmd
 	out      *shellOutput
 	stdout   *streamWriter
@@ -37,10 +38,9 @@ type runningShell struct {
 	drained  sync.WaitGroup // the drainers have hit EOF
 	done     chan struct{}  // closed once the process has exited and its output is finished
 	started  time.Time
-	snapshot *os.File            // receives the state on exit
-	fallback *os.File            // receives the state from the EXIT trap; linked until the shell exits
-	final    *shellsession.State // the state the command left, once it has exited
-	killed   atomic.Bool         // a detached command was killed by the hard timeout
+	snapshot *os.File    // receives the state on exit
+	fallback *os.File    // receives the state from the EXIT trap; linked until the shell exits
+	killed   atomic.Bool // a detached command was killed by the hard timeout
 }
 
 // start launches the command with its output pipes and their drainers.
@@ -97,14 +97,17 @@ func (sh *runningShell) reap() {
 	}
 	sh.stdout.flush()
 	sh.stderr.flush()
-	if f, shellID := sh.out.finish(); f != nil {
+	if f, shellID, full := sh.out.finish(); f != nil {
 		// A detached command writes its state once it ends on its own, like
 		// the desktop, before the footer: the command that ends last wins.
 		killed := sh.killed.Load()
 		if !killed {
-			sh.ex.session.Commit(sh.snapshot, sh.fallback, sh.cwd)
+			sh.ex.session.Commit(sh.snapshot, sh.fallback, sh.state)
 		}
-		if err := f.Exit(sh.cmd.ProcessState, killed); err != nil {
+		if _, note := full.close(); note != "" {
+			f.WriteText(note)
+		}
+		if err := f.Exit(terminalfile.Code(sh.cmd.ProcessState), killed); err != nil {
 			log.Printf("terminal %d: %v", shellID, err)
 		}
 		sh.ex.background.Release(shellID)
@@ -132,12 +135,23 @@ func (sh *runningShell) wait(ctx context.Context) error {
 	select {
 	case <-sh.done:
 	case <-ctx.Done():
+		if sh.canBackground() && !sh.exited() {
+			// Like the desktop, the stream ends at once with an exit of its
+			// own; the command is killed meanwhile.
+			sh.abandon()
+			if err := sh.out.sendErr(); err != nil {
+				return err
+			}
+			return sh.out.send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_Exit{Exit: &agentv1.ShellStreamExit{
+				Code: math.MaxUint32, Cwd: sh.ex.session.CurrentCwd(), Aborted: true,
+				AbortReason: agentv1.ShellAbortReason_SHELL_ABORT_REASON_USER_ABORT.Enum(),
+			}}}))
+		}
 		reason = agentv1.ShellAbortReason_SHELL_ABORT_REASON_USER_ABORT
 	case <-hard:
 		if sh.canBackground() && !sh.exited() {
-			// Like the desktop, the stream ends without an exit.
-			proc.Kill(sh.cmd)
-			<-sh.done
+			// Like the desktop, the stream ends at once without an exit.
+			sh.abandon()
 			return sh.out.sendErr()
 		}
 		reason = agentv1.ShellAbortReason_SHELL_ABORT_REASON_TIMEOUT
@@ -156,18 +170,30 @@ func (sh *runningShell) wait(ctx context.Context) error {
 	return sh.finish(reason)
 }
 
+// abandon stops the output from reaching the agent and kills the command; its
+// state is not kept.
+func (sh *runningShell) abandon() {
+	_, _, full := sh.out.finish()
+	full.release()
+	proc.Kill(sh.cmd)
+}
+
 // detach leaves the command running in the background, like the desktop's
 // adopt: its terminal file is created now, with the output so far, and the
 // agent learns the shell ID and how long the command ran in the foreground.
 // The hard timeout, counted from the start, still applies. A command that
-// exits meanwhile is reported as exited instead.
+// exits meanwhile is reported as exited instead. If the terminal file cannot
+// be created, the command is killed before the error is reported.
 func (sh *runningShell) detach(waited int32) error {
 	shellID, f, err := sh.ex.background.Terminal()
 	if err != nil {
+		sh.abandon()
+		<-sh.done
 		return err
 	}
-	detached, err := sh.out.detach(shellID, func(held []byte) (*terminalfile.File, error) {
-		cmd := terminalfile.Command{PID: sh.cmd.Process.Pid, Cwd: sh.cwd, Command: sh.args.Command, Started: sh.started}
+	detached, err := sh.out.detach(shellID, func(held string) (*terminalfile.File, error) {
+		cmd := terminalfile.Command{PID: sh.cmd.Process.Pid, Cwd: sh.cwd, Command: sh.args.Command,
+			Title: sh.args.GetDescription(), Started: sh.started}
 		return terminalfile.Start(f, cmd, held)
 	})
 	if !detached {
@@ -177,7 +203,7 @@ func (sh *runningShell) detach(waited int32) error {
 		}
 	}
 	if err != nil {
-		proc.Kill(sh.cmd)
+		sh.abandon()
 		<-sh.done
 		return err
 	}
@@ -208,9 +234,9 @@ func (sh *runningShell) detach(waited int32) error {
 	}}))
 }
 
-// finish kills the command if it was aborted and reports its exit together
-// with the directory the next command starts in. An aborted command's state is
-// discarded.
+// finish kills the command if it was aborted and reports its exit with the
+// session's cwd, as the desktop does: a command that ended on its own has
+// written the state it left first. An aborted command's state is discarded.
 func (sh *runningShell) finish(reason agentv1.ShellAbortReason) error {
 	aborted := reason != agentv1.ShellAbortReason_SHELL_ABORT_REASON_UNSPECIFIED
 	if aborted {
@@ -220,22 +246,22 @@ func (sh *runningShell) finish(reason agentv1.ShellAbortReason) error {
 	if err := sh.out.sendErr(); err != nil {
 		return err
 	}
-	cwd := sh.cwd
-	if aborted {
-		// The session's cwd, as on the desktop: the command did not change it.
-		cwd, _ = sh.ex.session.Cwd("", sh.ex.session.State())
-	} else {
-		st, notice := sh.ex.session.Adopt(sh.snapshot, sh.fallback, sh.cwd)
-		if st != nil {
-			sh.final, cwd = st, st.Cwd()
-		}
-		if notice != "" {
-			if err := sh.out.send(shellMessage(stderrEvent(notice))); err != nil {
-				return err
-			}
+	if !aborted {
+		sh.ex.session.Commit(sh.snapshot, sh.fallback, sh.state)
+	}
+	location, note := sh.out.full.close()
+	if note != "" {
+		if err := sh.out.send(shellMessage(stderrEvent(note))); err != nil {
+			return err
 		}
 	}
-	exit := &agentv1.ShellStreamExit{Code: exitCode(sh.cmd.ProcessState), Cwd: cwd, Aborted: aborted}
+	exit := &agentv1.ShellStreamExit{
+		Code:                 exitCode(sh.cmd.ProcessState),
+		Cwd:                  sh.ex.session.CurrentCwd(),
+		OutputLocation:       location,
+		Aborted:              aborted,
+		LocalExecutionTimeMs: elapsedMs(sh.started),
+	}
 	if aborted {
 		exit.AbortReason = &reason // only on abort, as on the desktop
 	}

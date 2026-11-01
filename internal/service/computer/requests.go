@@ -91,7 +91,7 @@ func (s *session) startSubmit() {
 		return
 	}
 	go func() {
-		n, err := s.pv.submitFrames(s.life, credential, batch)
+		n, err := s.pv.submitFrames(s.life, dataTimeout, credential, batch)
 		s.submitted <- submitted{credential: credential, frames: batch, accepted: n, err: err}
 	}()
 }
@@ -128,7 +128,7 @@ func (s *session) startPoll() {
 		Limit:      admission.PollLimit,
 	}
 	go func() {
-		ctx, cancel := rpcContext(s.work)
+		ctx, cancel := context.WithTimeout(s.work, controlTimeout)
 		defer cancel()
 		r, err := s.pv.Channel.PollGrokBotUserComputerRequests(ctx, connect.NewRequest(req))
 		result := polled{credential: c.Credential, server: c.ServerAuthoritative, err: err}

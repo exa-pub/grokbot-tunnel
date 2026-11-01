@@ -1,30 +1,52 @@
 package textcodec_test
 
 import (
+	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/textcodec"
 )
 
-// Decoded text is valid UTF-8, and where Decode says the text holds the input
-// as it is, it does.
+// Decoded text is valid UTF-8; valid UTF-8 without a hint decodes as it is,
+// and a stream decoder gives the same text whatever the chunk size.
 func FuzzDecode(f *testing.F) {
 	for _, seed := range []string{"", "plain\n", "\xef\xbb\xbfbom", "\xff\xfeh\x00i\x00", "caf\xe9", "a\x00b", "\xe2\x82"} {
-		f.Add([]byte(seed), "")
+		f.Add([]byte(seed), "", 3)
 	}
-	f.Add([]byte("h\x00i\x00"), "utf-16le")
-	f.Add([]byte("caf\xe9"), "latin1")
-	f.Fuzz(func(t *testing.T, b []byte, hint string) {
-		text, base, err := textcodec.Decode(b, hint)
+	f.Add([]byte("h\x00i\x00"), "utf-16le", 1)
+	f.Add([]byte("caf\xe9"), "latin1", 2)
+	f.Fuzz(func(t *testing.T, b []byte, hint string, chunk int) {
+		var h *string
+		if hint != "" {
+			h = &hint
+		}
+		text, err := textcodec.Decode(b, h)
 		if err != nil {
 			return
 		}
 		if !utf8.ValidString(text) {
 			t.Fatalf("invalid UTF-8 from %q", b)
 		}
-		if base >= 0 && text != string(b[base:]) {
-			t.Fatalf("base %d: %q is not %q", base, text, b[base:])
+		if format := textcodec.Detect(b); h == nil && format.Encoding == textcodec.EncodingUTF8 && utf8.Valid(b) &&
+			text != strings.TrimPrefix(string(b), "\xef\xbb\xbf") {
+			t.Fatalf("%q decoded as %q", b, text)
+		}
+		chunk = max(1, chunk%16+1)
+		d := textcodec.Resolve(h, textcodec.Detect(b).Encoding).NewDecoder()
+		var streamed []byte
+		for i := 0; ; i += chunk {
+			out, err := d.Decode(b[min(i, len(b)):min(i+chunk, len(b))], i+chunk >= len(b))
+			if err != nil {
+				return // strict UTF-8 that the reader decodes again
+			}
+			streamed = append(streamed, out...)
+			if i+chunk >= len(b) {
+				break
+			}
+		}
+		if got := strings.TrimPrefix(string(streamed), "\xef\xbb\xbf"); got != text {
+			t.Fatalf("%q in chunks of %d: %q, whole %q", b, chunk, got, text)
 		}
 	})
 }

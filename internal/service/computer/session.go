@@ -87,6 +87,8 @@ type session struct {
 	admit       *admission.Scheduler
 	poll        admission.Poller
 	out         replies.Queue
+	// connected is set once the server first accepted the computer.
+	connected bool
 
 	// withTimeout is context.WithTimeout; tests expire shutdown's budgets
 	// without waiting for them.
@@ -104,7 +106,7 @@ func newSession(ctx context.Context, pv *Provider) *session {
 		polled:    make(chan polled, 1),
 		issued:    make(chan issued, 1),
 		cred:      credential.New(pv.cachedCredential(), pv.jitter),
-		stream:    watch.New(pv.jitter),
+		stream:    watch.New(pv.random),
 		admit:     admission.New(),
 
 		withTimeout: context.WithTimeout,
@@ -132,10 +134,12 @@ func (s *session) sink(f *responseFrame) error {
 	}
 }
 
-// taskSink is sink for a task run under ctx. Once ctx is canceled, a frame
-// that does not end the request is dropped instead of waiting for room, so
-// that a worker blocked on a full queue notices the cancellation (bug B8);
-// the session drops such frames of canceled requests anyway.
+// taskSink is sink for a task run under ctx. Only a frame that ends the
+// request (frames.Closes) waits for room regardless of ctx. Once ctx is
+// canceled, any other frame, heartbeats and other intermediate control
+// messages included, is dropped with frames.Dropped instead of waiting, so
+// that a worker blocked on a full queue notices the cancellation (bugs B8,
+// L1) and still sends the frame that ends the request.
 func (s *session) taskSink(ctx context.Context) frames.Sink {
 	return func(f *responseFrame) error {
 		select {
@@ -143,7 +147,7 @@ func (s *session) taskSink(ctx context.Context) frames.Sink {
 			return nil
 		default:
 		}
-		if frames.Keep(f) {
+		if frames.Closes(f) {
 			return s.sink(f)
 		}
 		select {
@@ -152,7 +156,7 @@ func (s *session) taskSink(ctx context.Context) frames.Sink {
 		case <-s.life.Done():
 			return s.life.Err()
 		case <-ctx.Done():
-			return ctx.Err()
+			return frames.Dropped(ctx.Err())
 		}
 	}
 }
@@ -172,13 +176,7 @@ func (s *session) run(ctx context.Context) error {
 		}
 		select {
 		case <-ctx.Done():
-			s.stopWatch()
-			credential := s.cred.Current().Credential
-			acked := s.pv.ackOnShutdown(credential, s.admit.Acks())
-			withdrawn := s.pv.withdrawPresence(credential, s.presence)
-			s.shutdown()
-			<-withdrawn
-			<-acked
+			s.stop()
 			return nil
 		case f := <-accepting:
 			if s.out.Take(f, s.admit.Canceled(f.RequestId)) {
@@ -203,7 +201,7 @@ func (s *session) run(ctx context.Context) error {
 			s.onTick()
 		}
 		if err != nil {
-			s.shutdown()
+			s.stop()
 			return err
 		}
 	}
@@ -241,13 +239,20 @@ drain:
 	switch s.stream.Tick(s.pv.now(), s.pv.standing(s.cred.Current())) {
 	case watch.Dial:
 		s.startWatch()
-		s.poll.Request()
+		s.poll.Reset()
 	case watch.Redial:
 		s.startWatch() // announces the new standing mode
 	case watch.Drop:
 		if s.watchCancel != nil {
 			s.watchCancel()
 		}
+	case watch.Renew:
+		if s.watchCancel != nil {
+			s.watchCancel()
+		}
+		// Like the desktop, which renews its client then: the network may
+		// have dropped the pooled connections too.
+		s.pv.closeIdle()
 	case watch.None:
 	}
 	s.startSubmit()
@@ -255,21 +260,29 @@ drain:
 }
 
 func (s *session) onEvent(ev watched) {
-	out := s.stream.Event(s.pv.now(), ev.generation, ev.event)
+	var out watch.Outcome
+	if ev.event == nil {
+		out = s.stream.End(s.pv.now(), ev.generation, ev.err)
+	} else {
+		out = s.stream.Event(s.pv.now(), ev.generation, ev.event)
+	}
 	switch {
 	case out.Stale:
 	case out.Ended:
 		s.invalidate("", ev.err)
-		if ev.err != nil {
-			log.Printf("watch: %v; reconnecting", ev.err)
+		log.Printf("watch: %v; reconnecting", ev.err)
+	case out.Connected:
+		// Like the desktop, poll at once, whatever failed before.
+		s.poll.Reset()
+		s.cred.Connected()
+		log.Printf("connected as %s (%s)", s.pv.label(), s.pv.Machine.MachineID)
+		if !s.connected {
+			s.connected = true
+			if s.pv.OnConnected != nil {
+				s.pv.OnConnected()
+			}
 		}
-	default:
-		if out.Work {
-			s.poll.Request()
-		}
-		if out.Connected {
-			s.cred.Connected()
-			log.Printf("connected as %s (%s)", s.pv.Machine.Label, s.pv.Machine.MachineID)
-		}
+	case out.Work:
+		s.poll.Request()
 	}
 }

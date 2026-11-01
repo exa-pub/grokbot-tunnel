@@ -1,12 +1,13 @@
 // Package terminalfile writes the output files of background commands,
 // <root>/terminals/<n>.txt, like the desktop's terminal logger (Fhe): a
 // metadata header, rewritten in place every 5 s and when the status changes,
-// the raw output and, once the command exits, a footer.
+// the output decoded as UTF-8 and, once the command exits, a footer.
 //
 //	---
 //	pid: 42
 //	cwd: "/workspace"
 //	command: "make"
+//	title: "Build"
 //	status: running
 //	started_at: 2026-01-01T00:00:00.000Z
 //	running_for_ms: 5004
@@ -28,6 +29,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/textcodec"
 )
 
 // Dir is the directory of terminal files below the root.
@@ -52,11 +55,12 @@ const (
 )
 
 // Command describes the command a terminal file belongs to; PID 0 is left
-// out of the header.
+// out of the header, and so is a title of only whitespace.
 type Command struct {
 	PID     int
 	Cwd     string
 	Command string
+	Title   string
 	Started time.Time
 }
 
@@ -67,10 +71,11 @@ type File struct {
 	f   *os.File
 	cmd Command
 
-	mu     sync.Mutex
-	status string
-	ended  bool
-	stop   chan struct{}
+	mu      sync.Mutex
+	status  string
+	ended   bool
+	stop    chan struct{}
+	streams []*stream
 }
 
 // StatusField is the status line without its newline, padded like the
@@ -86,6 +91,9 @@ func Header(cmd Command, status string, now time.Time) string {
 	}
 	fmt.Fprintf(&b, "cwd: %s\n", quote(cmd.Cwd))
 	fmt.Fprintf(&b, "command: %s\n", quote(cmd.Command))
+	if strings.TrimSpace(cmd.Title) != "" {
+		fmt.Fprintf(&b, "title: %s\n", quote(cmd.Title))
+	}
 	b.WriteString(StatusField(status) + "\n")
 	fmt.Fprintf(&b, "started_at: %s\n", cmd.Started.UTC().Format(timestampFormat))
 	fmt.Fprintf(&b, "running_for_ms: %s\n", padEnd(fmt.Sprint(now.Sub(cmd.Started).Milliseconds())))
@@ -95,22 +103,40 @@ func Header(cmd Command, status string, now time.Time) string {
 
 // Start writes the header of cmd and initial output to f, a new or truncated
 // file, and keeps the header up to date until Exit.
-func Start(f *os.File, cmd Command, initial []byte) (*File, error) {
+func Start(f *os.File, cmd Command, initial string) (*File, error) {
 	t := &File{f: f, cmd: cmd, status: Running, stop: make(chan struct{})}
-	if _, err := f.Write(append([]byte(Header(cmd, Running, time.Now())), initial...)); err != nil {
+	if _, err := f.WriteString(Header(cmd, Running, time.Now()) + initial); err != nil {
 		return nil, err
 	}
 	go t.refresh()
 	return t, nil
 }
 
-// Stream returns the writer of output stream name, "stdout" or "stderr", of
-// which written bytes are already in the file, or were trimmed already. It
-// keeps MaxStream bytes: the write that would exceed them is replaced by a
-// marker and the rest is dropped, as on the desktop. Writes after Exit are
-// dropped. Writes never fail, so the command never blocks on its output.
-func (t *File) Stream(name string, written int, trimmed bool) io.Writer {
-	return &stream{t: t, name: name, written: written, trimmed: trimmed}
+// WriteText appends output that is already decoded; it is dropped after
+// Exit.
+func (t *File) WriteText(text string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.write(text)
+}
+
+// Truncated appends the desktop's marker for stream name, "stdout" or
+// "stderr", cut at MaxStream.
+func (t *File) Truncated(name string) { t.WriteText(truncated(name)) }
+
+// Stream returns the writer of output stream name, "stdout" or "stderr". Like
+// the desktop's shell core executor, it decodes the output as UTF-8, with
+// U+FFFD for invalid bytes and a sequence cut at the end of a write held back,
+// and keeps MaxStream bytes: the write that would exceed them is replaced by
+// the marker and the rest is dropped. Writes after Exit are dropped; held
+// back bytes are written by Exit. Writes never fail, so the command never
+// blocks on its output.
+func (t *File) Stream(name string) io.Writer {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	s := &stream{t: t, name: name}
+	t.streams = append(t.streams, s)
+	return s
 }
 
 type stream struct {
@@ -118,6 +144,7 @@ type stream struct {
 	name    string
 	written int
 	trimmed bool
+	partial []byte
 }
 
 func (s *stream) Write(b []byte) (int, error) {
@@ -126,37 +153,58 @@ func (s *stream) Write(b []byte) (int, error) {
 	if s.t.ended || s.trimmed {
 		return len(b), nil
 	}
-	out := b
 	if s.written+len(b) > MaxStream {
 		s.trimmed = true
-		out = []byte(truncated(s.name))
+		s.flush()
+		s.t.write(truncated(s.name))
+		return len(b), nil
 	}
 	s.written += len(b)
-	if _, err := s.t.f.Write(out); err != nil {
-		log.Printf("terminal file: %v", err)
-	}
+	data := append(s.partial, b...)
+	n := textcodec.CompleteLen(data)
+	s.partial = append([]byte(nil), data[n:]...)
+	s.t.write(textcodec.LossyUTF8(data[:n]))
 	return len(b), nil
 }
 
-// Exit writes the footer for a command that ended with state, aborted by us
-// or not, sets the final status and closes the file. Like the desktop, the
-// status is aborted for an aborted command, else succeeded for exit code 0,
-// else failed; a command killed by a signal has exit code unknown.
-func (t *File) Exit(state *os.ProcessState, aborted bool) error {
+// flush writes the held back bytes, as the desktop ends its decoder.
+func (s *stream) flush() {
+	if len(s.partial) > 0 {
+		s.t.write(textcodec.LossyUTF8(s.partial))
+	}
+	s.partial = nil
+}
+
+// Code is the exit code of a command that ended with state for the footer:
+// "unknown" for a command killed by a signal or that never ran.
+func Code(state *os.ProcessState) string {
+	if state == nil {
+		return "unknown"
+	}
+	if ws, ok := state.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		return "unknown"
+	}
+	return fmt.Sprint(state.ExitCode())
+}
+
+// Exit writes the footer for a command that ended with exit code code (see
+// Code), aborted by us or not, sets the final status and closes the file.
+// Like the desktop, the status is aborted for an aborted command, else
+// succeeded for exit code 0, else failed.
+func (t *File) Exit(code string, aborted bool) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	for _, s := range t.streams {
+		if !s.trimmed {
+			s.flush()
+		}
+	}
 	t.end()
 	defer func() {
 		if err := t.f.Close(); err != nil {
 			log.Printf("terminal file: %v", err)
 		}
 	}()
-	code := "unknown"
-	if state != nil {
-		if ws, ok := state.Sys().(syscall.WaitStatus); !ok || !ws.Signaled() {
-			code = fmt.Sprint(state.ExitCode())
-		}
-	}
 	switch {
 	case aborted:
 		t.status = Aborted
@@ -182,6 +230,15 @@ func (t *File) Stop() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.end()
+}
+
+func (t *File) write(text string) {
+	if t.ended || text == "" {
+		return
+	}
+	if _, err := t.f.WriteString(text); err != nil {
+		log.Printf("terminal file: %v", err)
+	}
 }
 
 func (t *File) end() {

@@ -2,8 +2,10 @@ package shell
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/proc"
@@ -38,7 +40,7 @@ func TestShellFinishedCommandNotAborted(t *testing.T) {
 			}
 			return nil
 		}
-		sh, err := ex.startShell(&agentv1.ShellArgs{Command: "true", Timeout: 1}, root.Dir(), shellsession.State{}, send)
+		sh, err := ex.startShell(&agentv1.ShellArgs{Command: "true", Timeout: 1}, root.Dir(), shellsession.State{}, time.Now(), send)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,6 +72,44 @@ func TestStreamWriterKeepsUTF8Whole(t *testing.T) {
 	w.flush()
 	if got.String() != string(data) {
 		t.Fatalf("broken utf8: %q", got.String())
+	}
+}
+
+// Like the desktop's dS, the full output stops at 49 MiB, flushing a cut
+// sequence, and its file ends with a note that counts towards its size and
+// lines; the agent's stream is not affected.
+func TestFullOutputTruncated(t *testing.T) {
+	root, err := pathroot.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	full := &fullOutput{root: root, threshold: 1}
+	var got strings.Builder
+	o := &shellOutput{full: full, send: func(m *agentv1.ExecClientMessage) error {
+		got.WriteString(m.GetShellStream().GetStdout().GetData())
+		return nil
+	}}
+	w := &streamWriter{out: o, event: stdoutEvent}
+	w.Write([]byte("ab\n\xe4"))
+	full.size = maxFullOutput - 2 // as if the output so far had been kept
+	w.Write([]byte("\xb8\x96c"))
+	w.Write([]byte("d\n"))
+	w.flush()
+	location, note := full.close()
+	if note != "" || location == nil {
+		t.Fatal(location, note)
+	}
+	data, err := os.ReadFile(location.FilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const trailer = "\n... (output truncated at 51380222 bytes) ...\n" // 49 MiB - 2
+	if string(data) != "ab\n�"+trailer || location.SizeBytes != maxFullOutput-2+int64(len(trailer)) || location.LineCount != 3 {
+		t.Fatalf("%q %v", data, location)
+	}
+	if got.String() != "ab\n世cd\n" {
+		t.Fatalf("agent got %q", got.String())
 	}
 }
 

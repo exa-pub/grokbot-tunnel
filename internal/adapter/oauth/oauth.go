@@ -12,8 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,22 +23,55 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/uuid"
 )
 
-// ClientID is the OAuth client used for token refresh.
-const ClientID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
-
+// OAuth clients used for token refresh. Development backends have their own,
+// as in the desktop's zh.
 const (
-	maxBody      = 1 << 20
-	pollMaxDelay = 10 * time.Second
-	// pollMaxOutage bounds how long login polling rides out network errors,
-	// rate limiting and server errors in a row.
-	pollMaxOutage = 2 * time.Minute
+	ClientID    = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
+	DevClientID = "OzaBXLClY5CAGxNzUhQ2vlknpi07tGuE"
+)
+
+// RefreshUserAgent is the User-Agent of token refreshes. The desktop sends
+// them with the global fetch of Electron's Node rather than the bundled
+// undici that polls the login.
+const RefreshUserAgent = "node"
+
+// ClientIDFor returns the OAuth client for the backend at base: override if
+// set (SAND_AUTH_CLIENT_ID), DevClientID for loopback, *.lclhst.build and
+// dev-staging.cursor.sh, else ClientID.
+func ClientIDFor(base, override string) string {
+	if override != "" {
+		return override
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return ClientID
+	}
+	switch host := strings.ToLower(u.Hostname()); {
+	case host == "localhost", host == "127.0.0.1", host == "::1",
+		strings.HasSuffix(host, ".lclhst.build"), host == "dev-staging.cursor.sh":
+		return DevClientID
+	}
+	return ClientID
+}
+
+// Login polling follows the desktop's Epn: at most pollAttempts polls,
+// pollFirstDelay*1.2^n but at most pollMaxDelay apart, and pollMaxFailures
+// failed polls in a row end the login.
+const (
+	maxBody         = 1 << 20
+	pollMaxDelay    = 10 * time.Second
+	pollMaxFailures = 3
 )
 
 // Variables so tests can shorten them.
 var (
-	pollTimeout    = 20 * time.Minute
+	pollAttempts   = 150
 	pollFirstDelay = time.Second
 )
+
+// ErrSignInPolicy is the desktop's SignInPolicyViolationError.
+var ErrSignInPolicy = errors.New("sign-in on this device is restricted by your organization's device policy; " +
+	"sign in with an allowed account to continue")
 
 // Login is a pending browser login.
 type Login struct {
@@ -79,57 +114,66 @@ func sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// Poll waits until the user completes login in the browser. Network errors,
-// rate limiting and server errors are retried for up to pollMaxOutage in a
-// row; other unexpected responses end the login.
+// Poll waits until the user completes login in the browser, like the
+// desktop's Epn: "not signed in yet" (404) is polled again, and
+// pollMaxFailures other failures in a row, network errors included, end the
+// login. A 403 ends it at once only for a sign-in policy violation. Errors
+// never contain the poll URL, whose query holds the PKCE verifier.
 func Poll(ctx context.Context, h *http.Client, base string, l Login) (entity.Identity, error) {
-	parent := ctx
-	ctx, cancel := context.WithTimeout(ctx, pollTimeout)
-	defer cancel()
 	q := url.Values{"uuid": {l.UUID}, "verifier": {l.Verifier}}
-	endpoint := base + "/auth/poll?" + q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/auth/poll?"+q.Encode(), nil)
+	if err != nil {
+		return entity.Identity{}, fmt.Errorf("login polling: %w", withoutURL(err))
+	}
+	req.Header.Set("Content-Type", "application/json")
 	delay := pollFirstDelay
-	var outage time.Time // start of the current run of transient failures
-	for {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return entity.Identity{}, err
-		}
-		req.Header.Set("Content-Type", "application/json")
+	failures := 0
+	for range pollAttempts {
 		status, body, err := do(h, req)
 		switch {
-		case transient(status, err):
-			if outage.IsZero() {
-				outage = time.Now()
-			} else if time.Since(outage) > pollMaxOutage && ctx.Err() == nil {
-				if err == nil {
-					err = fmt.Errorf("HTTP %d", status)
-				}
+		case ctx.Err() != nil:
+			return entity.Identity{}, ctx.Err()
+		case err != nil:
+			err = withoutURL(err)
+		case status == http.StatusNotFound: // not signed in yet
+			failures = 0
+		case status == http.StatusForbidden && policyViolation(body):
+			return entity.Identity{}, ErrSignInPolicy
+		case status >= 200 && status < 300:
+			return parseLogin(body)
+		default:
+			err = fmt.Errorf("HTTP %d", status)
+		}
+		if err != nil {
+			if failures++; failures >= pollMaxFailures {
 				return entity.Identity{}, fmt.Errorf("login polling failed: %w", err)
 			}
-		case status == http.StatusOK:
-			return parseLogin(body)
-		case status == http.StatusNotFound: // not signed in yet
-			outage = time.Time{}
-		case status == http.StatusForbidden:
-			return entity.Identity{}, errors.New("sign-in policy refused login")
-		default:
-			return entity.Identity{}, fmt.Errorf("login polling failed: HTTP %d", status)
 		}
 		if err := sleep(ctx, delay); err != nil {
-			// Our own deadline, not the caller's, means the user never finished.
-			if parent.Err() == nil {
-				err = errors.New("login polling timed out")
-			}
 			return entity.Identity{}, err
 		}
 		delay = min(delay*6/5, pollMaxDelay)
 	}
+	return entity.Identity{}, errors.New("login polling timed out")
 }
 
-// transient reports whether a failed poll is worth retrying.
-func transient(status int, err error) bool {
-	return err != nil || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
+// policyViolation reports whether a 403 body is the desktop's TVe:
+// {"error":"sign_in_policy_violation"}.
+func policyViolation(body []byte) bool {
+	var v struct {
+		Error any `json:"error"`
+	}
+	return json.Unmarshal(body, &v) == nil && v.Error == "sign_in_policy_violation"
+}
+
+// withoutURL drops the URL from a *url.Error, whose query may hold secrets,
+// keeping the operation and the cause.
+func withoutURL(err error) error {
+	var ue *url.Error
+	if !errors.As(err, &ue) {
+		return err
+	}
+	return fmt.Errorf("%s: %w", ue.Op, ue.Err)
 }
 
 func do(h *http.Client, req *http.Request) (int, []byte, error) {
@@ -144,10 +188,10 @@ func do(h *http.Client, req *http.Request) (int, []byte, error) {
 
 func parseLogin(body []byte) (entity.Identity, error) {
 	var v struct {
-		AccessToken    string      `json:"accessToken"`
-		RefreshToken   string      `json:"refreshToken"`
-		AuthID         string      `json:"authId"`
-		SelectedTeamID json.Number `json:"selectedTeamId"`
+		AccessToken    string          `json:"accessToken"`
+		RefreshToken   string          `json:"refreshToken"`
+		AuthID         string          `json:"authId"`
+		SelectedTeamID json.RawMessage `json:"selectedTeamId"`
 	}
 	if err := json.Unmarshal(body, &v); err != nil {
 		return entity.Identity{}, err
@@ -159,15 +203,33 @@ func parseLogin(body []byte) (entity.Identity, error) {
 		AccessToken:  v.AccessToken,
 		RefreshToken: v.RefreshToken,
 		AuthID:       v.AuthID,
-		TeamID:       string(v.SelectedTeamID),
+		TeamID:       teamID(v.SelectedTeamID),
 	}, nil
 }
 
-// Refresh exchanges a refresh token for new tokens. The refresh token in the
+// maxSafeInteger is JavaScript's Number.MAX_SAFE_INTEGER.
+const maxSafeInteger = 1<<53 - 1
+
+// teamID returns the selected team as the desktop keeps it: only a JSON
+// number that is a positive safe integer, else none.
+func teamID(raw json.RawMessage) string {
+	var n float64
+	// A JSON string would decode into n only with the string option.
+	if err := json.Unmarshal(raw, &n); err != nil || n != math.Trunc(n) || n <= 0 || n > maxSafeInteger {
+		return ""
+	}
+	return strconv.FormatInt(int64(n), 10)
+}
+
+// Refresh exchanges a refresh token for new tokens with the OAuth client
+// clientID; empty means ClientIDFor(base, ""). The refresh token in the
 // result is empty if the server did not rotate it.
-func Refresh(ctx context.Context, h *http.Client, base, refreshToken string) (entity.Identity, error) {
+func Refresh(ctx context.Context, h *http.Client, base, clientID, refreshToken string) (entity.Identity, error) {
+	if clientID == "" {
+		clientID = ClientIDFor(base, "")
+	}
 	b, err := json.Marshal(map[string]string{
-		"client_id":     ClientID,
+		"client_id":     clientID,
 		"grant_type":    "refresh_token",
 		"refresh_token": refreshToken,
 	})
@@ -179,9 +241,15 @@ func Refresh(ctx context.Context, h *http.Client, base, refreshToken string) (en
 		return entity.Identity{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", RefreshUserAgent)
 	status, body, err := do(h, req)
 	if err != nil {
 		return entity.Identity{}, err
+	}
+	// Like the desktop's runRefreshAccessToken, only a successful response
+	// is read: a failed one is temporary whatever its body says.
+	if status < 200 || status >= 300 {
+		return entity.Identity{}, fmt.Errorf("refresh failed: HTTP %d", status)
 	}
 	var v struct {
 		AccessToken  string      `json:"access_token"`
@@ -189,14 +257,11 @@ func Refresh(ctx context.Context, h *http.Client, base, refreshToken string) (en
 		ExpiresIn    json.Number `json:"expires_in"` // seconds; optional
 		ShouldLogout bool        `json:"shouldLogout"`
 	}
-	decodeErr := json.Unmarshal(body, &v)
-	switch {
+	switch err := json.Unmarshal(body, &v); {
+	case err != nil:
+		return entity.Identity{}, fmt.Errorf("refresh failed: %w", err)
 	case v.ShouldLogout:
 		return entity.Identity{}, entity.ErrLogout
-	case status != http.StatusOK:
-		return entity.Identity{}, fmt.Errorf("refresh failed: HTTP %d", status)
-	case decodeErr != nil:
-		return entity.Identity{}, fmt.Errorf("refresh failed: %w", decodeErr)
 	case v.AccessToken == "":
 		return entity.Identity{}, errors.New("refresh failed: empty access token")
 	}

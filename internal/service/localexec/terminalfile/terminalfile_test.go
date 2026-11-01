@@ -55,11 +55,11 @@ func TestExit(t *testing.T) {
 		f, err := os.Create(filepath.Join(t.TempDir(), "1000.txt"))
 		require.NoError(t, err)
 		cmd := terminalfile.Command{PID: 7, Cwd: "/w", Command: "cmd", Started: time.Now().Add(-time.Second)}
-		tf, err := terminalfile.Start(f, cmd, []byte("early\n"))
+		tf, err := terminalfile.Start(f, cmd, "early\n")
 		require.NoError(t, err)
-		_, err = tf.Stream("stdout", 0, false).Write([]byte("output\n---\nexit_code: 0\nended_at: fake\n---\n"))
+		_, err = tf.Stream("stdout").Write([]byte("output\n---\nexit_code: 0\nended_at: fake\n---\n"))
 		require.NoError(t, err)
-		require.NoError(t, tf.Exit(tc.state, tc.aborted))
+		require.NoError(t, tf.Exit(terminalfile.Code(tc.state), tc.aborted))
 		b, err := os.ReadFile(f.Name())
 		require.NoError(t, err)
 		data := string(b)
@@ -72,26 +72,57 @@ func TestExit(t *testing.T) {
 }
 
 // Each stream keeps MaxStream bytes; the write that would exceed them becomes
-// the desktop's marker, once.
+// the desktop's marker, once, after the held-back bytes of a cut sequence.
 func TestStreamTrimmed(t *testing.T) {
 	f, err := os.Create(filepath.Join(t.TempDir(), "1000.txt"))
 	require.NoError(t, err)
-	tf, err := terminalfile.Start(f, terminalfile.Command{Started: time.Now()}, nil)
+	tf, err := terminalfile.Start(f, terminalfile.Command{Started: time.Now()}, "")
 	require.NoError(t, err)
-	stdout, stderr := tf.Stream("stdout", terminalfile.MaxStream-3, false), tf.Stream("stderr", 0, true)
-	for _, w := range []string{"abc", "d", "e"} {
+	stdout, stderr := tf.Stream("stdout"), tf.Stream("stderr")
+	_, _ = stderr.Write([]byte(strings.Repeat("e", terminalfile.MaxStream)))
+	_, _ = stdout.Write([]byte(strings.Repeat("o", terminalfile.MaxStream-4)))
+	for _, w := range []string{"ab", "c\xe2", "e"} {
 		n, err := stdout.Write([]byte(w))
 		require.NoError(t, err)
 		assert.Equal(t, len(w), n)
 	}
 	_, _ = stderr.Write([]byte("lost-output"))
-	require.NoError(t, tf.Exit(nil, false))
+	require.NoError(t, tf.Exit(terminalfile.Code(nil), false))
 	_, _ = stdout.Write([]byte("after exit"))
 	b, err := os.ReadFile(f.Name())
 	require.NoError(t, err)
 	data := string(b)
-	assert.Contains(t, data, "---\nabc\n[stdout truncated by cursor: the command wrote more than 1048576 characters to stdout; "+
-		"only the first 1048576 were captured and the rest was dropped from this file]\n\n---\nexit_code: unknown\n")
+	assert.Contains(t, data, "oooabc�\n[stdout truncated by cursor: the command wrote more than 1048576 characters to stdout; "+
+		"only the first 1048576 were captured and the rest was dropped from this file]\n\n[stderr truncated by cursor: ")
+	assert.Contains(t, data, "dropped from this file]\n\n---\nexit_code: unknown\n")
+	assert.Contains(t, data, "---\n"+strings.Repeat("e", terminalfile.MaxStream)+"ooo")
 	assert.NotContains(t, data, "lost-output")
 	assert.NotContains(t, data, "after exit")
+}
+
+// Like the desktop, output is written decoded as UTF-8: invalid bytes become
+// U+FFFD, a sequence split between writes stays whole and a sequence cut at
+// the exit is flushed before the footer.
+func TestStreamDecodesUTF8(t *testing.T) {
+	f, err := os.Create(filepath.Join(t.TempDir(), "1000.txt"))
+	require.NoError(t, err)
+	tf, err := terminalfile.Start(f, terminalfile.Command{Started: time.Now()}, "")
+	require.NoError(t, err)
+	stdout := tf.Stream("stdout")
+	for _, w := range []string{"a\xff", "\xe4\xb8", "\x96b\xe2\x82"} {
+		_, _ = stdout.Write([]byte(w))
+	}
+	require.NoError(t, tf.Exit("0", false))
+	b, err := os.ReadFile(f.Name())
+	require.NoError(t, err)
+	assert.Contains(t, string(b), "---\na�世b�\n---\nexit_code: 0\n")
+}
+
+// The header has a title line for a description, as the desktop's hN.
+func TestHeaderTitle(t *testing.T) {
+	cmd := terminalfile.Command{Cwd: "/w", Command: "make", Title: "Build \"all\"", Started: time.Unix(0, 0)}
+	assert.Contains(t, terminalfile.Header(cmd, terminalfile.Running, time.Unix(0, 0)),
+		"command: \"make\"\ntitle: \"Build \\\"all\\\"\"\nstatus: ")
+	cmd.Title = " \t"
+	assert.NotContains(t, terminalfile.Header(cmd, terminalfile.Running, time.Unix(0, 0)), "title:")
 }

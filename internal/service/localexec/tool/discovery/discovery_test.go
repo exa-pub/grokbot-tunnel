@@ -138,8 +138,8 @@ func TestDiscoveryReadsLargeClaudeConfig(t *testing.T) {
 	}
 }
 
-// A repeated request keeps its latest time.
-func TestDiscoveryDedupKeepsNewest(t *testing.T) {
+// Like the desktop, a repeated request keeps its first, oldest time (F7d).
+func TestDiscoveryDedupKeepsFirst(t *testing.T) {
 	e := discoverySetup(t)
 	put(t, filepath.Join(e.cfg.CodexHome, "history.jsonl"), `{"text":"same","ts":1700000000}`+"\n"+`{"text":"same","ts":1700000100}`+"\n")
 	b, err := e.Discover(context.Background(), "codex")
@@ -148,12 +148,13 @@ func TestDiscoveryDedupKeepsNewest(t *testing.T) {
 	}
 	var r discoveryResult
 	json.Unmarshal(b, &r)
-	if len(r.Items) != 1 || r.Items[0].OccurredAtMS != 1700000100000 {
+	if len(r.Items) != 1 || r.Items[0].at() != 1700000000000 {
 		t.Fatal(string(b))
 	}
 }
 
-// A session log removed after its directory was read is skipped.
+// A session log removed after its directory was read still counts, as on the
+// desktop, but gives no time.
 func TestDiscoverySessionRemovedWhileCounting(t *testing.T) {
 	dir := t.TempDir()
 	put(t, filepath.Join(dir, "a.jsonl"), "{}")
@@ -165,7 +166,7 @@ func TestDiscoverySessionRemovedWhileCounting(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := &scan{}
-	if err = d.countSession(entries[0]); err != nil || d.sessionFiles != 0 {
+	if err = d.countSession(filepath.Join(dir, entries[0].Name())); err != nil || d.sessionFiles != 1 || d.lastActive != nil {
 		t.Fatal(err, d.sessionFiles)
 	}
 }

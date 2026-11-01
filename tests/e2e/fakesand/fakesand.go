@@ -38,6 +38,9 @@ type Server struct {
 
 	// URL is the base URL for SAND_BACKEND_URL.
 	URL string
+	// HoldConnected, if set before the CLI starts, holds back the connected
+	// event of watch streams until it is closed.
+	HoldConnected chan struct{}
 
 	t       testing.TB
 	mu      sync.Mutex
@@ -248,6 +251,13 @@ func (s *Server) WatchGrokBotUserComputerRequests(
 		s.watches--
 		s.signal()
 	}()
+	if s.HoldConnected != nil {
+		select {
+		case <-s.HoldConnected:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	connected := &aiserverv1.WatchGrokBotUserComputerRequestsEvent_Connected{Connected: &aiserverv1.WatchGrokBotUserComputerConnected{}}
 	if err := stream.Send(&aiserverv1.WatchGrokBotUserComputerRequestsEvent{Event: connected}); err != nil {
 		return err

@@ -11,13 +11,12 @@ import (
 	"time"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/nodeerr"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/pathroot"
 )
 
 const (
-	// listBudget is how many UTF-16 code units of names a listing may hold.
-	listBudget     = 2500
 	defaultTimeout = 5 * time.Second
 )
 
@@ -53,7 +52,7 @@ func (ls *Executor) Execute(ctx context.Context, x *agentv1.LsArgs, send execstr
 	case errors.Is(err, os.ErrNotExist):
 		return fail("Path does not exist: " + path)
 	case err != nil:
-		return fail(err.Error())
+		return fail(nodeerr.Wrap(err, path).Error())
 	case !st.IsDir():
 		return fail("Path is not a directory: " + path)
 	}
@@ -63,7 +62,7 @@ func (ls *Executor) Execute(ctx context.Context, x *agentv1.LsArgs, send execstr
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	l := lister{root: ls.root.Dir(), files: ls.root.FS(), ignore: x.Ignore, budget: listBudget - nameCost(path)}
+	l := lister{root: ls.root.Dir(), files: ls.root.FS(), ignore: x.Ignore}
 	tree, err := l.list(ctx, rel)
 	validUTF8(tree)
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -72,7 +71,7 @@ func (ls *Executor) Execute(ctx context.Context, x *agentv1.LsArgs, send execstr
 		}}))
 	}
 	if err != nil {
-		return fail(err.Error())
+		return fail(nodeerr.Wrap(err, path).Error())
 	}
 	return send(lsMessage(&agentv1.LsResult{Result: &agentv1.LsResult_Success{
 		Success: &agentv1.LsSuccess{DirectoryTreeRoot: tree},

@@ -12,6 +12,7 @@ import (
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 // eachShell runs f with $SHELL set to bash and, if available, zsh
@@ -40,8 +41,14 @@ type shellResult struct {
 func runShell(t *testing.T, e *Executor, command string) shellResult {
 	t.Helper()
 	b, _ := json.Marshal(map[string]any{"shellStreamArgs": map[string]any{"command": command}})
+	return runShellFrame(t, e, string(b))
+}
+
+// runShellFrame runs the shell exec message msg.
+func runShellFrame(t *testing.T, e *Executor, msg string) shellResult {
+	t.Helper()
 	var r shellResult
-	for _, m := range clientMessages(t, collect(t, e, execFrame(string(b)))) {
+	for _, m := range clientMessages(t, collect(t, e, execFrame(msg))) {
 		s := m.GetShellStream()
 		r.stdout += s.GetStdout().GetData()
 		r.stderr += s.GetStderr().GetData()
@@ -50,7 +57,7 @@ func runShell(t *testing.T, e *Executor, command string) shellResult {
 		}
 	}
 	if r.exit == nil {
-		t.Fatalf("%q: no exit event", command)
+		t.Fatalf("%s: no exit event", msg)
 	}
 	return r
 }
@@ -178,31 +185,63 @@ func TestShellCwdOutsideRootKeepsState(t *testing.T) {
 	})
 }
 
-// A working directory removed by the command is not kept; the next command
-// starts where this one did.
-func TestShellRemovedCwdNotKept(t *testing.T) {
+// Like the desktop, a working directory removed by the command is kept. The
+// next command without a working directory does not run and exits with 1;
+// one with a working directory runs there.
+func TestShellRemovedCwdKept(t *testing.T) {
 	eachShell(t, func(t *testing.T, home string) {
 		e := setupHome(t, home)
+		gone := filepath.Join(e.Root, "gone")
 		r := runShell(t, e, "mkdir gone && cd gone && rmdir ../gone")
-		if r.exit.Cwd != e.Root || !strings.Contains(r.stderr, "no longer exists") {
+		if r.exit.Cwd != gone || r.stderr != "" {
 			t.Fatal(r.exit, r.stderr)
 		}
+		for range 2 {
+			r = runShell(t, e, "echo ran")
+			want := "The shell's working directory no longer exists: " + gone +
+				". The command did not run. Re-run it with working_directory set to an existing directory.\n"
+			if r.stdout != "" || r.stderr != want || r.exit.Code != 1 || r.exit.Cwd != gone || r.exit.Aborted || r.exit.LocalExecutionTimeMs == nil {
+				t.Fatal(r.exit, r.stdout, r.stderr)
+			}
+		}
+		data := waitTerminal(t, e, collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"echo ran"}}`)))
+		if !strings.Contains(data, "\n---\nThe shell's working directory no longer exists: "+gone+". ") ||
+			!strings.Contains(data, "existing directory.\n\n---\nexit_code: 1\n") || strings.Contains(data, "pid:") ||
+			!strings.Contains(data, terminalfile.StatusField(terminalfile.Failed)) {
+			t.Fatalf("%q", data)
+		}
+		b, _ := json.Marshal(map[string]any{"shellStreamArgs": map[string]any{"command": "pwd", "workingDirectory": e.Root}})
+		r = runShellFrame(t, e, string(b))
+		if r.stdout != e.Root+"\n" || r.exit.Cwd != e.Root {
+			t.Fatal(r.exit, r.stdout, r.stderr)
+		}
+		expectStdout(t, e, "pwd", e.Root+"\n")
 	})
 }
 
 // When /usr/bin/env fails in the state dump, the next command keeps the
-// previous environment instead of starting with an empty one (bug 2 of the
-// 2026-10-31 review). A variable above the kernel's 128 KiB limit for a single
-// string makes execve fail with E2BIG.
+// environment this one started with instead of starting with an empty one
+// (bug 2 of the 2026-10-31 review), silently, as the desktop keeps its state.
+// A variable above the kernel's 128 KiB limit for a single string makes
+// execve fail with E2BIG.
 func TestShellKeepsEnvWhenDumpFails(t *testing.T) {
 	eachShell(t, func(t *testing.T, home string) {
 		e := setupHome(t, home)
 		expectStdout(t, e, "export GROK_KEEP=1", "")
-		r := runShell(t, e, `export GROK_BIG="$(printf '%0200000d' 0)"; export GROK_KEEP=2`)
-		if !strings.Contains(r.stderr, "environment could not be saved") {
-			t.Fatalf("no notice: %q", r.stderr)
+		r := runShell(t, e, `export GROK_BIG="$(printf '%0200000d' 0)"; export GROK_KEEP=2; cd /`)
+		if r.stderr != "" || r.exit.Cwd != "/" {
+			t.Fatal(r.exit, r.stderr)
 		}
-		expectStdout(t, e, `printf '%s|%s' "$GROK_KEEP" "${PATH:+path}"`, "1|path")
+		expectStdout(t, e, `printf '%s|%s|' "$GROK_KEEP" "${PATH:+path}"; pwd`, "1|path|/\n")
+	})
+}
+
+// Like the desktop, a state above the old 1 MiB limit is kept.
+func TestShellLargeStateKept(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		runShell(t, e, `for i in 1 2 3 4 5 6 7 8 9 10 11 12; do export GROK_LARGE_$i="$(printf '%0100000d' $i)"; done; export GROK_SMALL=1`)
+		expectStdout(t, e, `printf '%s|%s' "$GROK_SMALL" "${#GROK_LARGE_12}"`, "1|100000")
 	})
 }
 
@@ -243,8 +282,7 @@ func TestShellTracingNotCarriedOver(t *testing.T) {
 }
 
 // A command that ends the shell itself, as with set -e, still keeps its
-// state through the EXIT trap. Without any snapshot the agent is told that the
-// state was not kept.
+// state through the EXIT trap. Without any snapshot the previous state stays.
 func TestShellStateSavedWhenCommandExits(t *testing.T) {
 	eachShell(t, func(t *testing.T, home string) {
 		e := setupHome(t, home)
@@ -258,8 +296,10 @@ func TestShellStateSavedWhenCommandExits(t *testing.T) {
 			t.Fatal(r)
 		}
 		expectStdout(t, e, `printf '%s%s|' "$Z" "$Y"; pwd`, "12|"+sub+"\n")
+		// Like the desktop, a command that left no state changes nothing,
+		// silently.
 		r = runShell(t, e, "export X=3; cd ..; trap - EXIT; exit 5")
-		if r.exit.Code != 5 || r.exit.Cwd != sub || !strings.Contains(r.stderr, "were not kept") {
+		if r.exit.Code != 5 || r.exit.Cwd != sub || r.stderr != "" {
 			t.Fatal(r)
 		}
 		expectStdout(t, e, `printf '%s|' "$X"; pwd`, "|"+sub+"\n")
@@ -294,4 +334,85 @@ func TestShellInitHonorsCancellation(t *testing.T) {
 		}
 		expectStdout(t, e, `printf %s "$FROM_PROFILE"`, "1")
 	})
+}
+
+// noclobber is kept between commands; the EXIT trap still overwrites its
+// fallback file.
+func TestShellStateSavedUnderNoclobber(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		runShell(t, e, "set -o noclobber")
+		r := runShell(t, e, "export NC=1; exit 3")
+		if r.exit.Code != 3 || r.stderr != "" {
+			t.Fatal(r.exit, r.stderr)
+		}
+		expectStdout(t, e, `printf %s "$NC"; [[ -o noclobber ]] && printf '|on'`, "1|on")
+	})
+}
+
+// "set -a", which is kept between commands, does not carry the scripts'
+// variables over, which would disable the EXIT trap.
+func TestShellAllexportKeepsScriptVariablesOut(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		runShell(t, e, "set -a")
+		expectStdout(t, e, `env | grep -c '^__grok_'; printf '%s|' "${__grok_dumped-unset}"; export AE=1; exit 3`, "0\nunset|")
+		expectStdout(t, e, `printf %s "$AE"; [[ -o allexport ]] && printf '|on'`, "1|on")
+	})
+}
+
+// Like the desktop's session, which is cloned into the root, the first
+// command starts in the root even if the profile changes directory.
+func TestShellProfileCdIgnored(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		for _, name := range []string{".bash_profile", ".zprofile"} {
+			if err := os.WriteFile(filepath.Join(home, name), []byte("cd /; export FROM_PROFILE=1\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		e := setupHome(t, home)
+		expectStdout(t, e, `printf '%s|' "$FROM_PROFILE"; pwd`, "1|"+e.Root+"\n")
+	})
+}
+
+// Like the desktop's dS, commands get AGENT_TRANSCRIPTS and the request's
+// CURSOR_CONVERSATION_ID and CURSOR_REQUEST_ID; the latter are not carried
+// over, nor are proxy settings, as in the desktop's dump.
+func TestShellRequestEnvAndScopedVariables(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		msg := `{"shellStreamArgs":{"command":"printf '%s|%s|%s' \"$AGENT_TRANSCRIPTS\" \"$CURSOR_CONVERSATION_ID\" \"$CURSOR_REQUEST_ID\"; ` +
+			`export http_proxy=x HTTPS_PROXY=y KEEP=1","conversationId":"c 1","requestId":"r-1"}}`
+		r := runShellFrame(t, e, msg)
+		if want := filepath.Join(e.Root, "agent-transcripts") + "|c_201|r-1"; r.stdout != want {
+			t.Fatalf("%q, want %q", r.stdout, want)
+		}
+		expectStdout(t, e, `printf '%s|%s|%s|%s|%s' "$KEEP" "$http_proxy" "$HTTPS_PROXY" "$CURSOR_REQUEST_ID" "${AGENT_TRANSCRIPTS:+set}"`, "1||||set")
+		frames := collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"printf '%s|%s' \"$CURSOR_REQUEST_ID\" \"$CURSOR_CONVERSATION_ID\"",`+
+			`"requestId":"bg","conversationId":"conv"}}`))
+		if data := waitTerminal(t, e, frames); !strings.Contains(data, "---\nbg|conv\n---\n") {
+			t.Fatalf("%q", data)
+		}
+	})
+}
+
+// Like the desktop, the exit reports the session's cwd: a command that ran
+// elsewhere and left no state does not change it.
+func TestShellExitCwdWithoutState(t *testing.T) {
+	e := setup(t)
+	b, _ := json.Marshal(map[string]any{"shellStreamArgs": map[string]any{"command": "exec true", "workingDirectory": t.TempDir()}})
+	if r := runShellFrame(t, e, string(b)); r.exit.Cwd != e.Root {
+		t.Fatal(r.exit)
+	}
+}
+
+// Like the desktop's ilt, a working directory of only whitespace is the
+// session's cwd.
+func TestShellBlankWorkingDirectory(t *testing.T) {
+	e := setup(t)
+	runShell(t, e, "mkdir sub && cd sub")
+	r := runShellFrame(t, e, `{"shellStreamArgs":{"command":"pwd","workingDirectory":"  "}}`)
+	if r.stdout != filepath.Join(e.Root, "sub")+"\n" || r.stderr != "" {
+		t.Fatal(r.stdout, r.stderr)
+	}
 }

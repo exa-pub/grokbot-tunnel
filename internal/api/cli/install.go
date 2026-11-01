@@ -26,6 +26,10 @@ restarts the service. Run install again to change the flags.`,
 			}
 			opts.Version = version
 			opts.AutoUpdate = !noAutoUpdate && packager == ""
+			var err error
+			if opts.Label, err = normalizeLabel(opts.Label); err != nil {
+				return err
+			}
 			return a.Install(cmd.Context(), opts, cmd.OutOrStdout())
 		},
 	}

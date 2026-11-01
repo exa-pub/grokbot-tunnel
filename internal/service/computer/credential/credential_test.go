@@ -76,21 +76,67 @@ func TestIssueBackoff(t *testing.T) {
 	assert.False(t, issue, "Retry-After ignored")
 }
 
-// Without a session or a registration Run must end.
+// Without a session Run must end.
 func TestIssueFatal(t *testing.T) {
-	removed := connect.NewError(connect.CodeFailedPrecondition, errors.New("removed"))
-	detail, err := connect.NewErrorDetail(&anypb.Any{TypeUrl: "type.googleapis.com/aiserver.v1.GrokBotUserComputerRemovedDetail"})
-	require.NoError(t, err)
-	removed.AddDetail(detail)
-	for _, fatal := range []error{removed, entity.ErrLogout, entity.ErrNotLoggedIn} {
+	for _, fatal := range []error{entity.ErrLogout, entity.ErrNotLoggedIn} {
 		m := credential.New(entity.Credential{}, noJitter)
 		m.Ensure(time.Unix(0, 0), false)
 		require.ErrorIs(t, m.Issued(time.Unix(0, 0), entity.Credential{}, fatal), fatal)
 		assert.False(t, m.Issuing())
 	}
+	removed := removedError(t)
 	assert.True(t, credential.Removed(removed))
 	generic := connect.NewError(connect.CodeFailedPrecondition, errors.New("temporary registration state"))
 	assert.False(t, credential.Removed(generic), "generic precondition treated as removed")
+}
+
+func removedError(t *testing.T) error {
+	t.Helper()
+	removed := connect.NewError(connect.CodeFailedPrecondition, errors.New("removed"))
+	detail, err := connect.NewErrorDetail(&anypb.Any{TypeUrl: "type.googleapis.com/aiserver.v1.GrokBotUserComputerRemovedDetail"})
+	require.NoError(t, err)
+	removed.AddDetail(detail)
+	return removed
+}
+
+// A removal ends Run only once this process held a credential, like the
+// desktop's ket (scopes.held); before that, and with only a cached
+// credential, it is retried with the issue backoff.
+func TestIssueRemoved(t *testing.T) {
+	now := time.Unix(1000, 0)
+	removed := removedError(t)
+	for _, tc := range []struct {
+		name   string
+		cached entity.Credential
+		issued bool // an issue succeeded first
+		fatal  bool
+	}{
+		{"first issue", entity.Credential{}, false, false},
+		{"cached credential", valid(now, time.Hour, "cached"), false, false},
+		{"after an issue", entity.Credential{}, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := credential.New(tc.cached, noJitter)
+			if tc.issued {
+				m.Ensure(now, false)
+				require.NoError(t, m.Issued(now, valid(now, 4*time.Minute, "c"), nil))
+			}
+			at := now.Add(55 * time.Minute) // past the renewal of any credential above
+			_, issue := m.Ensure(at, false)
+			require.True(t, issue)
+			err := m.Issued(at, entity.Credential{}, removed)
+			if !tc.fatal {
+				require.NoError(t, err)
+				_, issue = m.Ensure(at.Add(29*time.Second), false)
+				assert.False(t, issue, "removal retried before the backoff")
+				_, issue = m.Ensure(at.Add(30*time.Second), false)
+				assert.True(t, issue, "removal not retried after the backoff")
+				return
+			}
+			require.ErrorIs(t, err, credential.ErrRemoved)
+			require.ErrorIs(t, err, removed)
+		})
+	}
 }
 
 // A rejected credential is dropped. Before it connected, the rejection counts

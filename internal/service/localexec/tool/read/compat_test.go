@@ -19,7 +19,7 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/read"
 )
 
-func newReader(t *testing.T) (*read.Executor, *pathroot.Root) {
+func newReader(t testing.TB) (*read.Executor, *pathroot.Root) {
 	t.Helper()
 	root, err := pathroot.Open(t.TempDir())
 	require.NoError(t, err)

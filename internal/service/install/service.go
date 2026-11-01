@@ -39,7 +39,7 @@ var errPermissionRequired = errors.New("--permission is required: " +
 // others select the server.
 var serviceEnv = []string{
 	"PATH", "SHELL",
-	"SAND_BACKEND_URL", "SAND_CURSOR_WEBSITE_URL", "SAND_CLIENT_APP_VERSION",
+	"SAND_BACKEND_URL", "SAND_CURSOR_WEBSITE_URL", "SAND_CLIENT_APP_VERSION", "SAND_AUTH_CLIENT_ID",
 	"CURSOR_API_BASE_URL", "CURSOR_WEBSITE_URL",
 }
 

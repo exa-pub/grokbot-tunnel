@@ -3362,6 +3362,9 @@ type BackgroundShellSpawnArgs struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Command          string                 `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
 	WorkingDirectory string                 `protobuf:"bytes,2,opt,name=working_directory,json=workingDirectory,proto3" json:"working_directory,omitempty"`
+	Description      *string                `protobuf:"bytes,7,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	ConversationId   *string                `protobuf:"bytes,13,opt,name=conversation_id,json=conversationId,proto3,oneof" json:"conversation_id,omitempty"`
+	RequestId        *string                `protobuf:"bytes,15,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -3410,16 +3413,41 @@ func (x *BackgroundShellSpawnArgs) GetWorkingDirectory() string {
 	return ""
 }
 
+func (x *BackgroundShellSpawnArgs) GetDescription() string {
+	if x != nil && x.Description != nil {
+		return *x.Description
+	}
+	return ""
+}
+
+func (x *BackgroundShellSpawnArgs) GetConversationId() string {
+	if x != nil && x.ConversationId != nil {
+		return *x.ConversationId
+	}
+	return ""
+}
+
+func (x *BackgroundShellSpawnArgs) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
+}
+
 type ShellArgs struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Command          string                 `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
-	WorkingDirectory string                 `protobuf:"bytes,2,opt,name=working_directory,json=workingDirectory,proto3" json:"working_directory,omitempty"`
-	Timeout          int32                  `protobuf:"varint,3,opt,name=timeout,proto3" json:"timeout,omitempty"`
-	IsBackground     bool                   `protobuf:"varint,11,opt,name=is_background,json=isBackground,proto3" json:"is_background,omitempty"`
-	TimeoutBehavior  TimeoutBehavior        `protobuf:"varint,13,opt,name=timeout_behavior,json=timeoutBehavior,proto3,enum=agent.v1.TimeoutBehavior" json:"timeout_behavior,omitempty"`
-	HardTimeout      *int32                 `protobuf:"varint,14,opt,name=hard_timeout,json=hardTimeout,proto3,oneof" json:"hard_timeout,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	Command                  string                 `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
+	WorkingDirectory         string                 `protobuf:"bytes,2,opt,name=working_directory,json=workingDirectory,proto3" json:"working_directory,omitempty"`
+	Timeout                  int32                  `protobuf:"varint,3,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	FileOutputThresholdBytes *uint64                `protobuf:"varint,10,opt,name=file_output_threshold_bytes,json=fileOutputThresholdBytes,proto3,oneof" json:"file_output_threshold_bytes,omitempty"`
+	IsBackground             bool                   `protobuf:"varint,11,opt,name=is_background,json=isBackground,proto3" json:"is_background,omitempty"`
+	TimeoutBehavior          TimeoutBehavior        `protobuf:"varint,13,opt,name=timeout_behavior,json=timeoutBehavior,proto3,enum=agent.v1.TimeoutBehavior" json:"timeout_behavior,omitempty"`
+	HardTimeout              *int32                 `protobuf:"varint,14,opt,name=hard_timeout,json=hardTimeout,proto3,oneof" json:"hard_timeout,omitempty"`
+	Description              *string                `protobuf:"bytes,15,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	ConversationId           *string                `protobuf:"bytes,21,opt,name=conversation_id,json=conversationId,proto3,oneof" json:"conversation_id,omitempty"`
+	RequestId                *string                `protobuf:"bytes,23,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *ShellArgs) Reset() {
@@ -3473,6 +3501,13 @@ func (x *ShellArgs) GetTimeout() int32 {
 	return 0
 }
 
+func (x *ShellArgs) GetFileOutputThresholdBytes() uint64 {
+	if x != nil && x.FileOutputThresholdBytes != nil {
+		return *x.FileOutputThresholdBytes
+	}
+	return 0
+}
+
 func (x *ShellArgs) GetIsBackground() bool {
 	if x != nil {
 		return x.IsBackground
@@ -3492,6 +3527,27 @@ func (x *ShellArgs) GetHardTimeout() int32 {
 		return *x.HardTimeout
 	}
 	return 0
+}
+
+func (x *ShellArgs) GetDescription() string {
+	if x != nil && x.Description != nil {
+		return *x.Description
+	}
+	return ""
+}
+
+func (x *ShellArgs) GetConversationId() string {
+	if x != nil && x.ConversationId != nil {
+		return *x.ConversationId
+	}
+	return ""
+}
+
+func (x *ShellArgs) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
 }
 
 type LsArgs struct {
@@ -4053,18 +4109,35 @@ const file_agent_v1_exec_proto_rawDesc = "" +
 	"\als_args\x18\b \x01(\v2\x10.agent.v1.LsArgsH\x00R\x06lsArgs\x12A\n" +
 	"\x11shell_stream_args\x18\x0e \x01(\v2\x13.agent.v1.ShellArgsH\x00R\x0fshellStreamArgs\x12c\n" +
 	"\x1bbackground_shell_spawn_args\x18\x10 \x01(\v2\".agent.v1.BackgroundShellSpawnArgsH\x00R\x18backgroundShellSpawnArgsB\t\n" +
-	"\amessage\"a\n" +
+	"\amessage\"\x8d\x02\n" +
 	"\x18BackgroundShellSpawnArgs\x12\x18\n" +
 	"\acommand\x18\x01 \x01(\tR\acommand\x12+\n" +
-	"\x11working_directory\x18\x02 \x01(\tR\x10workingDirectory\"\x90\x02\n" +
+	"\x11working_directory\x18\x02 \x01(\tR\x10workingDirectory\x12%\n" +
+	"\vdescription\x18\a \x01(\tH\x00R\vdescription\x88\x01\x01\x12,\n" +
+	"\x0fconversation_id\x18\r \x01(\tH\x01R\x0econversationId\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"request_id\x18\x0f \x01(\tH\x02R\trequestId\x88\x01\x01B\x0e\n" +
+	"\f_descriptionB\x12\n" +
+	"\x10_conversation_idB\r\n" +
+	"\v_request_id\"\xa0\x04\n" +
 	"\tShellArgs\x12\x18\n" +
 	"\acommand\x18\x01 \x01(\tR\acommand\x12+\n" +
 	"\x11working_directory\x18\x02 \x01(\tR\x10workingDirectory\x12\x18\n" +
-	"\atimeout\x18\x03 \x01(\x05R\atimeout\x12#\n" +
+	"\atimeout\x18\x03 \x01(\x05R\atimeout\x12B\n" +
+	"\x1bfile_output_threshold_bytes\x18\n" +
+	" \x01(\x04H\x00R\x18fileOutputThresholdBytes\x88\x01\x01\x12#\n" +
 	"\ris_background\x18\v \x01(\bR\fisBackground\x12D\n" +
 	"\x10timeout_behavior\x18\r \x01(\x0e2\x19.agent.v1.TimeoutBehaviorR\x0ftimeoutBehavior\x12&\n" +
-	"\fhard_timeout\x18\x0e \x01(\x05H\x00R\vhardTimeout\x88\x01\x01B\x0f\n" +
-	"\r_hard_timeout\"g\n" +
+	"\fhard_timeout\x18\x0e \x01(\x05H\x01R\vhardTimeout\x88\x01\x01\x12%\n" +
+	"\vdescription\x18\x0f \x01(\tH\x02R\vdescription\x88\x01\x01\x12,\n" +
+	"\x0fconversation_id\x18\x15 \x01(\tH\x03R\x0econversationId\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"request_id\x18\x17 \x01(\tH\x04R\trequestId\x88\x01\x01B\x1e\n" +
+	"\x1c_file_output_threshold_bytesB\x0f\n" +
+	"\r_hard_timeoutB\x0e\n" +
+	"\f_descriptionB\x12\n" +
+	"\x10_conversation_idB\r\n" +
+	"\v_request_id\"g\n" +
 	"\x06LsArgs\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
 	"\x06ignore\x18\x02 \x03(\tR\x06ignore\x12\"\n" +
@@ -4300,6 +4373,7 @@ func file_agent_v1_exec_proto_init() {
 		(*ExecServerMessage_ShellStreamArgs)(nil),
 		(*ExecServerMessage_BackgroundShellSpawnArgs)(nil),
 	}
+	file_agent_v1_exec_proto_msgTypes[39].OneofWrappers = []any{}
 	file_agent_v1_exec_proto_msgTypes[40].OneofWrappers = []any{}
 	file_agent_v1_exec_proto_msgTypes[41].OneofWrappers = []any{}
 	file_agent_v1_exec_proto_msgTypes[42].OneofWrappers = []any{}

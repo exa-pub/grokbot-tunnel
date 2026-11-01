@@ -3,6 +3,7 @@ package frames_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -149,4 +150,31 @@ func TestCanceledBeforeStart(t *testing.T) {
 	assert.Zero(t, throw.GetId())
 	assert.Equal(t, frames.ErrCanceledBeforeStart.Error(), throw.GetError())
 	assert.Nil(t, throw.StackTrace)
+}
+
+type tracedError struct{}
+
+func (tracedError) Error() string      { return "traced" }
+func (tracedError) StackTrace() string { return "Custom: traced" }
+
+// L12: like the desktop's exec manager (stackTrace: err.stack), a tool's
+// throw always carries a stack trace: the error's own, or the first line of
+// a JavaScript Error's stack.
+func TestToolThrowStackTrace(t *testing.T) {
+	throw := frames.ToolThrow(3, errors.New("boom")).GetThrow()
+	assert.Equal(t, uint32(3), throw.GetId())
+	assert.Equal(t, "boom", throw.GetError())
+	assert.Equal(t, "Error: boom", throw.GetStackTrace())
+	assert.Equal(t, "Custom: traced", frames.ToolThrow(3, fmt.Errorf("wrapped: %w", tracedError{})).GetThrow().GetStackTrace())
+	assert.Nil(t, frames.Throw(3, errors.New("boom")).GetThrow().StackTrace)
+}
+
+// L2: a frame dropped on cancellation reads as the cancellation and matches
+// ErrDropped.
+func TestDropped(t *testing.T) {
+	err := frames.Dropped(context.Canceled)
+	require.ErrorIs(t, err, frames.ErrDropped)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, context.Canceled.Error(), err.Error())
+	assert.NotErrorIs(t, context.Canceled, frames.ErrDropped)
 }

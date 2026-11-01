@@ -15,12 +15,14 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/oauth"
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/sandapi"
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/systemd"
 	"github.com/exa-pub/grokbot-tunnel/internal/api/cli"
 	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
 	"github.com/exa-pub/grokbot-tunnel/internal/repository/staterepo"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/computer"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/install"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/selfupdate"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/tokens"
@@ -45,8 +47,15 @@ func Run(ctx context.Context, args []string) error {
 	return cli.Execute(ctx, args, App{})
 }
 
-// ExitCode returns the exit status for an error from Run.
-func ExitCode(err error) int { return cli.ExitCode(err) }
+// ExitCode returns the exit status for an error from Run. A computer removed
+// from the account exits like a revoked login, so that systemd does not
+// restart the service, which would register the computer again.
+func ExitCode(err error) int {
+	if errors.Is(err, computer.ErrRemoved) {
+		return install.ExitLogin
+	}
+	return cli.ExitCode(err)
+}
 
 // Login signs the user in; see Login.
 func (App) Login(ctx context.Context, opts cli.LoginOptions, out io.Writer) error {
@@ -98,8 +107,8 @@ func newEnv(clientVersion string) (*env, error) {
 	if !ok {
 		return nil, errors.New("http.DefaultTransport is not an *http.Transport")
 	}
-	http1 := defaultTransport.Clone()
-	http1.ForceAttemptHTTP2 = false
+	// Like the desktop's clients, all of them speak HTTP/1.1 only.
+	http1 := sandapi.HTTP1(defaultTransport)
 	privacy := &sandapi.Privacy{}
 	userRPC := sandapi.Transport{
 		Base:    http1,
@@ -113,7 +122,7 @@ func newEnv(clientVersion string) (*env, error) {
 		machine: machine,
 		base:    backendURL(),
 		rest: &http.Client{Timeout: restTimeout, Transport: sandapi.Transport{
-			Base:    defaultTransport.Clone(),
+			Base:    http1.Clone(),
 			Profile: sandapi.AuthREST,
 		}},
 		computer: &http.Client{Transport: sandapi.Transport{
@@ -135,7 +144,9 @@ type user struct {
 }
 
 func (e *env) user(identity entity.Identity) *user {
-	tokens := &tokens.TokenSource{Store: e.store, HTTP: e.rest, Base: e.base, Identity: identity}
+	tokens := &tokens.TokenSource{
+		Store: e.store, HTTP: e.rest, Base: e.base, ClientID: oauth.ClientIDFor(e.base, authClientID()), Identity: identity,
+	}
 	u := &user{
 		tokens:    tokens,
 		dashboard: rpc.NewDashboardServiceClient(e.rpc, e.base, userOptions(tokens)...),

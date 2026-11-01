@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	"connectrpc.com/connect"
 
@@ -122,6 +123,39 @@ type stubCloud struct {
 	requests               []*aiserverv1.GrokBotUserComputerQueuedRequest // returned by the next poll
 	pollAcks               [][]string                                     // ack IDs of every poll
 	pollLimits             []uint32
+	removed                int           // issues after this many say the computer was removed; 0: none, -1: all
+	accept                 int           // submits report this many frames accepted if not 0
+	withdrawn              []string      // credentials of the presence withdrawals
+	submitTimeout          time.Duration // deadline of the last submit
+	pollTimeout            time.Duration // deadline of the last poll
+}
+
+func timeout(ctx context.Context) time.Duration {
+	d, ok := ctx.Deadline()
+	if !ok {
+		return 0
+	}
+	return time.Until(d)
+}
+
+// removedError is the server's answer for a computer removed from the account.
+func removedError() error {
+	err := connect.NewError(connect.CodeFailedPrecondition, errors.New("computer removed"))
+	detail, derr := connect.NewErrorDetail(&anypb.Any{TypeUrl: "type.googleapis.com/aiserver.v1.GrokBotUserComputerRemovedDetail"})
+	if derr != nil {
+		panic(derr)
+	}
+	err.AddDetail(detail)
+	return err
+}
+
+func (c *stubCloud) WithdrawGrokBotUserComputerPresence(
+	_ context.Context, r *connect.Request[aiserverv1.WithdrawGrokBotUserComputerPresenceRequest],
+) (*connect.Response[aiserverv1.WithdrawGrokBotUserComputerPresenceResponse], error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.withdrawn = append(c.withdrawn, r.Msg.Credential)
+	return connect.NewResponse(&aiserverv1.WithdrawGrokBotUserComputerPresenceResponse{Withdrawn: true}), nil
 }
 
 func (c *stubCloud) IssueGrokBotUserComputerCredential(
@@ -140,13 +174,16 @@ func (c *stubCloud) IssueGrokBotUserComputerCredential(
 	if c.failIssue {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("down"))
 	}
+	if c.removed != 0 && c.issues > c.removed {
+		return nil, removedError()
+	}
 	return connect.NewResponse(&aiserverv1.IssueGrokBotUserComputerCredentialResponse{
 		Credential: fmt.Sprint(c.issues), ExpiresAtMs: time.Now().Add(c.ttl).UnixMilli(),
 	}), nil
 }
 
 func (c *stubCloud) SubmitGrokBotUserComputerResponses(
-	_ context.Context, r *connect.Request[aiserverv1.SubmitGrokBotUserComputerResponsesRequest],
+	ctx context.Context, r *connect.Request[aiserverv1.SubmitGrokBotUserComputerResponsesRequest],
 ) (*connect.Response[aiserverv1.SubmitGrokBotUserComputerResponsesResponse], error) {
 	if c.block != nil {
 		<-c.block
@@ -154,6 +191,7 @@ func (c *stubCloud) SubmitGrokBotUserComputerResponses(
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.submits++
+	c.submitTimeout = timeout(ctx)
 	if c.unauthenticated {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("expired"))
 	}
@@ -161,15 +199,20 @@ func (c *stubCloud) SubmitGrokBotUserComputerResponses(
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("down"))
 	}
 	c.submitted = append(c.submitted, r.Msg.Frames...)
-	return connect.NewResponse(&aiserverv1.SubmitGrokBotUserComputerResponsesResponse{AcceptedCount: uint32(len(r.Msg.Frames))}), nil //nolint:gosec // small
+	accepted := len(r.Msg.Frames)
+	if c.accept != 0 {
+		accepted = c.accept
+	}
+	return connect.NewResponse(&aiserverv1.SubmitGrokBotUserComputerResponsesResponse{AcceptedCount: uint32(accepted)}), nil //nolint:gosec // small
 }
 
 func (c *stubCloud) PollGrokBotUserComputerRequests(
-	_ context.Context, r *connect.Request[aiserverv1.PollGrokBotUserComputerRequestsRequest],
+	ctx context.Context, r *connect.Request[aiserverv1.PollGrokBotUserComputerRequestsRequest],
 ) (*connect.Response[aiserverv1.PollGrokBotUserComputerRequestsResponse], error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.polls++
+	c.pollTimeout = timeout(ctx)
 	c.pollAcks = append(c.pollAcks, r.Msg.AckIds)
 	c.pollLimits = append(c.pollLimits, r.Msg.Limit)
 	if c.failPoll {

@@ -21,7 +21,7 @@ const (
 	// The presence is withdrawn on shutdown within this time, as the desktop's
 	// user-computer-presence-withdraw deadline.
 	withdrawTimeout = 750 * time.Millisecond
-	// submitRetryStep grows the pause between failed final submits.
+	// submitRetryStep is the pause between failed final submits.
 	submitRetryStep = 200 * time.Millisecond
 )
 
@@ -77,6 +77,19 @@ func (pv *Provider) ackOnShutdown(credential string, acks []string) <-chan struc
 		}
 	}()
 	return done
+}
+
+// stop ends the session, whether ctx was canceled or a fatal error occurred:
+// the watch stops, and the last polled requests are acknowledged and the
+// presence withdrawn while shutdown finishes the work.
+func (s *session) stop() {
+	s.stopWatch()
+	credential := s.cred.Current().Credential
+	acked := s.pv.ackOnShutdown(credential, s.admit.Acks())
+	withdrawn := s.pv.withdrawPresence(credential, s.presence)
+	s.shutdown()
+	<-withdrawn
+	<-acked
 }
 
 // shutdown cancels all work and flushes results within shutdownGrace, keeping
@@ -152,7 +165,7 @@ func (s *session) submit(ctx context.Context) error {
 		before := len(s.out.Pending())
 		batch := s.out.Batch()
 		credential := s.cred.Current().Credential
-		n, err := s.pv.submitFrames(ctx, credential, batch)
+		n, err := s.pv.submitFrames(ctx, controlTimeout, credential, batch)
 		s.out.Accepted(batch, n)
 		if err != nil {
 			s.invalidate(credential, err)
@@ -171,7 +184,7 @@ func (s *session) submit(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(time.Duration(failures) * submitRetryStep):
+		case <-time.After(submitRetryStep):
 		}
 	}
 	return nil

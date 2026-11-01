@@ -109,3 +109,50 @@ func TestQueuedPromptHonorsCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// fakePrompter answers every question with answer and records the questions.
+type fakePrompter struct {
+	answer    string
+	questions []string
+}
+
+func (f *fakePrompter) Interactive() bool { return true }
+
+func (f *fakePrompter) Ask(_ context.Context, question string) (string, error) {
+	f.questions = append(f.questions, question)
+	return f.answer, nil
+}
+
+// L13: a request that cannot be described (an unsupported exec) is refused
+// without a prompt, as the desktop refuses it without approval; under
+// "always" it is allowed and fails on its own.
+func TestEmptyActionIsNotPrompted(t *testing.T) {
+	f := &fakePrompter{answer: "y"}
+	p := &Policy{Mode: entity.ModeAsk, Prompter: f}
+	if err := p.Allow(context.Background(), "", false, false); !errors.Is(err, ErrRefused) {
+		t.Fatal(err)
+	}
+	if len(f.questions) != 0 {
+		t.Fatal(f.questions)
+	}
+	p.Mode = entity.ModeAlways
+	if err := p.Allow(context.Background(), "", false, false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// L13: the prompt says what "a" does; "a" allows every later action
+// without asking.
+func TestPromptExplainsAllowAll(t *testing.T) {
+	f := &fakePrompter{answer: "a"}
+	p := &Policy{Mode: entity.ModeAsk, Prompter: f}
+	if err := p.Allow(context.Background(), `Run "ls" in ""`, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.questions) != 1 || f.questions[0] != `Run "ls" in ""? [y/N, a = allow all actions for the rest of this session] ` {
+		t.Fatal(f.questions)
+	}
+	if err := p.Allow(context.Background(), "Read x", false, false); err != nil || len(f.questions) != 1 || p.Standing() != entity.ModeAlways {
+		t.Fatal(err, f.questions, p.Standing())
+	}
+}

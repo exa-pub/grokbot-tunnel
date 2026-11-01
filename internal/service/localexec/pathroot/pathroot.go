@@ -121,6 +121,18 @@ func resolveExisting(path string) string {
 // Such requests fail instead of producing a typed result.
 func Escaped(err error) bool { return err != nil && strings.Contains(err.Error(), "path escapes") }
 
+// Refuse turns an error of os.Root refusing path because it leads outside
+// the root (Escaped), such as through a dangling or swapped symlink that
+// Check could not follow, into the desktop's refusal of a symlink escape;
+// other errors are returned as they are. The desktop lets such a path
+// through; refusing it is stricter on purpose (rnd-v2/SUMMARY.md).
+func Refuse(path string, err error) error {
+	if Escaped(err) {
+		return &OutsideError{Path: path, Symlink: true}
+	}
+	return err
+}
+
 // FileTooLarge refuses a file of size bytes in the desktop's words.
 func FileTooLarge(size int64) error {
 	mib := func(n int64) string { return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20)) }

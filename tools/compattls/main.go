@@ -49,6 +49,7 @@ type report struct {
 	Caveat    string            `json:"caveat"`
 	Runtime   map[string]string `json:"referenceRuntime"`
 	Go        hello             `json:"go"`
+	GoREST    hello             `json:"goRest"`
 	Node      hello             `json:"node"`
 	GoVersion string            `json:"goVersion"`
 }
@@ -129,10 +130,17 @@ func probe(ctx context.Context, node string) (*report, error) {
 	server.StartTLS()
 	defer server.Close()
 
-	if err := goRequest(ctx, server); err != nil {
+	if err := goRequest(ctx, server, sandapi.ComputerRPC); err != nil {
 		return nil, fmt.Errorf("go request: %w", err)
 	}
 	goHello, err := rec.take()
+	if err != nil {
+		return nil, err
+	}
+	if err = goRequest(ctx, server, sandapi.AuthREST); err != nil {
+		return nil, fmt.Errorf("go REST request: %w", err)
+	}
+	restHello, err := rec.take()
 	if err != nil {
 		return nil, err
 	}
@@ -145,26 +153,29 @@ func probe(ctx context.Context, node string) (*report, error) {
 		return nil, err
 	}
 	return &report{
-		Method: "Loopback TLS; Go ComputerRPC transport vs Node https.Agent keepAlive=true timeout=5000",
+		Method: "Loopback TLS; Go ComputerRPC and AuthREST transports vs Node https.Agent keepAlive=true timeout=5000",
 		Caveat: "Node-mode probe, not a desktop-app traffic capture. " +
 			"The supplied runtime may be a temporary copy with RunAsNode fuse enabled. " +
 			"No account, commands or API requests.",
 		Runtime:   versions,
 		Go:        goHello,
+		GoREST:    restHello,
 		Node:      nodeHello,
 		GoVersion: runtime.Version(),
 	}, nil
 }
 
-// goRequest sends one request through the ComputerRPC transport.
-func goRequest(ctx context.Context, server *httptest.Server) error {
+// goRequest sends one request through a transport of profile built like the
+// program's: HTTP/1.1 only.
+func goRequest(ctx context.Context, server *httptest.Server, profile sandapi.Profile) error {
 	base, ok := server.Client().Transport.(*http.Transport)
 	if !ok {
 		return errors.New("test server transport is not an *http.Transport")
 	}
-	transport := base.Clone()
-	transport.ForceAttemptHTTP2 = false
-	h := &http.Client{Transport: sandapi.Transport{Base: transport, Profile: sandapi.ComputerRPC}}
+	// A fresh connection each time, so that every request sends a ClientHello.
+	transport := sandapi.HTTP1(base)
+	defer transport.CloseIdleConnections()
+	h := &http.Client{Transport: sandapi.Transport{Base: transport, Profile: profile}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, nil)
 	if err != nil {
 		return err

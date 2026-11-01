@@ -154,6 +154,24 @@ if [ "$code" -ne 0 ]; then
 fi
 info "Installed ${installed} to ${INSTALL_DIR}/${BINARY}"
 
+# Prints file path $1 absolute and with symlinks resolved, so that different
+# spellings of one file compare equal. Without realpath only the directory is
+# resolved; a path whose directory is gone is printed as is.
+canonical_path() {
+    if command -v realpath >/dev/null 2>&1 && realpath -- "$1" 2>/dev/null; then
+        return
+    fi
+    local dir=. base="$1" resolved
+    case "$1" in
+        */*) dir="${1%/*}" base="${1##*/}" ;;
+    esac
+    if resolved="$(cd -P -- "${dir:-/}" 2>/dev/null && pwd -P)"; then
+        printf '%s/%s\n' "${resolved%/}" "$base"
+    else
+        printf '%s\n' "$1"
+    fi
+}
+
 # A running service keeps the old binary until it restarts. Root has a system
 # service, other users a service of their user manager.
 sctl() {
@@ -161,10 +179,15 @@ sctl() {
 }
 if command -v systemctl >/dev/null 2>&1 && sctl is-active --quiet grokbot-tunnel 2>/dev/null; then
     exec_start="$(sctl show --property=ExecStart --value grokbot-tunnel 2>/dev/null || true)"
+    # ExecStart reads "{ path=/the/binary ; argv[]=... }".
     case "$exec_start" in
-        *"path=${INSTALL_DIR}/${BINARY} "*)
-            info "Restarting the ${BINARY} service"
-            sctl restart --no-block grokbot-tunnel || warn "could not restart the service; restart it yourself"
+        *"path="*" ;"*)
+            service_binary="${exec_start#*path=}"
+            service_binary="${service_binary%% ;*}"
+            if [ "$(canonical_path "$service_binary")" = "$(canonical_path "${INSTALL_DIR}/${BINARY}")" ]; then
+                info "Restarting the ${BINARY} service"
+                sctl restart --no-block grokbot-tunnel || warn "could not restart the service; restart it yourself"
+            fi
             ;;
     esac
 fi

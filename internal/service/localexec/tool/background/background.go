@@ -13,6 +13,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,8 +30,9 @@ const (
 	firstID = 1000
 	lastID  = 999_999
 	// waitDelay bounds how long a finished command's output is still
-	// collected while background jobs it started hold its pipes open.
-	waitDelay = time.Second
+	// collected while background jobs it started hold its pipes open, like
+	// the desktop's closeTimeout.
+	waitDelay = 5 * time.Second
 )
 
 // Executor starts background commands below a root.
@@ -58,7 +60,7 @@ func New(root *pathroot.Root, session *shellsession.Session) *Executor {
 
 // Execute starts args.Command and sends its shell ID.
 func (bg *Executor) Execute(ctx context.Context, args *agentv1.BackgroundShellSpawnArgs, send execstream.Send) error {
-	result, err := bg.Spawn(ctx, args.Command, args.WorkingDirectory)
+	result, err := bg.Spawn(ctx, args)
 	if err != nil {
 		return err
 	}
@@ -69,25 +71,35 @@ func (bg *Executor) Execute(ctx context.Context, args *agentv1.BackgroundShellSp
 	}})
 }
 
-// Spawn starts cmd in its own session with output going to a terminal file.
-// Its output goes through pipes, so that each stream is cut at
+// Spawn starts args.Command in its own session with output going to a
+// terminal file. Its output goes through pipes, so that each stream is cut at
 // terminalfile.MaxStream like the desktop's.
 // It starts from the session's state without waiting for running foreground
 // commands, and like the desktop, writes the state it leaves back to the
 // session when it exits on its own: the command that ends last wins. A
 // working directory that does not exist is replaced by the default one
-// silently, as on the desktop. Descriptors are those of a foreground shell,
-// plus 6, a gate opened once the terminal header is written.
-func (bg *Executor) Spawn(ctx context.Context, cmd, path string) (_ *agentv1.BackgroundShellSpawnSuccess, err error) {
+// silently, as on the desktop; if no directory is given and the session's no
+// longer exists, the command does not run and its terminal file says so, as
+// on the desktop. Descriptors are those of a foreground shell, plus 6, a gate
+// opened once the terminal header is written.
+func (bg *Executor) Spawn(ctx context.Context, args *agentv1.BackgroundShellSpawnArgs) (_ *agentv1.BackgroundShellSpawnSuccess, err error) {
 	if err = bg.session.Init(ctx); err != nil {
 		return nil, err
 	}
+	cmd := args.Command
 	st := bg.session.State()
-	cwd, _ := bg.session.Cwd(path, st)
-	started := time.Now()
+	cwd, _ := bg.session.Cwd(args.WorkingDirectory, st)
+	header := terminalfile.Command{Cwd: cwd, Command: cmd, Title: args.GetDescription(), Started: time.Now()}
+	gone, err := goneCwd(args.WorkingDirectory, cwd)
+	if err != nil {
+		return nil, err
+	}
 	n, f, err := bg.Terminal()
 	if err != nil {
 		return nil, err
+	}
+	if gone != "" {
+		return bg.refuse(n, f, header, gone)
 	}
 	snapshot, fallback, err := shellsession.StateFiles()
 	if err != nil {
@@ -108,17 +120,27 @@ func (bg *Executor) Spawn(ctx context.Context, cmd, path string) (_ *agentv1.Bac
 	}
 	defer gate.Close()
 	defer open.Close()
-	c, release, err := shellsession.Background(st, cwd, cmd, gate, snapshot, fallback)
+	env := shellsession.RequestEnv(bg.root.Dir(), args.GetConversationId(), args.GetRequestId())
+	c, release, err := shellsession.Background(st, cwd, cmd, env, gate, snapshot, fallback)
 	if err != nil {
 		return nil, err
 	}
 	defer release() // the child keeps its own descriptors
-	tf, out, err := launch(c, f, open, terminalfile.Command{Cwd: cwd, Command: cmd, Started: started})
+	tf, out, err := launch(c, f, open, header)
 	if err != nil {
 		return nil, err
 	}
-	go bg.finish(c, n, tf, out, cwd, snapshot, fallback)
+	go bg.finish(c, n, tf, out, st, snapshot, fallback)
 	return &agentv1.BackgroundShellSpawnSuccess{ShellId: n, Command: cmd, WorkingDirectory: cwd, Pid: proc.PID(c)}, nil
+}
+
+// goneCwd returns the desktop's message if no working directory is given
+// and cwd, the session's, no longer exists.
+func goneCwd(path, cwd string) (string, error) {
+	if strings.TrimSpace(path) != "" {
+		return "", nil
+	}
+	return shellsession.Gone(cwd)
 }
 
 // launch starts c with its output going to terminal file f for cmd, then
@@ -135,7 +157,7 @@ func launch(c *exec.Cmd, f, gate *os.File, cmd terminalfile.Command) (*terminalf
 		return nil, nil, err
 	}
 	cmd.PID = c.Process.Pid
-	tf, err := terminalfile.Start(f, cmd, nil)
+	tf, err := terminalfile.Start(f, cmd, "")
 	if err == nil {
 		_, err = gate.WriteString("\n")
 	}
@@ -185,15 +207,33 @@ func (bg *Executor) Remove(n uint32) error {
 	return bg.root.FS().Remove(fmt.Sprintf("%s/%d.txt", terminalfile.Dir, n))
 }
 
+// refuse writes the terminal file f of shell ID n for a command that does not
+// run, with message as its output and exit code 1, like the desktop's for a
+// session cwd that no longer exists: without a pid, also in the result.
+func (bg *Executor) refuse(n uint32, f *os.File, cmd terminalfile.Command, message string) (*agentv1.BackgroundShellSpawnSuccess, error) {
+	defer bg.Release(n)
+	tf, err := terminalfile.Start(f, cmd, message)
+	if err != nil {
+		proc.CloseLogged(f)
+		return nil, err
+	}
+	if err := tf.Exit("1", false); err != nil {
+		return nil, err
+	}
+	return &agentv1.BackgroundShellSpawnSuccess{ShellId: n, Command: cmd.Command, WorkingDirectory: cmd.Cwd}, nil
+}
+
 // finish waits for background command c and writes the state it left to the
 // session, then the footer of its terminal file. The state comes first, as on
 // the desktop: whoever sees the footer sees the state.
-func (bg *Executor) finish(c *exec.Cmd, n uint32, tf *terminalfile.File, out *output, cwd string, snapshot, fallback *os.File) {
+func (bg *Executor) finish(
+	c *exec.Cmd, n uint32, tf *terminalfile.File, out *output, started shellsession.State, snapshot, fallback *os.File,
+) {
 	proc.Wait(c)
 	out.wait(waitDelay)
-	bg.session.Commit(snapshot, fallback, cwd)
+	bg.session.Commit(snapshot, fallback, started)
 	shellsession.CloseStateFiles(snapshot, fallback)
-	if err := tf.Exit(c.ProcessState, false); err != nil {
+	if err := tf.Exit(terminalfile.Code(c.ProcessState), false); err != nil {
 		log.Printf("terminal %d: %v", n, err)
 	}
 	bg.Release(n)
@@ -261,7 +301,7 @@ func (o *output) drain(tf *terminalfile.File) {
 		go func() {
 			defer o.drained.Done()
 			defer proc.CloseLogged(r)
-			if _, err := io.Copy(tf.Stream(name, 0, false), r); err != nil {
+			if _, err := io.Copy(tf.Stream(name), r); err != nil {
 				log.Printf("background output: %v", err)
 			}
 		}()

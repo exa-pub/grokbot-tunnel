@@ -18,8 +18,11 @@ const (
 	ghostOff = "false"
 )
 
+// As in the desktop's cOe: lookups time out after privacyTimeout (V9t), a
+// result is kept for privacyCacheTTL (G9t) and a failure for
+// privacyRetryTTL (Q9t).
 const (
-	privacyTimeout  = 10 * time.Second
+	privacyTimeout  = 3 * time.Second
 	privacyCacheTTL = 5 * time.Minute
 	// privacyRetryTTL delays the next lookup after a failure.
 	privacyRetryTTL = 10 * time.Second
@@ -40,40 +43,59 @@ func PrivacyHTTP(t Transport) *http.Client {
 // Privacy caches the account's privacy mode. Lookup failures fall back to the
 // safe value, ghost mode on. Client should use PrivacyHTTP.
 type Privacy struct {
-	mu       sync.Mutex // guards the fields below; not held during lookups
-	Client   rpc.DashboardServiceClient
-	expires  time.Time
-	ghost    string
-	inflight bool
+	mu      sync.Mutex // guards the fields below; not held during lookups
+	Client  rpc.DashboardServiceClient
+	expires time.Time
+	ghost   string
+	pending chan struct{} // closed when the lookup in flight ends
 }
 
 // Ghost returns the X-Ghost-Mode header value: "false" only if the account
-// allows its data to be used for training. While one caller looks the mode
-// up, others get the last known value, or ghost mode on if there is none.
+// allows its data to be used for training. Like the desktop, callers that
+// come while a lookup is in flight wait for its result; one whose ctx ends
+// first gets ghost mode on.
 func (pv *Privacy) Ghost(ctx context.Context) string {
 	pv.mu.Lock()
-	if pv.ghost == "" {
-		pv.ghost = ghostOn
+	if pv.Client == nil {
+		pv.mu.Unlock()
+		return ghostOn
 	}
-	ghost := pv.ghost
-	if pv.inflight || pv.Client == nil || time.Now().Before(pv.expires) {
+	if pv.ghost != "" && time.Now().Before(pv.expires) {
+		ghost := pv.ghost
 		pv.mu.Unlock()
 		return ghost
 	}
-	pv.inflight = true
-	client := pv.Client
+	pending := pv.pending
+	if pending == nil {
+		pending = make(chan struct{})
+		pv.pending = pending
+		// Detached from ctx: the result serves every waiting caller.
+		go pv.refresh(context.WithoutCancel(ctx), pv.Client, pending)
+	}
 	pv.mu.Unlock()
-
-	ghost = pv.lookup(ctx, client)
+	select {
+	case <-pending:
+	case <-ctx.Done():
+		return ghostOn
+	}
 	pv.mu.Lock()
 	defer pv.mu.Unlock()
-	pv.inflight = false
+	return pv.ghost
+}
+
+// refresh looks the mode up, caches it and wakes the callers waiting on
+// pending.
+func (pv *Privacy) refresh(ctx context.Context, client rpc.DashboardServiceClient, pending chan struct{}) {
+	ghost := pv.lookup(ctx, client)
+	pv.mu.Lock()
+	defer pv.mu.Unlock()
 	if ghost == "" {
 		pv.ghost, pv.expires = ghostOn, time.Now().Add(privacyRetryTTL)
 	} else {
 		pv.ghost, pv.expires = ghost, time.Now().Add(privacyCacheTTL)
 	}
-	return pv.ghost
+	pv.pending = nil
+	close(pending)
 }
 
 // lookup asks the server for the privacy mode. It returns "" on failure.

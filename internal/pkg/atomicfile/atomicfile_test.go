@@ -93,3 +93,17 @@ func TestWriteUmask(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), st.Mode().Perm())
 }
+
+// ExactMode copies a mode of 0 instead of using the default; Owner keeps
+// the owner it is given, here the process's own.
+func TestWriteExactModeAndOwner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "f")
+	owner := &atomicfile.Owner{UID: os.Geteuid(), GID: os.Getegid()}
+	require.NoError(t, atomicfile.Write(path, []byte("x"), atomicfile.Options{ExactMode: true, Owner: owner}))
+	st, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0), st.Mode().Perm())
+	sys, ok := st.Sys().(*syscall.Stat_t)
+	require.True(t, ok)
+	assert.Equal(t, uint32(owner.UID), sys.Uid) //nolint:gosec // a uid
+}

@@ -2,12 +2,12 @@ package discovery
 
 import (
 	"context"
-	"encoding/json"
-	"maps"
-	"os"
+	"log"
+	"math"
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
 )
@@ -20,7 +20,7 @@ type scan struct {
 	setup        []discoveryItem
 	sessions     []discoveryItem
 	sessionFiles int
-	lastActive   int64 // newest session file, in Unix milliseconds
+	lastActive   *int64 // newest session file, in Unix milliseconds
 }
 
 func (d *scan) collect() error {
@@ -37,6 +37,21 @@ func (d *scan) path(elem ...string) string {
 	return filepath.Join(append([]string{d.layout.root}, elem...)...)
 }
 
+// parseConfig reads a JSON object; a malformed file counts as empty.
+func parseConfig(path string, b []byte) ([]member, bool) {
+	if len(b) == 0 {
+		return nil, false
+	}
+	members, ok := objectMembers(b)
+	if !ok {
+		log.Printf("discovery: ignoring malformed %s", path)
+	}
+	return members, ok
+}
+
+// mcpAndPlugins lists MCP servers and plugins in the order of the
+// configuration files: global servers, the servers of each project, then
+// plugins, like the desktop (CFe).
 func (d *scan) mcpAndPlugins() error {
 	if d.source == frames.SourceCodex {
 		b, err := readConfig(d.ctx, d.path("config.toml"))
@@ -50,52 +65,50 @@ func (d *scan) mcpAndPlugins() error {
 	if err != nil {
 		return err
 	}
-	var config struct {
-		MCP      map[string]json.RawMessage `json:"mcpServers"`
-		Projects map[string]struct {
-			MCP map[string]json.RawMessage `json:"mcpServers"`
-		} `json:"projects"`
-	}
-	decodeLenient(d.layout.global, b, &config)
-	d.addMCP(config.MCP)
-	for _, name := range slices.Sorted(maps.Keys(config.Projects)) {
-		d.addMCP(config.Projects[name].MCP)
+	if config, ok := parseConfig(d.layout.global, b); ok {
+		d.addMCP(field(config, "mcpServers"))
+		projects, _ := objectMembers(field(config, "projects"))
+		for _, project := range projects {
+			settings, _ := objectMembers(project.value)
+			d.addMCP(field(settings, "mcpServers"))
+		}
 	}
 	pluginsPath := d.path("plugins", "installed_plugins.json")
 	if b, err = readConfig(d.ctx, pluginsPath); err != nil {
 		return err
 	}
-	var plugins struct {
-		Plugins map[string]json.RawMessage `json:"plugins"`
+	config, ok := parseConfig(pluginsPath, b)
+	plugins, isObject := objectMembers(field(config, "plugins"))
+	if !ok || field(config, "plugins") != nil && !isObject {
+		return nil // the desktop refuses the whole file
 	}
-	decodeLenient(pluginsPath, b, &plugins)
-	for _, name := range slices.Sorted(maps.Keys(plugins.Plugins)) {
-		d.setup = append(d.setup, discoveryItem{Kind: "plugin", Title: discoveryTitle(name)})
+	for _, plugin := range plugins {
+		d.setup = append(d.setup, discoveryItem{Kind: "plugin", Title: discoveryTitle(plugin.key)})
 	}
 	return nil
 }
 
-// addMCP adds Claude Code MCP servers with their transport as the excerpt.
-func (d *scan) addMCP(servers map[string]json.RawMessage) {
-	for _, name := range slices.Sorted(maps.Keys(servers)) {
-		var v struct {
-			Command string `json:"command"`
-			Type    string `json:"type"`
-			URL     string `json:"url"`
-		}
-		if json.Unmarshal(servers[name], &v) != nil {
-			continue
-		}
-		excerpt := v.Type
+// addMCP adds Claude Code MCP servers with their transport as the excerpt
+// (IFe, SGt). Fields that are not strings are left out, as zod's catch
+// does.
+func (d *scan) addMCP(raw []byte) {
+	servers, _ := objectMembers(raw)
+	for _, server := range servers {
+		fields, _ := objectMembers(server.value)
+		command, _ := stringField(fields, "command")
+		kind, _ := stringField(fields, "type")
+		url, _ := stringField(fields, "url")
+		excerpt := kind
 		switch {
-		case v.Command != "":
-			excerpt = "stdio · " + filepath.Base(v.Command)
-		case v.URL != "" && excerpt == "":
+		case command != "":
+			excerpt = commandExcerpt(command)
+		case kind != "":
+		case url != "":
 			excerpt = "http"
-		case excerpt == "":
+		default:
 			excerpt = "unknown"
 		}
-		d.setup = append(d.setup, discoveryItem{Kind: "mcp_server", Title: discoveryTitle(name), Excerpt: discoveryTitle(excerpt)})
+		d.setup = append(d.setup, discoveryItem{Kind: "mcp_server", Title: discoveryTitle(server.key), Excerpt: excerpt})
 	}
 }
 
@@ -142,7 +155,7 @@ func (d *scan) commandDir(dir string, depth int, namespace []string) error {
 			}
 			if file {
 				parts := append(slices.Clone(namespace), name)
-				d.setup = append(d.setup, discoveryItem{Kind: "skill", Title: discoveryTitle(strings.Join(parts, ":"))})
+				d.setup = append(d.setup, discoveryItem{Kind: "skill", Title: commandTitle(parts)})
 				continue
 			}
 		}
@@ -162,36 +175,54 @@ func (d *scan) commandDir(dir string, depth int, namespace []string) error {
 	return nil
 }
 
-// history adds recent requests from history.jsonl, skipping slash commands.
+// history adds recent requests from history.jsonl, skipping slash commands
+// (qFe, MFe). A line needs its text as a string and, if it has one, its time
+// as a number: Codex's ts in seconds (or milliseconds from 10^12 on), Claude
+// Code's timestamp in milliseconds.
 func (d *scan) history() error {
 	b, err := readTail(d.ctx, d.path("history.jsonl"))
 	if err != nil {
 		return err
 	}
+	textKey, timeKey := "text", "ts"
+	if d.source == frames.SourceClaudeCode {
+		textKey, timeKey = "display", "timestamp"
+	}
 	for _, line := range strings.Split(string(b), "\n") {
-		var h struct {
-			Text      string  `json:"text"`      // Codex
-			TS        float64 `json:"ts"`        // Codex, seconds
-			Display   string  `json:"display"`   // Claude Code
-			Timestamp float64 `json:"timestamp"` // Claude Code, milliseconds
-		}
-		if json.Unmarshal([]byte(line), &h) != nil {
+		entry, ok := objectMembers([]byte(line))
+		if !ok {
 			continue
 		}
-		text, ts := h.Text, h.TS
-		if d.source == frames.SourceClaudeCode {
-			text, ts = h.Display, h.Timestamp
-		}
-		text = strings.TrimSpace(pastedText.ReplaceAllString(text, " "))
-		if text == "" || slashCommand.MatchString(text) {
+		text, ok := stringField(entry, textKey)
+		ts, present, isNumber := numberField(entry, timeKey)
+		if !ok || present && !isNumber {
 			continue
 		}
-		if ts > 0 && ts < 1e12 {
-			ts *= 1000 // seconds
+		text = jsTrim(pastedText.ReplaceAllString(text, " "))
+		if text == "" || isSlashCommand(text) {
+			continue
 		}
-		d.sessions = append(d.sessions, discoveryItem{Kind: "session", Title: discoveryTitle(text), OccurredAtMS: int64(ts)})
+		item := discoveryItem{Kind: "session", Title: discoveryTitle(text)}
+		if present {
+			if d.source == frames.SourceCodex && ts < 1e12 {
+				ts *= 1000 // seconds
+			}
+			at := int64(math.Floor(ts))
+			item.OccurredAtMS = &at
+		}
+		d.sessions = append(d.sessions, item)
 	}
 	return nil
+}
+
+// isSlashCommand matches /name followed by whitespace or the end (mGt).
+func isSlashCommand(text string) bool {
+	loc := slashCommand.FindStringIndex(text)
+	if loc == nil {
+		return false
+	}
+	r, _ := utf8.DecodeRuneInString(text[loc[1]:])
+	return loc[1] == len(text) || jsSpace(r)
 }
 
 // countSessions counts the newest session logs and finds the latest activity.
@@ -216,7 +247,7 @@ func (d *scan) countSessionDir(dir string, level int) error {
 				}
 			}
 		case entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".jsonl"):
-			if err = d.countSession(entry); err != nil {
+			if err = d.countSession(filepath.Join(dir, entry.Name())); err != nil {
 				return err
 			}
 		}
@@ -224,17 +255,20 @@ func (d *scan) countSessionDir(dir string, level int) error {
 	return nil
 }
 
-// countSession counts a session log unless it was removed after the
-// directory was read.
-func (d *scan) countSession(entry os.DirEntry) error {
-	st, err := entry.Info()
+// countSession counts a session log; like the desktop, one removed after its
+// directory was read still counts but has no time.
+func (d *scan) countSession(path string) error {
+	d.sessionFiles++
+	st, err := statPath(path)
 	if absent(err) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	d.sessionFiles++
-	d.lastActive = max(d.lastActive, st.ModTime().UnixMilli())
+	at := st.ModTime().UnixMilli()
+	if d.lastActive == nil || at > *d.lastActive {
+		d.lastActive = &at
+	}
 	return nil
 }

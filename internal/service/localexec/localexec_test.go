@@ -153,7 +153,7 @@ func TestListAndUnsupported(t *testing.T) {
 		t.Fatal(s)
 	}
 	frames = collect(t, e, execFrame(`{"id":3,"writeArgs":{"path":"x"}}`))
-	if frames[0].GetControl() == nil || !strings.Contains(frames[0].GetControl().MessageJson, "unsupported") {
+	if frames[0].GetControl() == nil || !strings.Contains(frames[0].GetControl().MessageJson, "No handler found for server message of type writeArgs") {
 		t.Fatal("unsupported request accepted")
 	}
 }
@@ -171,7 +171,8 @@ func TestListBudgetCountsOverflow(t *testing.T) {
 	}
 }
 
-// Opening a FIFO must not block until a writer appears.
+// Opening a FIFO must not block until a writer appears. Like the desktop,
+// read rejects it by its type as an invalid file.
 func TestFIFORejectedPromptly(t *testing.T) {
 	e := setup(t)
 	fifo := filepath.Join(e.Root, "fifo")
@@ -180,7 +181,7 @@ func TestFIFORejectedPromptly(t *testing.T) {
 	}
 	start := time.Now()
 	frames := collect(t, e, execFrame(`{"readArgs":{"path":"fifo"}}`))
-	if msg := clientMessages(t, frames)[0].GetReadResult().GetError().GetError(); !strings.Contains(msg, "expected regular file") {
+	if reason := clientMessages(t, frames)[0].GetReadResult().GetInvalidFile().GetReason(); reason != "Path is neither a file nor a directory" {
 		t.Fatal(frames)
 	}
 	frames = collect(t, e, &aiserverv1.GrokBotUserComputerRequestFrame{RequestId: "d", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_Download{Download: &aiserverv1.GrokBotUserComputerDownload{Path: "fifo"}}})
@@ -254,10 +255,14 @@ func TestUnrecognizedFrames(t *testing.T) {
 
 // A server-supplied path or working directory must not be able to fake a
 // different action in the permission prompt (bug 1 of the 2026-10-31 review).
+// L13: like the desktop's outlivesScope, the prompt says when a command can
+// outlive its request.
 func TestDescribeQuotesServerStrings(t *testing.T) {
+	const outlives = "; it can keep running after this request ends"
 	for in, want := range map[string]string{
 		`{"shellStreamArgs":{"command":"ls","workingDirectory":"/tmp\r\u001b[2KRun \"true\" in /home"}}`: `Run "ls" in "/tmp\r\x1b[2KRun \"true\" in /home"`,
-		`{"backgroundShellSpawnArgs":{"command":"ls","workingDirectory":"/a\nb"}}`:                       `Run background "ls" in "/a\nb"`,
+		`{"shellStreamArgs":{"command":"sleep 9","isBackground":true}}`:                                  `Run "sleep 9" in ""` + outlives,
+		`{"backgroundShellSpawnArgs":{"command":"ls","workingDirectory":"/a\nb"}}`:                       `Run background "ls" in "/a\nb"` + outlives,
 		`{"readArgs":{"path":"/a\r\u001b[2KRead /b"}}`:                                                   `Read "/a\r\x1b[2KRead /b"`,
 		`{"lsArgs":{"path":"/a\u202eb"}}`:                                                                `List "/a\u202eb"`,
 	} {

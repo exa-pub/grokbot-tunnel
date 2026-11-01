@@ -37,6 +37,8 @@ func TestInvalidArguments(t *testing.T) {
 		{[]string{"bogus"}, "unknown command"},
 		{[]string{"connect", "--permission", "sometimes"}, `invalid permission "sometimes"`},
 		{[]string{"connect", "extra"}, "unknown command"},
+		{[]string{"connect", "--label", " \t "}, "--label must not be blank"},
+		{[]string{"install", "--permission", "always", "--label", " "}, "--label must not be blank"},
 		{[]string{"login", "--team", "-1"}, "team must be a positive integer"},
 		{[]string{"install"}, "--permission is required"},
 		{[]string{"install", "--permission", "sometimes"}, `invalid permission "sometimes"`},

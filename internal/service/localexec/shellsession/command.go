@@ -9,30 +9,31 @@ import (
 )
 
 // Foreground returns the shell that runs cmd in cwd with st replayed and
-// saves the state it leaves to snapshot, or from its EXIT trap to fallback.
-// release closes the input files once the shell has started or failed to.
-func Foreground(st State, cwd, cmd string, snapshot, fallback *os.File) (c *exec.Cmd, release func(), err error) {
+// env (RequestEnv) added, and saves the state it leaves to snapshot, or from
+// its EXIT trap to fallback. release closes the input files once the shell
+// has started or failed to.
+func Foreground(st State, cwd, cmd string, env []string, snapshot, fallback *os.File) (c *exec.Cmd, release func(), err error) {
 	replay, command, err := inputFiles(st, cmd)
 	if err != nil {
 		return nil, nil, err
 	}
 	sh := userShell()
-	c = newCmd(sh, st, cwd, sh.args("-c", sh.foregroundScript(), "grokbot-shell", fallback.Name())...)
+	c = newCmd(sh, st, cwd, env, sh.args("-c", sh.foregroundScript(), "grokbot-shell", fallback.Name())...)
 	c.ExtraFiles = []*os.File{replay, snapshot, command}
 	return detached(c), func() { proc.CloseLogged(replay); proc.CloseLogged(command) }, nil
 }
 
-// Background returns the shell that runs cmd in cwd with st replayed once a
-// line is written to the other end of gate, and saves its state like
-// Foreground. release closes the input files once the shell has started or
-// failed to.
-func Background(st State, cwd, cmd string, gate, snapshot, fallback *os.File) (c *exec.Cmd, release func(), err error) {
+// Background returns the shell that runs cmd in cwd with st replayed and env
+// added once a line is written to the other end of gate, and saves its state
+// like Foreground. release closes the input files once the shell has started
+// or failed to.
+func Background(st State, cwd, cmd string, env []string, gate, snapshot, fallback *os.File) (c *exec.Cmd, release func(), err error) {
 	replay, command, err := inputFiles(st, cmd)
 	if err != nil {
 		return nil, nil, err
 	}
 	sh := userShell()
-	c = newCmd(sh, st, cwd, sh.args("-c", sh.backgroundScript(), "grok-background", fallback.Name())...)
+	c = newCmd(sh, st, cwd, env, sh.args("-c", sh.backgroundScript(), "grok-background", fallback.Name())...)
 	c.ExtraFiles = []*os.File{replay, snapshot, command, gate}
 	return detached(c), func() { proc.CloseLogged(replay); proc.CloseLogged(command) }, nil
 }
@@ -47,13 +48,13 @@ func detached(c *exec.Cmd) *exec.Cmd {
 	return c
 }
 
-// newCmd runs the user's shell with st's environment. Running agent commands
-// is the purpose of this tool; their lifetime is managed by killing the
-// process group, not through a context.
-func newCmd(sh shell, st State, cwd string, args ...string) *exec.Cmd {
+// newCmd runs the user's shell with st's environment and env. Running agent
+// commands is the purpose of this tool; their lifetime is managed by killing
+// the process group, not through a context.
+func newCmd(sh shell, st State, cwd string, env []string, args ...string) *exec.Cmd {
 	c := exec.Command(sh.path, args...) //nolint:gosec,noctx // see above
 	c.Dir = cwd
-	c.Env = st.environ()
+	c.Env = st.environ(env)
 	return c
 }
 

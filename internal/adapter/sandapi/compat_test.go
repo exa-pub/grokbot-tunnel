@@ -245,9 +245,14 @@ func TestPrivacyLookupRedirectDoesNotDeadlock(t *testing.T) {
 	}
 }
 
-func TestPrivacyLookupDoesNotBlockOtherCallers(t *testing.T) {
+// Like the desktop's cOe, callers that come during a lookup wait for its
+// result instead of falling back to ghost mode; one whose context ends
+// first gets ghost mode on.
+func TestPrivacyLookupConcurrentCallersWait(t *testing.T) {
 	release := make(chan struct{})
+	var lookups atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lookups.Add(1)
 		<-release
 		w.Header().Set("Content-Type", "application/proto")
 		b, _ := proto.Marshal(&aiserverv1.GetUserPrivacyModeResponse{PrivacyMode: aiserverv1.PrivacyMode_PRIVACY_MODE_USAGE_DATA_TRAINING_ALLOWED})
@@ -256,23 +261,111 @@ func TestPrivacyLookupDoesNotBlockOtherCallers(t *testing.T) {
 	defer server.Close()
 	privacy := &Privacy{}
 	privacy.Client = rpc.NewDashboardServiceClient(PrivacyHTTP(Transport{Base: http.DefaultTransport}), server.URL)
-	done := make(chan string)
-	go func() { done <- privacy.Ghost(context.Background()) }()
-	for {
-		privacy.mu.Lock()
-		inflight := privacy.inflight
-		privacy.mu.Unlock()
-		if inflight {
-			break
-		}
+	done := make(chan string, 4)
+	for range cap(done) {
+		go func() { done <- privacy.Ghost(context.Background()) }()
+	}
+	for lookups.Load() == 0 {
 		time.Sleep(time.Millisecond)
 	}
-	if privacy.Ghost(context.Background()) != "true" {
-		t.Fatal("concurrent caller not private")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if privacy.Ghost(ctx) != "true" {
+		t.Fatal("caller that gave up not private")
 	}
 	close(release)
-	if <-done != "false" || privacy.Ghost(context.Background()) != "false" {
-		t.Fatal("lookup result lost")
+	for range cap(done) {
+		if got := <-done; got != "false" {
+			t.Fatal("waiting caller got", got)
+		}
+	}
+	if privacy.Ghost(context.Background()) != "false" || lookups.Load() != 1 {
+		t.Fatal("lookup not shared", lookups.Load())
+	}
+}
+
+func TestPrivacyLookupTimeout(t *testing.T) {
+	if privacyTimeout != 3*time.Second {
+		t.Fatal(privacyTimeout)
+	}
+}
+
+func TestClientVersion(t *testing.T) {
+	for in, want := range map[string]string{
+		"0.79.0":            "0.79.0",
+		" 0.79.0\n":         "0.79.0",
+		"0.79.0-beta.1":     "0.79.0",
+		"0.79.0-":           Version,
+		"0.79":              Version,
+		"v0.79.0":           Version,
+		"0.79.0\r\nX-A: b":  Version,
+		"0.79.0-a\nb":       Version,
+		"0.79.0-\x01":       "0.79.0",
+		"":                  Version,
+		"garbage":           Version,
+		"\ufeff1.2.3\u00a0": "1.2.3",
+		"\u00851.2.3":       Version,
+	} {
+		if got := ClientVersion(in); got != want {
+			t.Errorf("%q: got %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestTransportNormalizesClientVersion(t *testing.T) {
+	var headers http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { headers = r.Header.Clone() }))
+	defer server.Close()
+	h := &http.Client{Transport: Transport{Base: http.DefaultTransport, Version: "0.80.0-rc.2", Profile: ComputerRPC}}
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	resp, err := h.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if headers.Get("X-Cursor-Client-Version") != "0.80.0" || !strings.Contains(headers.Get("User-Agent"), "Sand/0.80.0 ") {
+		t.Fatal(headers)
+	}
+}
+
+// Auth REST requests that set their own User-Agent, token refreshes, keep it.
+func TestAuthRESTKeepsUserAgent(t *testing.T) {
+	var agent string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { agent = r.Header.Get("User-Agent") }))
+	defer server.Close()
+	h := &http.Client{Transport: Transport{Base: http.DefaultTransport, Profile: AuthREST}}
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	req.Header.Set("User-Agent", "node")
+	resp, err := h.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if agent != "node" {
+		t.Fatal(agent)
+	}
+}
+
+// HTTP1 never negotiates HTTP/2, even from a transport set up for it.
+func TestHTTP1(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+	base, ok := server.Client().Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("not an *http.Transport")
+	}
+	for name, transport := range map[string]http.RoundTripper{"base": base, "http1": HTTP1(base)} {
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+		resp, err := (&http.Client{Transport: transport}).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if want := map[string]int{"base": 2, "http1": 1}[name]; resp.ProtoMajor != want {
+			t.Fatalf("%s: HTTP/%d", name, resp.ProtoMajor)
+		}
 	}
 }
 

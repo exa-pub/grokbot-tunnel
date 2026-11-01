@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/sandapi"
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/systemd"
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/tty"
 	"github.com/exa-pub/grokbot-tunnel/internal/api/cli"
@@ -56,6 +58,10 @@ func Connect(ctx context.Context, opts cli.ConnectOptions) error {
 	defer ex.Close()
 
 	u := e.user(identity)
+	// Known difference: the desktop registers only when the account's privacy
+	// mode allows storage (isSandMachineStorageAllowed: NO_TRAINING or a
+	// training-allowed mode); we register always, since without a check of
+	// the server we cannot tell whether the computer works unregistered.
 	if err = computer.Register(ctx, u.dashboard, e.machine.Label, entity.Mode(opts.Permission)); err != nil {
 		if ctx.Err() != nil {
 			return nil // stopped while starting, e.g. by systemctl stop
@@ -63,7 +69,6 @@ func Connect(ctx context.Context, opts cli.ConnectOptions) error {
 		return err
 	}
 	log.Printf("root=%s permission=%s", ex.Root, opts.Permission)
-	notify(notifier, "READY=1")
 	stopNotify := context.AfterFunc(ctx, func() { notify(notifier, "STOPPING=1") })
 	defer stopNotify()
 	pv := computer.Provider{
@@ -78,8 +83,23 @@ func Connect(ctx context.Context, opts cli.ConnectOptions) error {
 		Debug:           opts.Debug,
 		Backend:         e.base,
 		AccountScope:    u.tokens.Snapshot().AccountScope(),
+		// The service is up once the server accepts the computer, so that
+		// install does not report a connection that fails afterwards.
+		OnConnected: func() { notify(notifier, "READY=1") },
+		CloseIdle:   closeIdle(e.computer),
 	}
 	return pv.Run(ctx)
+}
+
+// closeIdle returns a function closing the idle connections of c, whose
+// transport sandapi.Transport wraps.
+func closeIdle(c *http.Client) func() {
+	if t, ok := c.Transport.(sandapi.Transport); ok {
+		if base, ok := t.Base.(interface{ CloseIdleConnections() }); ok {
+			return base.CloseIdleConnections
+		}
+	}
+	return c.CloseIdleConnections
 }
 
 // openConnect takes the instance lock and loads what Connect needs. The

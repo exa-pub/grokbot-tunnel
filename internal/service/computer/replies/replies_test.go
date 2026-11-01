@@ -68,6 +68,71 @@ func TestBatchFairnessAndBudgets(t *testing.T) {
 	assert.LessOrEqual(t, len(q.Batch()), 256, "frame budget ignored")
 }
 
+// Like the desktop's MX.take, a request whose frames were accepted moves to
+// the end of the serving order, so parallel downloads, one chunk per batch,
+// take turns; a failed batch does not rotate, and a new request comes after
+// the known ones.
+func TestBatchRotatesRequests(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(q *replies.Queue)
+		fail  int // the first fail batches are not accepted
+		want  string
+	}{
+		{"two downloads", func(q *replies.Queue) {
+			for i := range 3 {
+				q.Add(file("a", uint32(i), 1<<20, false)) //nolint:gosec // small
+			}
+			for i := range 3 {
+				q.Add(file("b", uint32(i), 1<<20, false)) //nolint:gosec // small
+			}
+		}, 0, "ababab"},
+		{"failed batch keeps its place", func(q *replies.Queue) {
+			q.Add(file("a", 0, 1<<20, false))
+			q.Add(file("a", 1, 1<<20, false))
+			q.Add(file("b", 0, 1<<20, false))
+		}, 2, "aaaba"},
+		{"three downloads", func(q *replies.Queue) {
+			for _, id := range []string{"a", "b", "c"} {
+				for i := range 2 {
+					q.Add(file(id, uint32(i), 1<<20, false)) //nolint:gosec // small
+				}
+			}
+		}, 0, "abcabc"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var q replies.Queue
+			tc.setup(&q)
+			got := ""
+			for i := 0; len(q.Pending()) > 0; i++ {
+				batch := q.Batch()
+				require.Len(t, batch, 1)
+				got += batch[0].RequestId
+				if i < tc.fail {
+					q.Accepted(batch, 0)
+					continue
+				}
+				q.Accepted(batch, 1)
+			}
+			assert.Equal(t, tc.want, got)
+		})
+	}
+	var q replies.Queue
+	q.Add(file("a", 0, 1<<20, false))
+	q.Add(file("a", 1, 1<<20, false))
+	q.Add(file("b", 0, 1<<20, false))
+	q.Add(file("b", 1, 1<<20, false))
+	q.Accepted(q.Batch(), 1) // a, then b is first
+	q.Add(file("c", 0, 1<<20, false))
+	got := ""
+	for len(q.Pending()) > 0 {
+		batch := q.Batch()
+		got += batch[0].RequestId
+		q.Accepted(batch, 1)
+	}
+	assert.Equal(t, "bacb", got, "new request served before known ones")
+}
+
 func TestBatchKeepsOrderWithinRequest(t *testing.T) {
 	var q replies.Queue
 	for i := range 7 {
@@ -300,6 +365,46 @@ func TestClosingFramesRetryWithinBudget(t *testing.T) {
 	assert.Nil(t, failed)
 }
 
+// Within a round a failed submit is retried after a constant 200 ms, like the
+// desktop's user-computer-submit.
+func TestSubmitRetryStep(t *testing.T) {
+	var q replies.Queue
+	now := time.Unix(1000, 0)
+	q.Add(stdout("a"))
+	for i := range replies.SubmitAttempts - 1 {
+		batch := q.Next(now)
+		require.NotNil(t, batch, i)
+		_, failed := q.Submitted(now, batch, 0, false, never)
+		require.Nil(t, failed)
+		assert.Nil(t, q.Next(now.Add(199*time.Millisecond)), i)
+		now = now.Add(200 * time.Millisecond)
+	}
+	assert.NotNil(t, q.Next(now))
+}
+
+// Like the desktop, whose enqueue flushes at once, a new frame ends the pause
+// after a round of only closing frames and goes along with them; a
+// keep-alive does not.
+func TestNewFrameEndsClosingPause(t *testing.T) {
+	var q replies.Queue
+	now := time.Unix(1000, 0)
+	q.Add(exit("sh"))
+	failRound(t, &q, &now, never)
+	q.Add(keepAlive("ka"))
+	assert.Nil(t, q.Next(now), "keep-alive ended the pause")
+	q.Add(stdout("new"))
+	batch := q.Next(now)
+	require.Len(t, batch, 3)
+	ids := []string{batch[0].RequestId, batch[1].RequestId, batch[2].RequestId}
+	assert.ElementsMatch(t, []string{"sh", "ka", "new"}, ids)
+	// A new frame does not cut the retry delay within a round.
+	_, failed := q.Submitted(now, batch, 0, false, never)
+	require.Nil(t, failed)
+	q.Add(stdout("during the round"))
+	assert.Nil(t, q.Next(now), "in-round retry delay cut")
+	assert.NotNil(t, q.Next(now.Add(200*time.Millisecond)))
+}
+
 // While other frames wait behind the kept ones, the next round starts at once.
 func TestFailedRoundWithMoreFramesSubmitsAgain(t *testing.T) {
 	var q replies.Queue
@@ -342,6 +447,21 @@ func TestAcceptingBackpressure(t *testing.T) {
 		q.Add(client(fmt.Sprint(i)))
 	}
 	assert.False(t, q.Accepting())
+}
+
+// Workers also wait while MaxPendingData bytes of file data are unsent, so
+// downloads do not pile up chunks faster than they are submitted.
+func TestAcceptingBoundsFileData(t *testing.T) {
+	var q replies.Queue
+	for i := range replies.MaxPendingData>>20 - 1 {
+		q.Add(file("dl", uint32(i), 1<<20, false)) //nolint:gosec // small
+	}
+	q.Add(file("dl", 99, 1<<20-1, false))
+	assert.True(t, q.Accepting())
+	q.Add(file("other", 0, 1, false))
+	assert.False(t, q.Accepting(), "unsent file data not bounded")
+	q.Accepted(q.Batch(), 1)
+	assert.True(t, q.Accepting())
 }
 
 // A cancel leaves the frames of the submit in flight alone, so that a last

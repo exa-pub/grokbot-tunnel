@@ -81,10 +81,15 @@ func shellEvents(frames []pinnedFrame) []*agentv1.ShellStream {
 // Invariant 20 (D5, aligned with the desktop). A read or ls outside Root is
 // one exec throw without streamClose, with cwd_state "unset", the desktop's
 // text and the first line of its stack trace; upload and download answer
-// with a fileError of the same text (rnd-v2/SUMMARY.md, Q2).
+// with a fileError of the same text (rnd-v2/SUMMARY.md, Q2). L10: a
+// dangling symlink out of Root, which the desktop's check lets through and
+// os.Root refuses, is refused in the same words; ≠: the desktop would follow
+// it (stricter on purpose, rnd-v2/SUMMARY.md).
 func TestPinnedRootEscape(t *testing.T) {
 	e := setup(t)
 	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(e.Root, "escape")))
+	gone := filepath.Join(t.TempDir(), "gone")
+	require.NoError(t, os.Symlink(gone, filepath.Join(e.Root, "dangling")))
 	const (
 		outside = "Path is outside the allowed local-exec root and was refused: "
 		symlink = "Path resolves through a symlink to outside the allowed local-exec root and was refused: "
@@ -95,6 +100,8 @@ func TestPinnedRootEscape(t *testing.T) {
 		{`{"lsArgs":{"path":"../"}}`, outside + "../"},
 		{`{"readArgs":{"path":"escape/x"}}`, symlink + "escape/x"},
 		{`{"lsArgs":{"path":"escape"}}`, symlink + "escape"},
+		{`{"readArgs":{"path":"dangling"}}`, symlink + "dangling"},
+		{`{"lsArgs":{"path":"dangling"}}`, symlink + "dangling"},
 	} {
 		frames := pinnedExec(t, e, tc.msg)
 		text, cwd := requireThrow(t, frames)
@@ -110,9 +117,17 @@ func TestPinnedRootEscape(t *testing.T) {
 	download := &aiserverv1.GrokBotUserComputerRequestFrame{RequestId: "d", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_Download{
 		Download: &aiserverv1.GrokBotUserComputerDownload{Path: "escape/x"},
 	}}
+	downloadDangling := &aiserverv1.GrokBotUserComputerRequestFrame{RequestId: "dd", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_Download{
+		Download: &aiserverv1.GrokBotUserComputerDownload{Path: "dangling"},
+	}}
+	uploadDangling := &aiserverv1.GrokBotUserComputerRequestFrame{RequestId: "ud", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_Upload{
+		Upload: &aiserverv1.GrokBotUserComputerUpload{Path: "dangling/x", Data: []byte("x")},
+	}}
 	for f, want := range map[*aiserverv1.GrokBotUserComputerRequestFrame]string{
-		upload:   outside + "../x",
-		download: symlink + "escape/x",
+		upload:           outside + "../x",
+		download:         symlink + "escape/x",
+		downloadDangling: symlink + "dangling",
+		uploadDangling:   symlink + "dangling/x",
 	} {
 		frames := pinnedFrames(context.Background(), t, e, f)
 		require.Len(t, frames, 1)
@@ -137,7 +152,9 @@ func TestPinnedShellCwdOutsideRoot(t *testing.T) {
 // Invariant 18. cwd_state of a failed shell request says whether its working
 // directory exists, as the desktop checks it, also outside Root; other
 // requests report "unset". A $SHELL that cannot be executed makes the shell
-// fail after the directory was accepted.
+// fail after the directory was accepted. L9 (aligned with the desktop): a
+// missing directory or a file was replaced by Root before the command ran,
+// so the state is that of Root, "exists".
 func TestPinnedCwdState(t *testing.T) {
 	broken := filepath.Join(t.TempDir(), "bash")
 	require.NoError(t, os.WriteFile(broken, []byte("\x00not a program"), 0o700))
@@ -145,12 +162,13 @@ func TestPinnedCwdState(t *testing.T) {
 	e := setup(t)
 	require.NoError(t, os.WriteFile(filepath.Join(e.Root, "file"), nil, 0o600))
 	for msg, want := range map[string]string{
-		`{"shellStreamArgs":{"command":"pwd"}}`:                                 "exists",
-		`{"shellStreamArgs":{"command":"pwd","workingDirectory":"nope"}}`:       "missing",
-		`{"shellStreamArgs":{"command":"pwd","workingDirectory":"file"}}`:       "missing",
-		`{"shellStreamArgs":{"command":"pwd","workingDirectory":"/"}}`:          "exists",
-		`{"readArgs":{"path":"nope/../../x"}}`:                                  "unset",
-		`{"backgroundShellSpawnArgs":{"command":"pwd","workingDirectory":"/"}}`: "exists",
+		`{"shellStreamArgs":{"command":"pwd"}}`:                                    "exists",
+		`{"shellStreamArgs":{"command":"pwd","workingDirectory":"nope"}}`:          "exists",
+		`{"shellStreamArgs":{"command":"pwd","workingDirectory":"file"}}`:          "exists",
+		`{"shellStreamArgs":{"command":"pwd","workingDirectory":"/"}}`:             "exists",
+		`{"readArgs":{"path":"nope/../../x"}}`:                                     "unset",
+		`{"backgroundShellSpawnArgs":{"command":"pwd","workingDirectory":"/"}}`:    "exists",
+		`{"backgroundShellSpawnArgs":{"command":"pwd","workingDirectory":"nope"}}`: "exists",
 	} {
 		frames := pinnedExec(t, e, msg)
 		last := frames[len(frames)-1]
@@ -159,6 +177,21 @@ func TestPinnedCwdState(t *testing.T) {
 			assert.Equal(t, want, *last.cwdState, msg)
 		}
 	}
+}
+
+// L12 (aligned with the desktop, which sends err.stack with every throw of
+// a tool): a tool's throw carries a stack trace. ≠: it is only the first
+// line of a JavaScript stack, "Error: <message>" (or the error's own, see
+// TestPinnedRootEscape); the "    at ..." frames have no counterpart here.
+func TestPinnedToolThrowStackTrace(t *testing.T) {
+	broken := filepath.Join(t.TempDir(), "bash")
+	require.NoError(t, os.WriteFile(broken, []byte("\x00not a program"), 0o700))
+	t.Setenv("SHELL", broken)
+	e := setup(t)
+	frames := pinnedExec(t, e, `{"backgroundShellSpawnArgs":{"command":"pwd"}}`)
+	throw := frames[len(frames)-1].control.GetThrow()
+	require.NotNil(t, throw)
+	assert.Equal(t, "Error: "+throw.GetError(), throw.GetStackTrace())
 }
 
 // Invariant 19. A missing foreground working directory is reported on stderr
@@ -262,23 +295,32 @@ func TestPinnedShellTimeouts(t *testing.T) {
 		assert.NotNil(t, frames[len(frames)-1].control.GetStreamClose())
 	})
 	t.Run("BACKGROUND canceled before the move", func(t *testing.T) {
+		// Like the desktop (S15), the stream ends at once with an exit of its
+		// own: no output of the dying command, no execution time.
 		e := setup(t)
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
+		start := time.Now()
 		events := shellEvents(pinnedFrames(ctx, t, e, execFrame(
-			`{"shellStreamArgs":{"command":"sleep 5","timeout":5000,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`)))
-		exit := events[len(events)-1].GetExit()
+			`{"shellStreamArgs":{"command":"trap 'echo trapped; exit 0' TERM; sleep 5","timeout":5000,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`)))
+		assert.Less(t, time.Since(start), 600*time.Millisecond)
+		require.Len(t, events, 2)
+		assert.NotNil(t, events[0].GetStart())
+		exit := events[1].GetExit()
 		require.NotNil(t, exit)
 		assert.True(t, exit.GetAborted())
 		assert.Equal(t, agentv1.ShellAbortReason_SHELL_ABORT_REASON_USER_ABORT, exit.GetAbortReason())
 		assert.Equal(t, killed, exit.GetCode())
+		assert.Equal(t, e.Root, exit.GetCwd())
+		assert.Nil(t, exit.LocalExecutionTimeMs)
 	})
 }
 
 // D9: like the desktop, start carries the sandbox policy of a local approval
-// and no command, and exit carries an abort reason only when aborted.
+// and no command, and exit carries an abort reason only when aborted, and
+// the execution time in milliseconds (S7).
 func TestPinnedShellStartAndExit(t *testing.T) {
-	events := shellEvents(pinnedExec(t, setup(t), `{"shellStreamArgs":{"command":"true"}}`))
+	events := shellEvents(pinnedExec(t, setup(t), `{"shellStreamArgs":{"command":"sleep 0.2"}}`))
 	start := events[0].GetStart()
 	require.NotNil(t, start)
 	assert.Nil(t, start.Command)
@@ -286,6 +328,44 @@ func TestPinnedShellStartAndExit(t *testing.T) {
 	exit := events[len(events)-1].GetExit()
 	require.NotNil(t, exit)
 	assert.Nil(t, exit.AbortReason)
+	require.NotNil(t, exit.LocalExecutionTimeMs)
+	assert.GreaterOrEqual(t, exit.GetLocalExecutionTimeMs(), int32(200))
+	assert.Less(t, exit.GetLocalExecutionTimeMs(), int32(3000))
+	events = shellEvents(pinnedExec(t, setup(t), `{"shellStreamArgs":{"command":"sleep 5","timeout":100}}`))
+	assert.NotNil(t, events[len(events)-1].GetExit().LocalExecutionTimeMs, "aborted")
+}
+
+// S5, aligned with the desktop's dS: without a working directory, a session
+// cwd that no longer exists gives start, the desktop's stderr and exit 1 with
+// that cwd; the command does not run.
+func TestPinnedShellGoneCwd(t *testing.T) {
+	e := setup(t)
+	gone := filepath.Join(e.Root, "gone")
+	pinnedExec(t, e, `{"shellStreamArgs":{"command":"mkdir gone && cd gone && rmdir ../gone"}}`)
+	events := shellEvents(pinnedExec(t, e, `{"shellStreamArgs":{"command":"touch ran"}}`))
+	require.Len(t, events, 3)
+	assert.NotNil(t, events[0].GetStart())
+	assert.Equal(t, "The shell's working directory no longer exists: "+gone+
+		". The command did not run. Re-run it with working_directory set to an existing directory.\n", events[1].GetStderr().GetData())
+	exit := events[2].GetExit()
+	require.NotNil(t, exit)
+	assert.Equal(t, uint32(1), exit.GetCode())
+	assert.Equal(t, gone, exit.GetCwd())
+	assert.False(t, exit.GetAborted())
+	assert.Nil(t, exit.AbortReason)
+	assert.NotNil(t, exit.LocalExecutionTimeMs)
+	assert.NoFileExists(t, filepath.Join(e.Root, "ran"))
+}
+
+// S19 ≠: BACKGROUND commands read stdin from /dev/null; the desktop gives
+// them a pipe, so "read" there waits for input that the agent cannot send
+// on local-exec. EOF at once is kept on purpose.
+func TestPinnedBackgroundStdin(t *testing.T) {
+	e := setup(t)
+	events := shellEvents(pinnedExec(t, e, `{"shellStreamArgs":{"command":"read x; echo rc=$?","timeout":5000,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`))
+	require.GreaterOrEqual(t, len(events), 2)
+	assert.Equal(t, "rc=1\n", events[1].GetStdout().GetData())
+	assert.NotNil(t, events[len(events)-1].GetExit())
 }
 
 // D9: the desktop's read texts for an empty path and a binary file.

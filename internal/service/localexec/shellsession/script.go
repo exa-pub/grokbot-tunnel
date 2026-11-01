@@ -3,26 +3,34 @@ package shellsession
 import (
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
-// shell is the user's shell if it is bash or zsh, else bash.
+// shell is the shell that runs commands, bash or zsh.
 type shell struct {
 	path string
 	zsh  bool
 }
 
+// userShell picks the shell like the desktop's kpe: zsh if $SHELL mentions
+// zsh, else bash if it mentions bash, each run as $SHELL; else zsh, else bash
+// from PATH. PowerShell, which the desktop would pick for a $SHELL mentioning
+// it, is not supported.
 func userShell() shell {
 	name := os.Getenv("SHELL")
-	if base := filepath.Base(name); base != "bash" && base != "zsh" {
-		name = "bash"
+	switch {
+	case strings.Contains(name, "zsh"):
+		return shell{path: name, zsh: true}
+	case strings.Contains(name, "bash"):
+		return shell{path: name}
 	}
-	path, err := exec.LookPath(name)
-	if err != nil {
-		return shell{path: "/bin/bash"}
+	if path, err := exec.LookPath("zsh"); err == nil {
+		return shell{path: path, zsh: true}
 	}
-	return shell{path: path, zsh: filepath.Base(name) == "zsh"}
+	if path, err := exec.LookPath("bash"); err == nil {
+		return shell{path: path}
+	}
+	return shell{path: "/bin/bash"}
 }
 
 // args runs script with the glob extensions the desktop enables; name is $0
@@ -41,14 +49,20 @@ func (s shell) args(flags, script, name string, params ...string) []string {
 // environment was written in full, then tagged option and function sections
 // and an end tag. Command output cannot be mistaken for state, and state is
 // replayed from a file, not parsed back from output.
+//
+// Like the desktop's dump, the environment leaves out ELECTRON_RUN_AS_NODE
+// and, for bash, POSIXLY_CORRECT, which would start the next shell in POSIX
+// mode before the functions are replayed; parseSnapshot drops the rest.
 func (s shell) dump() string {
 	options := `builtin set +o; builtin shopt -p`
+	env := `/usr/bin/env -u ELECTRON_RUN_AS_NODE -u POSIXLY_CORRECT -0`
 	if s.zsh {
 		options = `builtin set +o`
+		env = `/usr/bin/env -u ELECTRON_RUN_AS_NODE -0`
 	}
 	return strings.Join([]string{
 		`builtin printf '%s\0' "$PWD"`,
-		`/usr/bin/env -0 && builtin printf '\0` + sectionEnvSaved + `\0'`,
+		env + ` && builtin printf '\0` + sectionEnvSaved + `\0'`,
 		`builtin printf '\0` + sectionOptions + `\0'`,
 		options,
 		`builtin printf '\0` + sectionFunctions + `\0'`,
@@ -85,14 +99,18 @@ func (s shell) prepare() string {
 
 // foregroundScript runs the command with descriptor 4 closed and then dumps
 // the state to it. $1 names the fallback snapshot file for the EXIT trap.
+// The script's own variables start unset, so that an inherited __grok_dumped
+// cannot disable the trap; under "set -a" they are exported to the dump, which
+// parseSnapshot drops. The trap overwrites the fallback file even under
+// noclobber.
 func (s shell) foregroundScript() string {
 	subshell := "BASH_SUBSHELL"
 	if s.zsh {
 		subshell = "ZSH_SUBSHELL"
 	}
 	trap := `{ builtin set +xveu; builtin test -z "$__grok_dumped" && builtin test "$` + subshell + `" = 0 && ` +
-		`{ ` + s.dump() + `; } >"$__grok_fallback"; } 2>/dev/null`
-	return `builtin readonly __grok_fallback="$1"; builtin set --; ` +
+		`{ ` + s.dump() + `; } >|"$__grok_fallback"; } 2>/dev/null`
+	return `builtin unset __grok_dumped __grok_exit; builtin readonly __grok_fallback="$1"; builtin set --; ` +
 		s.prepare() +
 		`builtin trap ` + shellQuote(trap) + ` EXIT; ` +
 		`builtin eval -- "$__grok_cmd" 4>&-; ` +

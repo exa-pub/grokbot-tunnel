@@ -18,7 +18,12 @@ const (
 	SubmitBatch = 32
 	// MaxPending frames other than keep-alives make workers wait.
 	MaxPending = 256
-	// SubmitAttempts is a round of submits without progress.
+	// MaxPendingData bytes of unsent file data make workers wait too. The
+	// desktop reads at most one chunk ahead per download (MX.readAhead);
+	// this leaves room for one chunk of each of 8 concurrent downloads.
+	MaxPendingData = 8 << 20
+	// SubmitAttempts is a round of submits without progress, retried after
+	// a constant retryStep like the desktop's user-computer-submit.
 	SubmitAttempts = 3
 	retryStep      = 200 * time.Millisecond
 )
@@ -29,6 +34,11 @@ type Frame = aiserverv1.GrokBotUserComputerResponseFrame
 // Queue holds the frames not yet accepted by the server.
 type Queue struct {
 	pending []*Frame
+	// order is the order in which Batch serves the requests' lanes: like the
+	// desktop's MX, a new lane goes to the end, and so does a lane whose
+	// frames were accepted. ordered holds its IDs.
+	order   []string
+	ordered map[string]bool
 	// previousFile alternates file chunks with metadata between batches.
 	previousFile bool
 	submitting   bool
@@ -39,14 +49,27 @@ type Queue struct {
 	// closingSince is when the round started in which a kept closing frame
 	// first failed; its budget counts from there.
 	closingSince   map[*Frame]time.Time
-	closingRetries int             // failed rounds with only closing frames left
-	partial        map[string]bool // downloads replaced by ErrPartialFile; later chunks are dropped
+	closingRetries int  // failed rounds with only closing frames left
+	closingWait    bool // nextSubmit is the pause after such a round
+	// partial holds the downloads replaced by ErrPartialFile until their last
+	// frame arrives; their later chunks are dropped.
+	partial map[string]bool
 }
 
-// Add queues f.
+// Add queues f. Like the desktop, whose enqueue flushes at once, a frame
+// other than a keep-alive ends the pause after a failed round of closing
+// frames, which then go along with it.
 func (q *Queue) Add(f *Frame) {
 	if q.closingSince == nil {
-		q.closingSince, q.partial = map[*Frame]time.Time{}, map[string]bool{}
+		q.closingSince, q.partial, q.ordered = map[*Frame]time.Time{}, map[string]bool{}, map[string]bool{}
+	}
+	if !q.ordered[f.RequestId] {
+		q.ordered[f.RequestId] = true
+		q.order = append(q.order, f.RequestId)
+	}
+	if q.closingWait && f.GetMessagesAccepted() == nil {
+		q.closingWait = false
+		q.nextSubmit = time.Time{}
 	}
 	q.pending = append(q.pending, f)
 }
@@ -63,6 +86,9 @@ func (q *Queue) Sink(f *Frame) error {
 // pending.
 func (q *Queue) Take(f *Frame, canceled bool) bool {
 	if q.partial[f.RequestId] && (f.GetFile() != nil || f.GetFileError() != nil) {
+		if frames.Final(f) {
+			delete(q.partial, f.RequestId) // nothing more comes
+		}
 		return false // the download already ended with ErrPartialFile
 	}
 	if canceled {
@@ -81,14 +107,20 @@ func (q *Queue) Take(f *Frame, canceled bool) bool {
 // twice (bug B6). A failed round drops them later as frames of a canceled
 // request.
 func (q *Queue) Cancel(id string) {
-	q.pending = slices.DeleteFunc(q.pending, func(f *Frame) bool {
-		return f.RequestId == id && !frames.Keep(f) && !q.inflight[f]
-	})
+	drop := map[*Frame]bool{}
 	for i, f := range q.pending {
-		if f.RequestId == id && !q.inflight[f] {
-			q.pending[i] = frames.CanceledFile(f)
+		switch {
+		case f.RequestId != id || q.inflight[f]:
+		case !frames.Keep(f):
+			drop[f] = true
+		default:
+			if g := frames.CanceledFile(f); g != f {
+				delete(q.closingSince, f)
+				q.pending[i] = g
+			}
 		}
 	}
+	q.remove(drop)
 }
 
 // Pending returns the frames not yet accepted, in order.
@@ -107,9 +139,20 @@ func (q *Queue) Stuck() int {
 }
 
 // Accepting reports whether workers may hand over more replies. They wait
-// while enough frames are pending, as a blocking submit used to.
+// while enough frames or file data are pending, as a blocking submit used
+// to.
 func (q *Queue) Accepting() bool {
-	return q.Stuck() < MaxPending && (!q.submitting || len(q.pending) < SubmitBatch)
+	if q.submitting && len(q.pending) >= SubmitBatch {
+		return false
+	}
+	stuck, data := 0, 0
+	for _, f := range q.pending {
+		if f.GetMessagesAccepted() == nil {
+			stuck++
+		}
+		data += len(f.GetFile().GetData())
+	}
+	return stuck < MaxPending && data < MaxPendingData
 }
 
 // Submitting reports whether a submit is in flight.
@@ -122,6 +165,7 @@ func (q *Queue) Next(now time.Time) []*Frame {
 		return nil
 	}
 	q.submitting = true
+	q.closingWait = false
 	if q.failures == 0 {
 		q.roundStart = now
 	}
@@ -133,14 +177,30 @@ func (q *Queue) Next(now time.Time) []*Frame {
 	return batch
 }
 
-// Accepted removes the first n frames of a submitted batch from the queue.
+// Accepted removes the first n frames of a submitted batch from the queue
+// and moves their requests to the end of the serving order.
 func (q *Queue) Accepted(batch []*Frame, n int) {
 	done := map[*Frame]bool{}
+	served := map[string]bool{}
+	var tail []string
 	for _, f := range batch[:n] {
 		done[f] = true
-		delete(q.closingSince, f)
+		if !served[f.RequestId] {
+			served[f.RequestId] = true
+			tail = append(tail, f.RequestId)
+		}
 	}
 	q.remove(done)
+	if n == 0 {
+		return
+	}
+	order := make([]string, 0, len(q.order)+len(tail))
+	for _, id := range q.order {
+		if !served[id] {
+			order = append(order, id)
+		}
+	}
+	q.order = append(order, tail...)
 }
 
 // Settle ends the submit in flight with n of batch accepted, without retry
@@ -153,7 +213,7 @@ func (q *Queue) Settle(batch []*Frame, n int) {
 
 // Submitted applies the result of the submit in flight. again is true after
 // progress: the caller submits the rest right away. A failure is retried
-// after 200 ms and 400 ms; the third ends the round, which keeps only the
+// after 200 ms, twice; the third ends the round, which keeps only the
 // frames that close their requests (see fail) and returns a non-nil Failure.
 // rejected means the server rejected the credential: nothing is dropped, and
 // the frames wait for a new credential.
@@ -171,7 +231,7 @@ func (q *Queue) Submitted(now time.Time, batch []*Frame, n int, rejected bool, c
 	}
 	q.failures++
 	if q.failures < SubmitAttempts {
-		q.nextSubmit = now.Add(time.Duration(q.failures) * retryStep)
+		q.nextSubmit = now.Add(retryStep)
 		return false, nil
 	}
 	q.failures = 0
@@ -181,5 +241,11 @@ func (q *Queue) Submitted(now time.Time, batch []*Frame, n int, rejected bool, c
 }
 
 func (q *Queue) remove(frames map[*Frame]bool) {
+	if len(frames) == 0 {
+		return
+	}
+	for f := range frames {
+		delete(q.closingSince, f)
+	}
 	q.pending = slices.DeleteFunc(q.pending, func(f *Frame) bool { return frames[f] })
 }

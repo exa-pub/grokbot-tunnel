@@ -98,6 +98,7 @@ func (r *release) serve(t *testing.T) string {
 type env struct {
 	home, bin string
 	vars      []string
+	dir       string // working directory; empty means this package's
 }
 
 // newEnv returns an isolated PATH with the system tools, curl or wget as
@@ -126,11 +127,14 @@ func (e *env) stub(t *testing.T, name, script string) {
 // run runs install.sh with args against repo and returns its stderr.
 func (e *env) run(t *testing.T, repo string, args ...string) (string, error) {
 	t.Helper()
-	c := exec.CommandContext(t.Context(), filepath.Join(e.bin, "bash"), append([]string{"../../install.sh"}, args...)...)
+	script, err := filepath.Abs("../../install.sh")
+	require.NoError(t, err)
+	c := exec.CommandContext(t.Context(), filepath.Join(e.bin, "bash"), append([]string{script}, args...)...)
 	c.Env = append(e.vars, "GROKBOT_TUNNEL_RELEASES_URL="+repo)
+	c.Dir = e.dir
 	var stderr bytes.Buffer
 	c.Stderr = &stderr
-	err := c.Run()
+	err = c.Run()
 	return stderr.String(), err
 }
 
@@ -277,6 +281,52 @@ esac`, log, path, path))
 		}
 		assert.Contains(t, string(calls), tc.restart+"\n")
 		assert.Contains(t, out, "Restarting the grokbot-tunnel service")
+	}
+}
+
+// The service is restarted however the install directory is spelled:
+// relative, with a trailing slash or through a symlink, with and without
+// realpath.
+func TestInstallRestartsServiceOfResolvedPath(t *testing.T) {
+	for _, withRealpath := range []bool{false, true} {
+		for _, tc := range []struct {
+			name string
+			dir  func(home string) string // GROKBOT_INSTALL_DIR; install.sh runs in home
+		}{
+			{"relative", func(string) string { return "real" }},
+			{"trailing slash", func(home string) string { return filepath.Join(home, "real") + "/" }},
+			{"symlink", func(home string) string { return filepath.Join(home, "link") }},
+		} {
+			t.Run(fmt.Sprintf("%s realpath=%v", tc.name, withRealpath), func(t *testing.T) {
+				e := newEnv(t, "curl", 1000)
+				if withRealpath {
+					tool, err := exec.LookPath("realpath")
+					if err != nil {
+						t.Skip("realpath is not installed")
+					}
+					require.NoError(t, os.Symlink(tool, filepath.Join(e.bin, "realpath")))
+				}
+				// The temporary directory may itself lie behind a symlink.
+				home, err := filepath.EvalSymlinks(e.home)
+				require.NoError(t, err)
+				target := filepath.Join(home, "real")
+				require.NoError(t, os.Mkdir(target, 0o755))
+				require.NoError(t, os.Symlink(target, filepath.Join(home, "link")))
+				e.dir = home
+				e.vars = append(e.vars, "GROKBOT_INSTALL_DIR="+tc.dir(home))
+				log := filepath.Join(home, "systemctl.log")
+				binary := filepath.Join(target, "grokbot-tunnel")
+				e.stub(t, "systemctl", fmt.Sprintf(`echo "$*" >> %q
+case "$*" in
+*is-active*) exit 0 ;;
+*show*) echo "{ path=%s ; argv[]=%s connect ; ignore_errors=no }" ;;
+esac`, log, binary, binary))
+				out, err := e.run(t, newRelease(t, goodBinary).serve(t))
+				require.NoError(t, err, out)
+				calls, _ := os.ReadFile(log)
+				assert.Contains(t, string(calls), "--user restart --no-block grokbot-tunnel\n", out)
+			})
+		}
 	}
 }
 

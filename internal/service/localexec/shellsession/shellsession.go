@@ -1,15 +1,19 @@
-// Package shellsession keeps the shell state that foreground commands share,
-// like the desktop's shell core executor with its BashState and ZshState
-// (anchor: "__CURSOR_BASH_STATE_START__"), and builds the shells that run
-// commands.
+// Package shellsession keeps the shell state that commands share, like the
+// desktop's shell core executor with its BashState and ZshState (anchor:
+// "__CURSOR_BASH_STATE_START__"), and builds the shells that run commands.
 //
-// Foreground commands share one shell state: cwd, exported environment,
-// options and functions. Aliases are not kept or expanded: they come from
-// interactive profiles, are meant for people (rm -i) and would make commands
-// behave differently than written. The user's profile is read once, by an
-// interactive login shell that only dumps its state; every command then runs
-// in a fresh non-login shell that replays the state, runs the command and
-// dumps the state again.
+// Commands share one shell state: cwd, exported environment, options and
+// functions. The first command starts in the root, whatever the profile does.
+// Commands run in parallel, as on the desktop: each starts from the state of
+// the moment it starts, and each that ends on its own writes the state it left
+// back, so the command that ends last wins. A "sleep 5; true" started before a
+// parallel "cd a" and ending after it puts the old cwd back.
+//
+// Aliases are not kept or expanded: they come from interactive profiles, are
+// meant for people (rm -i) and would make commands behave differently than
+// written. The user's profile is read once, by an interactive login shell
+// that only dumps its state; every command then runs in a fresh non-login
+// shell that replays the state, runs the command and dumps the state again.
 //
 // Descriptors of a foreground shell:
 //
@@ -29,7 +33,8 @@
 // variable, never to an inherited descriptor, so the command cannot redirect
 // it; it does nothing in subshells or once the regular dump has run. A command
 // that replaces the trap, execs another program or is killed leaves no
-// snapshot, and the previous state stays in effect; the agent is told so.
+// snapshot, and the previous state stays in effect silently, as on the
+// desktop.
 //
 // The state and the command reach the shell through files, not arguments:
 // Linux limits a single argument to 128 KiB, and functions from a profile or
@@ -40,8 +45,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -51,7 +58,8 @@ import (
 )
 
 const (
-	maxSnapshot = 1 << 20
+	// maxSnapshot only guards memory; the desktop has no limit.
+	maxSnapshot = 64 << 20
 	initTimeout = 10 * time.Second
 	// sectionPrefix tags the non-environment parts of a state snapshot.
 	sectionPrefix    = "GROK_SHELL_"
@@ -61,16 +69,11 @@ const (
 	sectionEnd       = sectionPrefix + "END"
 )
 
-// Session is the shell state shared by the foreground commands of one root.
-// Foreground commands run one at a time, so that each sees the state the
-// previous one left.
+// Session is the shell state shared by the commands of one root.
 type Session struct {
-	root *pathroot.Root
-	// foreground holds a token while a foreground command runs. Waiting for
-	// it can be canceled.
-	foreground chan struct{}
-	mu         sync.Mutex // guards state
-	state      State
+	root  *pathroot.Root
+	mu    sync.Mutex // guards state
+	state State
 	// initOnce starts reading the user's profile into state; initDone is
 	// closed once it is done.
 	initOnce sync.Once
@@ -79,35 +82,40 @@ type Session struct {
 
 // New returns a Session whose commands run below root by default.
 func New(root *pathroot.Root) *Session {
-	return &Session{root: root, foreground: make(chan struct{}, 1)}
+	return &Session{root: root}
 }
 
-// Acquire waits until no other foreground command runs. Release ends the
-// turn.
-func (s *Session) Acquire(ctx context.Context) error {
-	select {
-	case s.foreground <- struct{}{}:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	// select picks at random when both are ready.
-	if err := ctx.Err(); err != nil {
-		s.Release()
-		return err
-	}
-	return nil
-}
+// Root is the root the commands run below by default.
+func (s *Session) Root() *pathroot.Root { return s.root }
 
-// Release ends the turn of the foreground command that called Acquire.
-func (s *Session) Release() { <-s.foreground }
-
-// Cwd resolves the working directory of a command: path, or the state's cwd
-// if path is empty.
+// Cwd resolves the working directory of a command like the desktop's ilt: a
+// path that is empty or only whitespace is the state's cwd, taken as it is,
+// even if it no longer exists (see Gone); any other path is resolved by the
+// root, which runs a missing directory in the root with a warning.
 func (s *Session) Cwd(path string, st State) (dir, warning string) {
-	if path == "" && st.cwd != "" {
-		path = st.cwd
+	if strings.TrimSpace(path) == "" {
+		return s.cwd(st), ""
 	}
 	return s.root.Cwd(path)
+}
+
+// CurrentCwd is the cwd of the current state, which a command's exit reports,
+// as on the desktop.
+func (s *Session) CurrentCwd() string { return s.cwd(s.State()) }
+
+// Gone returns the desktop's message for a command that does not run because
+// dir, the state's cwd, is no longer a directory, or "" if it is one. A
+// failure to tell is an error.
+func Gone(dir string) (string, error) {
+	info, err := os.Stat(dir)
+	switch {
+	case err == nil && info.IsDir():
+		return "", nil
+	case err == nil, errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ENOTDIR):
+		return fmt.Sprintf("The shell's working directory no longer exists: %s. The command did not run. "+
+			"Re-run it with working_directory set to an existing directory.\n", dir), nil
+	}
+	return "", err
 }
 
 // State returns the current state.
@@ -125,8 +133,10 @@ func (s *Session) SetState(st State) {
 }
 
 // Init captures the state of the user's profile once, before the first
-// command. A profile that fails or hangs leaves the CLI's environment. If ctx
-// ends first, the profile keeps loading for the next command.
+// command. A profile that fails or hangs leaves the CLI's environment. Either
+// way the first command starts in the root, like the desktop's session, which
+// is cloned into the root after reading the profile. If ctx ends first, the
+// profile keeps loading for the next command.
 func (s *Session) Init(ctx context.Context) error {
 	s.initOnce.Do(func() {
 		s.initDone = make(chan struct{})
@@ -135,11 +145,9 @@ func (s *Session) Init(ctx context.Context) error {
 			st, err := s.profileState()
 			if err != nil {
 				log.Printf("shell profile: %v; using the CLI environment", err)
-				return
+				st = State{}
 			}
-			if !s.root.IsDir(st.cwd) {
-				st.cwd = ""
-			}
+			st.cwd = s.root.Dir()
 			s.SetState(st)
 		}()
 	})
@@ -151,43 +159,41 @@ func (s *Session) Init(ctx context.Context) error {
 	}
 }
 
-// Adopt returns the state a foreground command left in its snapshot or,
-// if it ended the shell itself, in the fallback snapshot of its EXIT trap,
-// together with a notice for the agent, if any. A command that left no state
-// returns nil. A cwd that no longer exists is not kept; the next command
-// starts where this one did.
-func (s *Session) Adopt(snapshot, fallback *os.File, cwd string) (*State, string) {
+// Adopt returns the state a command that started with started left in its
+// snapshot or, if it ended the shell itself, in the fallback snapshot of its
+// EXIT trap; nil if it left none. Its cwd is kept even if it no longer exists,
+// like the desktop's; the next command meant to run there does not run (Gone).
+func Adopt(snapshot, fallback *os.File, started State) *State {
 	st, ok := readState(snapshot)
 	if !ok {
 		st, ok = readState(fallback)
 	}
 	if !ok {
-		return nil, "The shell exited before its state could be saved (exec, a signal or a replaced EXIT trap); " +
-			"changes to the working directory, environment, options and functions were not kept.\n"
+		return nil
 	}
-	notice := ""
 	if st.env == nil {
 		// /usr/bin/env failed, for example on a variable above the kernel's
 		// 128 KiB limit. Keep the environment the command started with.
-		st.env = s.State().env
-		notice = "The environment could not be saved after this command; the next command starts with the " +
-			"environment this one started with.\n"
+		st.env = started.env
 	}
-	if !s.root.IsDir(st.cwd) {
-		notice += fmt.Sprintf("Working directory %s no longer exists; the next command starts in %s.\n", st.cwd, cwd)
-		st.cwd = cwd
-	}
-	return &st, notice
+	return &st
 }
 
-// Commit writes the state that a command which ended on its own, started in
-// cwd, left in its snapshot files to the session, like the desktop's shell
-// state after every command that was not aborted. Nothing happens if the
-// command left no state.
-func (s *Session) Commit(snapshot, fallback *os.File, cwd string) {
-	if st, _ := s.Adopt(snapshot, fallback, cwd); st != nil {
+// Commit writes the state that a command which started with started and
+// ended on its own left in its snapshot files to the session, like the
+// desktop's shell state after every command that was not aborted. A command
+// that left no state changes nothing, silently, as on the desktop.
+func (s *Session) Commit(snapshot, fallback *os.File, started State) {
+	if st := Adopt(snapshot, fallback, started); st != nil {
 		s.SetState(*st)
 	}
+}
+
+func (s *Session) cwd(st State) string {
+	if st.cwd == "" {
+		return s.root.Dir()
+	}
+	return st.cwd
 }
 
 // StateFiles returns the files a command saves its state to: the snapshot,
@@ -218,7 +224,7 @@ func (s *Session) profileState() (State, error) {
 	}
 	defer proc.CloseLogged(snapshot)
 	sh := userShell()
-	c := newCmd(sh, State{}, s.root.Dir(), sh.args("-ilc", sh.initScript(), "grokbot-init")...)
+	c := newCmd(sh, State{}, s.root.Dir(), nil, sh.args("-ilc", sh.initScript(), "grokbot-init")...)
 	// A new session keeps the interactive shell away from the CLI's terminal.
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	c.ExtraFiles = []*os.File{nil, snapshot}

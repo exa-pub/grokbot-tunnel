@@ -17,8 +17,13 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/repository/staterepo"
 )
 
-// refreshMargin refreshes access tokens shortly before they expire.
-const refreshMargin = 5 * time.Minute
+const (
+	// refreshMargin refreshes access tokens shortly before they expire.
+	refreshMargin = 5 * time.Minute
+	// rejectCooldown is how long a rejected token does not trigger another
+	// refresh, as in the desktop's unauthenticated recovery.
+	rejectCooldown = 5 * time.Minute
+)
 
 // TokenSource hands out access tokens, refreshing and persisting them as
 // needed. Concurrent callers share a single refresh.
@@ -27,12 +32,15 @@ type TokenSource struct {
 	Store    *staterepo.Store
 	HTTP     *http.Client
 	Base     string
+	ClientID string // OAuth client; empty means oauth.ClientIDFor(Base, "")
 	Identity entity.Identity
+
+	rejectedAt time.Time // when Rejected last refreshed
 }
 
 // fresh reports whether the access token can be used without a refresh. A
-// token of unknown lifetime is used until the server rejects it, and the
-// Bearer interceptor then forces a refresh.
+// token of unknown lifetime is used until the server rejects it, and
+// Rejected then replaces it.
 func fresh(id entity.Identity) bool {
 	if id.AccessToken == "" {
 		return false
@@ -59,10 +67,38 @@ func sameAccount(a, b entity.Identity) bool {
 func (s *TokenSource) Token(ctx context.Context, force bool) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	id := s.Identity
-	if !force && fresh(id) {
-		return id.AccessToken, nil
+	if !force && fresh(s.Identity) {
+		return s.Identity.AccessToken, nil
 	}
+	return s.refresh(ctx)
+}
+
+// Rejected refreshes the access token after the server refused token, like
+// the desktop's unauthenticated recovery (Hz): only if token is still the
+// current one, so that callers that failed together refresh once, and at
+// most once per rejectCooldown, so that a server that keeps refusing is not
+// answered with a refresh each time.
+func (s *TokenSource) Rejected(ctx context.Context, token string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if token == "" || token != s.Identity.AccessToken || time.Since(s.rejectedAt) < rejectCooldown {
+		return nil
+	}
+	s.rejectedAt = time.Now()
+	_, err := s.refresh(ctx)
+	return err
+}
+
+// Snapshot returns the identity without racing token rotation.
+func (s *TokenSource) Snapshot() entity.Identity {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Identity
+}
+
+// refresh refreshes the access token. The caller holds s.mu.
+func (s *TokenSource) refresh(ctx context.Context) (string, error) {
+	id := s.Identity
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return "", err
@@ -79,7 +115,7 @@ func (s *TokenSource) Token(ctx context.Context, force bool) (string, error) {
 	if id.RefreshToken == "" {
 		return "", entity.ErrNotLoggedIn
 	}
-	next, err := oauth.Refresh(ctx, s.HTTP, s.Base, id.RefreshToken)
+	next, err := oauth.Refresh(ctx, s.HTTP, s.Base, s.ClientID, id.RefreshToken)
 	if errors.Is(err, entity.ErrLogout) {
 		s.Identity = entity.Identity{}
 		// Only wipe auth.json if it still holds the rejected session.
@@ -106,13 +142,6 @@ func (s *TokenSource) Token(ctx context.Context, force bool) (string, error) {
 		}
 	}
 	return id.AccessToken, nil
-}
-
-// Snapshot returns the identity without racing token rotation.
-func (s *TokenSource) Snapshot() entity.Identity {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.Identity
 }
 
 // lock takes the store lock, failing only if ctx ends. An unwritable store

@@ -2,7 +2,7 @@ package shellsession
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -16,6 +16,17 @@ import (
 // environ passes the CLI's SHLVL instead; without one, bash -c ignores
 // $BASH_ENV.
 var volatileEnv = []string{"SHLVL", "_", "PWD"}
+
+// scopedEnv are the patterns of the desktop's dump (anchor:
+// "CURSOR_AGENT_STORE'"), matched without case anywhere in a variable and its
+// value: proxy settings and variables of a single request or session are not
+// carried over.
+var scopedEnv = []string{"_proxy=", "cursor_sandbox", "sudo_askpass", "cursor_askpass",
+	"cursor_conversation_id", "cursor_request_id", "cursor_agent_store"}
+
+// scriptVarPrefix starts the variables of the scripts that run commands; "set
+// -a" exports them, but they are never state.
+const scriptVarPrefix = "__grok_"
 
 // volatileOptions are not carried over. errexit, nounset and pipefail would
 // change how every later command and the state dump behave, and xtrace and
@@ -55,28 +66,30 @@ func (st State) replayScript() string {
 	return b.String()
 }
 
-// environ returns the saved environment with the CLI's SHLVL and the agent
-// markers set once.
-func (st State) environ() []string {
+// environ returns the saved environment with the CLI's SHLVL, and the agent
+// markers and extra, the variables of a request, set once.
+func (st State) environ(extra []string) []string {
 	env := st.env
 	if env == nil {
 		env = append(os.Environ(), plainEnv...) // later entries win
 	} else if level, ok := os.LookupEnv("SHLVL"); ok {
 		env = append(env[:len(env):len(env)], "SHLVL="+level)
 	}
-	out := make([]string, 0, len(env)+len(agentEnv))
+	set := append(agentEnv[:len(agentEnv):len(agentEnv)], extra...)
+	out := make([]string, 0, len(env)+len(set))
 	for _, kv := range env {
-		if !isAgentVar(kv) {
+		if !hasKey(set, kv) {
 			out = append(out, kv)
 		}
 	}
-	return append(out, agentEnv...)
+	return append(out, set...)
 }
 
-func isAgentVar(kv string) bool {
+// hasKey reports whether one of vars sets the variable of kv.
+func hasKey(vars []string, kv string) bool {
 	key, _, _ := strings.Cut(kv, "=")
-	for _, marker := range agentEnv {
-		if name, _, _ := strings.Cut(marker, "="); name == key {
+	for _, v := range vars {
+		if name, _, _ := strings.Cut(v, "="); name == key {
 			return true
 		}
 	}
@@ -98,7 +111,7 @@ func readSnapshot(f *os.File) ([]byte, error) {
 		return nil, err
 	}
 	if info.Size() > maxSnapshot {
-		return nil, errors.New("shell state exceeds 1 MiB")
+		return nil, fmt.Errorf("shell state of %d bytes exceeds %d", info.Size(), maxSnapshot)
 	}
 	return proc.ReadAtMost(f, info.Size(), 0)
 }
@@ -147,6 +160,15 @@ func isVolatileVar(kv string) bool {
 	key, _, _ := strings.Cut(kv, "=")
 	for _, name := range volatileEnv {
 		if name == key {
+			return true
+		}
+	}
+	if strings.HasPrefix(key, scriptVarPrefix) {
+		return true
+	}
+	lower := strings.ToLower(kv)
+	for _, pattern := range scopedEnv {
+		if strings.Contains(lower, pattern) {
 			return true
 		}
 	}

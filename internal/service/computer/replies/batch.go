@@ -12,8 +12,14 @@ const (
 // Batch fairly interleaves requests while preserving order within each one.
 // Metadata goes first; file chunks, at most one per request, are skipped every
 // other batch while metadata is waiting so neither kind starves the other.
+// Requests are served in q.order, which Accepted rotates; it forgets those
+// without pending frames.
 func (q *Queue) Batch() []*Frame {
-	b := newBatcher(q.pending)
+	b := newBatcher(q.pending, q.order)
+	q.order, q.ordered = b.order, make(map[string]bool, len(b.order))
+	for _, id := range b.order {
+		q.ordered[id] = true
+	}
 	for progress := true; progress; {
 		progress = false
 		for _, id := range b.order {
@@ -32,19 +38,31 @@ func (q *Queue) Batch() []*Frame {
 // batcher fills one submit batch from per-request lanes.
 type batcher struct {
 	lanes map[string][]*Frame
-	order []string // request IDs in order of first appearance
+	order []string // request IDs in serving order
 	out   []*Frame
 	size  int
 	data  int
 }
 
-func newBatcher(pending []*Frame) *batcher {
+// newBatcher splits pending into lanes served in order, skipping requests
+// without pending frames, and then in order of first appearance.
+func newBatcher(pending []*Frame, order []string) *batcher {
 	b := &batcher{lanes: map[string][]*Frame{}}
 	for _, f := range pending {
-		if _, ok := b.lanes[f.RequestId]; !ok {
+		b.lanes[f.RequestId] = append(b.lanes[f.RequestId], f)
+	}
+	listed := make(map[string]bool, len(b.lanes))
+	for _, id := range order {
+		if len(b.lanes[id]) > 0 && !listed[id] {
+			listed[id] = true
+			b.order = append(b.order, id)
+		}
+	}
+	for _, f := range pending {
+		if !listed[f.RequestId] {
+			listed[f.RequestId] = true
 			b.order = append(b.order, f.RequestId)
 		}
-		b.lanes[f.RequestId] = append(b.lanes[f.RequestId], f)
 	}
 	return b
 }

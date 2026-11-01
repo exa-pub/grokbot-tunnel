@@ -3,11 +3,9 @@ package discovery
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"slices"
 	"syscall"
@@ -135,14 +133,4 @@ func discoveryEntries(ctx context.Context, path string, descending bool) ([]os.D
 		slices.Reverse(entries)
 	}
 	return entries[:min(len(entries), maxDirEntries)], nil
-}
-
-// decodeLenient decodes JSON configuration; malformed files count as empty.
-func decodeLenient(path string, b []byte, v any) {
-	if len(b) == 0 {
-		return
-	}
-	if err := json.Unmarshal(b, v); err != nil {
-		log.Printf("discovery: ignoring malformed %s: %v", path, err)
-	}
 }

@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
@@ -16,6 +18,10 @@ func newConnectCommand(a App, clientVersion *string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			opts.ClientVersion = *clientVersion
 			opts.Version = version
+			var err error
+			if opts.Label, err = normalizeLabel(opts.Label); err != nil {
+				return err
+			}
 			return a.Connect(cmd.Context(), opts)
 		},
 	}
@@ -28,6 +34,18 @@ func newConnectCommand(a App, clientVersion *string) *cobra.Command {
 func connectFlags(f *pflag.FlagSet, root, permission, label *string, debug *bool, defaultPermission string) {
 	f.StringVar(root, "root", "", "root for file tools and default directory of commands (default: home directory)")
 	f.StringVar(permission, "permission", defaultPermission, "ask, always, or never")
-	f.StringVar(label, "label", "", "computer label")
+	f.StringVar(label, "label", "", "computer label, at most 100 characters (default: host name)")
 	f.BoolVar(debug, "debug", false, "log raw request JSON (may contain sensitive data)")
+}
+
+// normalizeLabel trims a --label and cuts it to the length the desktop
+// allows. Empty keeps the saved label; a blank one is refused.
+func normalizeLabel(label string) (string, error) {
+	if label == "" {
+		return "", nil
+	}
+	if label = entity.NormalizeLabel(label); label == "" {
+		return "", errors.New("--label must not be blank")
+	}
+	return label, nil
 }

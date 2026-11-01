@@ -36,14 +36,22 @@ type discoveryItem struct {
 	Kind         string `json:"kind"`
 	Title        string `json:"title"`
 	Excerpt      string `json:"excerpt,omitempty"`
-	OccurredAtMS int64  `json:"occurredAtMs,omitempty"`
+	OccurredAtMS *int64 `json:"occurredAtMs,omitempty"`
+}
+
+// at is the item's time for sorting, 0 without one.
+func (i discoveryItem) at() int64 {
+	if i.OccurredAtMS == nil {
+		return 0
+	}
+	return *i.OccurredAtMS
 }
 
 type discoveryResult struct {
 	Source         string          `json:"source"`
 	Found          bool            `json:"found"`
 	SessionCount   int             `json:"sessionCount"`
-	LastActiveAtMS int64           `json:"lastActiveAtMs,omitempty"`
+	LastActiveAtMS *int64          `json:"lastActiveAtMs,omitempty"`
 	Items          []discoveryItem `json:"items"`
 }
 
@@ -118,15 +126,17 @@ func (dd *Discoverer) Discover(ctx context.Context, source string) ([]byte, erro
 	}
 	setup := dedupItems(d.setup)
 	setup = setup[:min(len(setup), maxSetupItems)]
-	// Newest first, so that a repeated request keeps its latest time.
-	slices.SortStableFunc(d.sessions, func(a, b discoveryItem) int { return cmp.Compare(b.OccurredAtMS, a.OccurredAtMS) })
+	// Like the desktop (DFe), a repeated request keeps its first, oldest
+	// entry; then the newest come first.
 	sessions := dedupItems(d.sessions)
+	slices.SortStableFunc(sessions, func(a, b discoveryItem) int { return cmp.Compare(b.at(), a.at()) })
 	sessions = sessions[:min(len(sessions), maxItems-len(setup))]
 	result.Items = append(setup, sessions...)
 	result.SessionCount = max(d.sessionFiles, len(sessions))
 	result.LastActiveAtMS = d.lastActive
-	if len(sessions) > 0 {
-		result.LastActiveAtMS = max(result.LastActiveAtMS, sessions[0].OccurredAtMS)
+	if len(sessions) > 0 && sessions[0].OccurredAtMS != nil &&
+		(result.LastActiveAtMS == nil || *sessions[0].OccurredAtMS > *result.LastActiveAtMS) {
+		result.LastActiveAtMS = sessions[0].OccurredAtMS
 	}
 	return json.Marshal(result)
 }

@@ -16,6 +16,23 @@ import (
 // Sink delivers response frames to the server.
 type Sink func(*aiserverv1.GrokBotUserComputerResponseFrame) error
 
+// ErrDropped matches the error of a Sink that dropped a frame which does not
+// end its request (see Closes) because the request was canceled. The failure
+// concerns that frame only: the frame that ends the request is still
+// delivered.
+var ErrDropped = errors.New("frame dropped: request canceled")
+
+// Dropped returns the error of a frame dropped because of cause, the
+// request's cancellation. It reads and unwraps as cause and matches
+// ErrDropped.
+func Dropped(cause error) error { return droppedError{cause} }
+
+type droppedError struct{ cause error }
+
+func (e droppedError) Error() string        { return e.cause.Error() }
+func (e droppedError) Unwrap() error        { return e.cause }
+func (e droppedError) Is(target error) bool { return target == ErrDropped }
+
 // Reject answers f with err in the form the request type expects.
 func Reject(f *aiserverv1.GrokBotUserComputerRequestFrame, err error, sink Sink) error {
 	resp := &aiserverv1.GrokBotUserComputerResponseFrame{RequestId: f.RequestId}
@@ -82,6 +99,21 @@ func Throw(execID uint32, err error) *agentv1.ExecClientControlMessage {
 		throw.StackTrace = &trace
 	}
 	return &agentv1.ExecClientControlMessage{Message: &agentv1.ExecClientControlMessage_Throw{Throw: throw}}
+}
+
+// ToolThrow ends exec execID with the error its tool failed with. Like the
+// desktop's exec manager, which sends the stack of every Error a tool
+// throws, it always fills the stack trace: that of an err with a
+// StackTrace() string method in its chain, else the first line of a
+// JavaScript Error's stack, "Error: <message>". The frames below that line
+// are JavaScript's and have no counterpart here.
+func ToolThrow(execID uint32, err error) *agentv1.ExecClientControlMessage {
+	msg := Throw(execID, err)
+	if throw := msg.GetThrow(); throw.StackTrace == nil {
+		trace := "Error: " + err.Error()
+		throw.StackTrace = &trace
+	}
+	return msg
 }
 
 // Close ends exec execID successfully.

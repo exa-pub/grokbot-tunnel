@@ -24,10 +24,44 @@ import (
 // MaxJSON is the size limit of a single exec result message.
 const MaxJSON = 8 << 20
 
-const heartbeatInterval = 3 * time.Second
+var heartbeatInterval = 3 * time.Second // a variable for tests
 
-// ErrUnsupported matches the desktop daemon's message for unknown requests.
-var ErrUnsupported = errors.New("unsupported exec request: No handler found for server message of type undefined")
+// ErrUnsupported matches every *UnsupportedError.
+var ErrUnsupported = errors.New("no handler for the exec request")
+
+// UnsupportedError fails an exec request that no tool handles, in the
+// desktop's words (GGt, or "No handler found for server message of type").
+type UnsupportedError struct {
+	// Case is the case of the server message as the desktop names it, such
+	// as "writeArgs"; empty if the message has none the desktop knows.
+	Case string
+}
+
+// unsupportedTexts are the desktop's texts for cases it deliberately has no
+// handler for (GGt).
+var unsupportedTexts = map[string]string{
+	"computerUseArgs": "Computer use is not enabled for this environment, " +
+		"so the Computer tool and the computerUse subagent cannot run here. " +
+		"Do not retry computer actions; verify with non-GUI methods (automated tests, shell commands) instead. " +
+		"(No computer-use handler is registered on this exec daemon.)",
+	"recordScreenArgs": "Screen recording is not enabled for this environment, so recordings cannot be captured here. " +
+		"Do not retry; skip the recording and present other evidence instead. " +
+		"(No record-screen handler is registered on this exec daemon.)",
+}
+
+func (e *UnsupportedError) Error() string {
+	if text, ok := unsupportedTexts[e.Case]; ok {
+		return text
+	}
+	c := e.Case
+	if c == "" {
+		c = "undefined" // JavaScript's rendering of the missing case
+	}
+	return "No handler found for server message of type " + c
+}
+
+// Is makes errors.Is(err, ErrUnsupported) match.
+func (e *UnsupportedError) Is(target error) bool { return target == ErrUnsupported }
 
 // Send delivers one result message of a request.
 type Send func(*agentv1.ExecClientMessage) error
@@ -40,13 +74,18 @@ type Manager struct {
 // Run assigns msg an exec ID and runs exec with a Send for its results,
 // heartbeats while it runs and the final frame after it returns: a
 // streamClose on success, a throw with cwdState(msg) on failure, and both
-// for ErrUnsupported. It returns the first error of sink.
+// for an *UnsupportedError. cwdState sees msg as exec left it. A failure
+// that only reports a frame the sink dropped on cancellation
+// (frames.ErrDropped) is a success, as on the desktop, whose stream never
+// refuses a frame. Results and heartbeats are sent from different
+// goroutines, so sink must be safe for concurrent use. Run returns the first
+// error of sink other than a drop.
 func (m *Manager) Run(
 	requestID string, msg *agentv1.ExecServerMessage, sink frames.Sink,
 	exec func(Send) error, cwdState func(*agentv1.ExecServerMessage) *string,
 ) error {
 	msg.Id = m.next.Add(1)
-	s := &stream{requestID: requestID, msg: msg, start: time.Now(), sink: sink}
+	s := &stream{requestID: requestID, id: msg.Id, start: time.Now(), sink: sink}
 	stop := make(chan struct{})
 	stopped := make(chan struct{})
 	go func() {
@@ -56,57 +95,76 @@ func (m *Manager) Run(
 	err := exec(s.send)
 	close(stop)
 	<-stopped
-	var cwd *string
-	if err != nil && !errors.Is(err, ErrUnsupported) {
-		cwd = cwdState(msg)
-	}
-	return s.finish(err, cwd)
+	return s.finish(err, func() *string { return cwdState(msg) })
 }
 
-// stream serializes the messages of one exec request: results, heartbeats
-// and the final throw or close.
+// stream is one exec request: its results, heartbeats and the final throw
+// or close.
 type stream struct {
-	mu        sync.Mutex
+	mu        sync.Mutex // serializes results; guards err
 	requestID string
-	msg       *agentv1.ExecServerMessage
+	id        uint32
 	start     time.Time
 	sink      frames.Sink
-	err       error // first delivery failure; nothing is sent after it
+	err       error // first delivery failure other than a drop; nothing is sent after it
 }
 
-// emit delivers a frame; s.mu must be held.
-func (s *stream) emit(f *aiserverv1.GrokBotUserComputerResponseFrame) error {
-	if s.err == nil {
-		s.err = s.sink(f)
-	}
+// failed returns the delivery failure that stopped the stream, if any.
+func (s *stream) failed() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.err
 }
 
-// control sends a control message; s.mu must be held.
+// record keeps err as the stream's failure unless it is a drop on
+// cancellation; s.mu must be held.
+func (s *stream) record(err error) {
+	if err != nil && !errors.Is(err, frames.ErrDropped) && s.err == nil {
+		s.err = err
+	}
+}
+
+// control sends a control message without holding s.mu while the sink
+// waits.
 func (s *stream) control(msg *agentv1.ExecClientControlMessage, cwd *string) error {
-	return frames.SendControl(s.requestID, msg, cwd, s.emit)
+	if err := s.failed(); err != nil {
+		return err
+	}
+	err := frames.SendControl(s.requestID, msg, cwd, s.sink)
+	s.mu.Lock()
+	s.record(err)
+	s.mu.Unlock()
+	return err
 }
 
 // send is the Send of the request's handler.
 func (s *stream) send(result *agentv1.ExecClientMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result.Id = s.msg.Id
-	result.ExecId = s.msg.ExecId
+	if s.err != nil {
+		return s.err
+	}
+	// Like the desktop's result serializers, the message carries the exec
+	// ID and the time, not the server's execId.
+	result.Id = s.id
 	result.LocalExecutionTimeMs = elapsedMs(s.start)
 	b, err := Marshal(result)
 	if err != nil {
 		return err
 	}
-	return s.emit(&aiserverv1.GrokBotUserComputerResponseFrame{
+	err = s.sink(&aiserverv1.GrokBotUserComputerResponseFrame{
 		RequestId: s.requestID,
 		Frame: &aiserverv1.GrokBotUserComputerResponseFrame_Client{
 			Client: &aiserverv1.GrokBotUserComputerClientMessage{MessageJson: string(b)},
 		},
 	})
+	s.record(err)
+	return err
 }
 
-// heartbeats tells the server the request is alive until stop is closed.
+// heartbeats tells the server the request is alive until stop is closed. A
+// heartbeat waits for the sink without holding s.mu, so that neither the
+// results nor the end of a canceled request wait behind it.
 func (s *stream) heartbeats(stop <-chan struct{}) {
 	tick := time.NewTicker(heartbeatInterval)
 	defer tick.Stop()
@@ -115,39 +173,44 @@ func (s *stream) heartbeats(stop <-chan struct{}) {
 		case <-stop:
 			return
 		case <-tick.C:
-			s.mu.Lock()
-			err := s.control(frames.Heartbeat(s.msg.Id), nil)
-			s.mu.Unlock()
-			if err != nil {
+			if err := s.control(frames.Heartbeat(s.id), nil); err != nil && !errors.Is(err, frames.ErrDropped) {
 				return
 			}
 		}
 	}
 }
 
-// finish ends the stream with a throw for err, or a close on success.
-func (s *stream) finish(err error, cwd *string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.err != nil {
-		return s.err
+// finish ends the stream with a throw for err, or a close on success. Run
+// calls it after the heartbeats stopped, so nothing follows its frame.
+func (s *stream) finish(err error, cwdState func() *string) error {
+	if err := s.failed(); err != nil {
+		return err
 	}
-	if errors.Is(err, ErrUnsupported) {
-		// Like the desktop, throw and then still close the stream.
-		if err := s.control(frames.Throw(s.msg.Id, err), nil); err != nil {
+	switch {
+	case errors.Is(err, frames.ErrDropped):
+		err = nil
+	case errors.Is(err, ErrUnsupported):
+		// Like the desktop, throw without a stack trace and then still
+		// close the stream.
+		if err := s.control(frames.Throw(s.id, err), cwdState()); err != nil {
 			return err
 		}
 		err = nil
 	}
 	if err != nil {
-		return s.control(frames.Throw(s.msg.Id, err), cwd)
+		return s.control(frames.ToolThrow(s.id, err), cwdState())
 	}
-	return s.control(frames.Close(s.msg.Id), nil)
+	return s.control(frames.Close(s.id), nil)
 }
 
-func elapsedMs(start time.Time) *int32 {
-	ms := min(time.Since(start).Milliseconds(), math.MaxInt32)
-	return proto.Int32(int32(ms)) //nolint:gosec // clamped above
+// elapsedMs is the time since start in milliseconds.
+func elapsedMs(start time.Time) *int32 { return proto.Int32(roundMs(time.Since(start))) }
+
+// roundMs rounds d to milliseconds like the desktop's
+// Math.round(Math.max(0, ms)).
+func roundMs(d time.Duration) int32 {
+	ms := min(max(0, d).Round(time.Millisecond).Milliseconds(), math.MaxInt32)
+	return int32(ms) //nolint:gosec // clamped above
 }
 
 // Marshal encodes result, truncating read content until the JSON fits in

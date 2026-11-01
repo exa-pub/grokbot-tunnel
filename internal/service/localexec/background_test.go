@@ -31,29 +31,35 @@ func TestBackgroundReplaysForegroundState(t *testing.T) {
 }
 
 // Background jobs of a foreground command outlive it: its pipes are drained,
-// not closed. Output that arrives shortly after the command exits is still
-// forwarded, before the exit.
+// not closed. Output that arrives up to 5 s after the command exits is still
+// forwarded, before the exit, like the desktop's closeTimeout.
 func TestShellBackgroundJobSurvivesCommand(t *testing.T) {
 	eachShell(t, func(t *testing.T, home string) {
 		e := setupHome(t, home)
 		expectStdout(t, e, "(sleep 0.2; echo late) &", "late\n")
-		start := time.Now()
-		runShell(t, e, "(sleep 1.5; echo later; echo later >&2; echo alive > marker) &")
-		if time.Since(start) > 1400*time.Millisecond {
-			t.Fatal("command waited for its background job")
-		}
-		marker := filepath.Join(e.Root, "marker")
-		deadline := time.Now().Add(4 * time.Second)
-		for {
-			if _, err := os.Stat(marker); err == nil {
-				break
-			}
-			if time.Now().After(deadline) {
-				t.Fatal("background job was killed")
-			}
-			time.Sleep(20 * time.Millisecond)
+		r := runShell(t, e, "(sleep 1.5; echo later; echo later >&2) &")
+		if r.stdout != "later\n" || r.stderr != "later\n" {
+			t.Fatal(r.stdout, r.stderr)
 		}
 	})
+	t.Setenv("SHELL", "/bin/bash")
+	e := setup(t)
+	start := time.Now()
+	runShell(t, e, "(sleep 6; echo alive > marker) &")
+	if d := time.Since(start); d < 4900*time.Millisecond || d > 5900*time.Millisecond {
+		t.Fatal("command did not wait 5 s for its background job:", d)
+	}
+	marker := filepath.Join(e.Root, "marker")
+	deadline := time.Now().Add(4 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("background job was killed")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // D10: the footer is always the one Go writes, whatever the output contains,
@@ -184,6 +190,55 @@ func TestDetachedCommandState(t *testing.T) {
 	waitTerminal(t, e, collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 5; export KEEP=2",`+
 		`"timeout":50,"hardTimeout":300,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`)))
 	expectStdout(t, e, `printf %s "$KEEP"`, "1")
+}
+
+// Like the desktop's hN, the header has a title line for a description, for
+// spawned and detached commands alike.
+func TestTerminalTitle(t *testing.T) {
+	for _, msg := range []string{
+		`{"backgroundShellSpawnArgs":{"command":"true","description":"Run \"it\""}}`,
+		`{"shellStreamArgs":{"command":"sleep 0.2","description":"Run \"it\"","timeout":50,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`,
+	} {
+		e := setup(t)
+		data := waitTerminal(t, e, collect(t, e, execFrame(msg)))
+		if !strings.Contains(data, "\ntitle: \"Run \\\"it\\\"\"\nstatus: ") {
+			t.Fatalf("%s: %q", msg, data)
+		}
+	}
+}
+
+// Like the desktop, a terminal file holds the output decoded as UTF-8, with
+// U+FFFD for invalid bytes, for spawned and detached commands alike.
+func TestTerminalOutputDecoded(t *testing.T) {
+	for _, msg := range []string{
+		`{"backgroundShellSpawnArgs":{"command":"printf 'a\\377b\\342\\202'"}}`,
+		`{"shellStreamArgs":{"command":"printf 'x\\377'; sleep 0.2; printf 'a\\377b\\342\\202'","timeout":50,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`,
+	} {
+		e := setup(t)
+		data := waitTerminal(t, e, collect(t, e, execFrame(msg)))
+		if !strings.Contains(data, "a�b�\n---\nexit_code: 0") || strings.Contains(data, "\xff") {
+			t.Fatalf("%s: %q", msg, data)
+		}
+	}
+}
+
+// A command that cannot move to the background because its terminal file
+// cannot be created is killed before the error is reported, so none of its
+// output follows the throw.
+func TestDetachFailureKillsCommand(t *testing.T) {
+	e := setup(t)
+	if err := os.WriteFile(filepath.Join(e.Root, terminalfile.Dir), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	frames := collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 0.5; touch marker",`+
+		`"timeout":50,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`))
+	if c := frames[len(frames)-1].GetControl(); c == nil || !strings.Contains(c.MessageJson, "throw") {
+		t.Fatal(frames)
+	}
+	time.Sleep(time.Second)
+	if _, err := os.Stat(filepath.Join(e.Root, "marker")); err == nil {
+		t.Fatal("command kept running")
+	}
 }
 
 // Like the desktop, a terminal file keeps at most 1 MiB of each stream and

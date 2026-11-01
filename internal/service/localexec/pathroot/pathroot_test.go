@@ -139,14 +139,71 @@ func TestCwd(t *testing.T) {
 	assert.False(t, r.IsDir(""))
 }
 
+// L8: like the desktop's flt, ENOENT and ENOTDIR (a path through a file)
+// are "missing"; other stat failures leave the state out.
 func TestCwdState(t *testing.T) {
 	r := open(t)
 	require.NoError(t, os.WriteFile(filepath.Join(r.Dir(), "f"), nil, 0o600))
-	for in, want := range map[string]string{"": "exists", "/": "exists", "nope": "missing", "f": "missing"} {
+	for in, want := range map[string]string{"": "exists", "/": "exists", "nope": "missing", "f": "missing", "f/sub": "missing"} {
 		got := r.CwdState(in)
 		require.NotNil(t, got, in)
 		assert.Equal(t, want, *got, in)
 	}
+	if os.Geteuid() != 0 {
+		locked := filepath.Join(r.Dir(), "locked")
+		require.NoError(t, os.Mkdir(locked, 0o700))
+		require.NoError(t, os.Chmod(locked, 0))
+		t.Cleanup(func() { os.Chmod(locked, 0o700) })
+		assert.Nil(t, r.CwdState("locked/sub"))
+	}
+}
+
+// L9: like the desktop's ilt, a requested working directory is resolved
+// before the command runs: blank is the session's cwd, a missing one falls
+// back to the root with a warning, and other failures are errors in the
+// words of Node's fs.
+func TestResolveCwd(t *testing.T) {
+	r := open(t)
+	require.NoError(t, os.Mkdir(filepath.Join(r.Dir(), "d"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(r.Dir(), "f"), nil, 0o600))
+	for in, want := range map[string]string{"": "", "  ": "", "d": filepath.Join(r.Dir(), "d"), "/": "/"} {
+		dir, warning, err := r.ResolveCwd(in)
+		require.NoError(t, err, in)
+		assert.Equal(t, want, dir, in)
+		assert.Empty(t, warning, in)
+	}
+	for _, in := range []string{"missing", "f", "f/sub", " missing "} {
+		dir, warning, err := r.ResolveCwd(in)
+		require.NoError(t, err, in)
+		assert.Equal(t, r.Dir(), dir, in)
+		assert.Equal(t, "working directory "+in+" does not exist on this machine; running in "+r.Dir()+" instead\n", warning)
+	}
+	if os.Geteuid() != 0 {
+		locked := filepath.Join(r.Dir(), "locked")
+		require.NoError(t, os.Mkdir(locked, 0o700))
+		require.NoError(t, os.Chmod(locked, 0))
+		t.Cleanup(func() { os.Chmod(locked, 0o700) })
+		_, _, err := r.ResolveCwd("locked/sub")
+		require.ErrorIs(t, err, syscall.EACCES)
+		assert.EqualError(t, err, "EACCES: permission denied, stat '"+filepath.Join(locked, "sub")+"'")
+	}
+}
+
+// L10: an os.Root refusal that Check could not foresee, such as through a
+// dangling symlink, becomes the desktop's symlink refusal.
+func TestRefuse(t *testing.T) {
+	r := open(t)
+	require.NoError(t, os.Symlink(filepath.Join(t.TempDir(), "gone"), filepath.Join(r.Dir(), "dangling")))
+	rel, err := r.Check("dangling")
+	require.NoError(t, err)
+	_, err = r.FS().Stat(rel)
+	require.True(t, pathroot.Escaped(err))
+	err = pathroot.Refuse("dangling", err)
+	require.ErrorIs(t, err, pathroot.ErrOutside)
+	require.EqualError(t, err, "Path resolves through a symlink to outside the allowed local-exec root and was refused: dangling")
+	other := os.ErrNotExist
+	assert.Same(t, other, pathroot.Refuse("x", other))
+	assert.NoError(t, pathroot.Refuse("x", nil))
 }
 
 // D5: paths outside the root are refused in the desktop's words, lexically

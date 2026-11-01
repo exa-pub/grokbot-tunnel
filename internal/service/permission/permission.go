@@ -28,6 +28,11 @@ var (
 		"If they change it away from \"Never\", you may try again.")
 )
 
+// Question follows the action in a prompt. "a" switches the standing mode to
+// "always" for the rest of the process, which the next hello reports to the
+// server.
+const Question = "? [y/N, a = allow all actions for the rest of this session] "
+
 // Prompter asks the user a question; adapter/tty implements it.
 type Prompter interface {
 	// Interactive reports whether a question can be asked now.
@@ -53,12 +58,15 @@ func (p *Policy) Standing() entity.Mode {
 }
 
 // Allow returns nil if action may run. When server is set, the server's
-// approval flag is authoritative and the user is never prompted.
+// approval flag is authoritative and the user is never prompted. An empty
+// action cannot be described to the user and is refused instead of
+// prompted for, like the desktop refuses a request it cannot describe that
+// would need approval.
 func (p *Policy) Allow(ctx context.Context, action string, server, approved bool) error {
 	if ok, err := p.decide(server, approved); ok {
 		return err
 	}
-	if !p.interactive() {
+	if action == "" || !p.interactive() {
 		return ErrRefused
 	}
 	// Wait for the terminal without ignoring cancellation, so a queued request
@@ -80,7 +88,7 @@ func (p *Policy) Allow(ctx context.Context, action string, server, approved bool
 	if !p.interactive() {
 		return ErrRefused
 	}
-	answer, err := p.Prompter.Ask(ctx, action+"? [y/N/a] ")
+	answer, err := p.Prompter.Ask(ctx, action+Question)
 	if err != nil {
 		return err
 	}

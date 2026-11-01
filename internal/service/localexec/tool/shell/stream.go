@@ -1,7 +1,6 @@
 package shell
 
 import (
-	"io"
 	"sync"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
@@ -23,30 +22,31 @@ func stderrEvent(data string) *agentv1.ShellStream {
 }
 
 // shellOutput streams stdout and stderr to the agent and, once the command is
-// detached, to a terminal file. A single mutex preserves frame ordering across
-// both streams.
+// detached, to a terminal file, and keeps the full output if asked to. A
+// single mutex preserves frame ordering across both streams.
 type shellOutput struct {
 	mu       sync.Mutex
 	send     execstream.Send
-	hold     bool   // keep the raw output for a terminal file, the command may be detached
-	held     []byte // raw output so far, while hold
+	hold     bool   // keep the output for a terminal file, the command may be detached
+	held     []byte // output sent so far, while hold
 	file     *terminalfile.File
 	shellID  uint32 // number of the terminal file
 	detached bool   // the command was backgrounded; stop streaming
 	finished bool   // the command has exited; discard further output
 	err      error  // first send failure
+	full     *fullOutput
 }
 
 // detach starts terminal file shellID with start, given the output so far,
 // and stops streaming to the agent. It reports false, without calling start,
 // if the command has already finished.
-func (o *shellOutput) detach(shellID uint32, start func(held []byte) (*terminalfile.File, error)) (bool, error) {
+func (o *shellOutput) detach(shellID uint32, start func(held string) (*terminalfile.File, error)) (bool, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.finished {
 		return false, nil
 	}
-	f, err := start(o.held)
+	f, err := start(string(o.held))
 	if err != nil {
 		return false, err
 	}
@@ -55,19 +55,36 @@ func (o *shellOutput) detach(shellID uint32, start func(held []byte) (*terminalf
 	return true, nil
 }
 
-func (o *shellOutput) emit(event func(string) *agentv1.ShellStream, data string) error {
-	return o.send(shellMessage(event(data)))
+// emit forwards decoded output of a stream to the agent or, once detached,
+// to the terminal file.
+func (o *shellOutput) emit(event func(string) *agentv1.ShellStream, text string) {
+	if text == "" {
+		return
+	}
+	if o.detached {
+		o.file.WriteText(text)
+		return
+	}
+	if o.hold {
+		o.held = append(o.held, text...)
+	}
+	for data := []byte(text); len(data) > 0 && o.err == nil; {
+		n := textcodec.ChunkLen(data, streamChunk)
+		o.err = o.send(shellMessage(event(string(data[:n]))))
+		data = data[n:]
+	}
 }
 
 // finish discards all further output, so that nothing reaches the agent after
 // the command's exit or the terminal file after its footer. It returns the
-// terminal file, if the command was detached, for the footer.
-func (o *shellOutput) finish() (*terminalfile.File, uint32) {
+// terminal file, if the command was detached, for the footer, and the full
+// output.
+func (o *shellOutput) finish() (*terminalfile.File, uint32, *fullOutput) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.finished = true
 	o.held = nil
-	return o.file, o.shellID
+	return o.file, o.shellID, o.full
 }
 
 func (o *shellOutput) sendErr() error {
@@ -81,73 +98,93 @@ func (o *shellOutput) sendErr() error {
 // terminal file keeps the same.
 const maxStreamOutput = terminalfile.MaxStream
 
-// streamWriter forwards one stream, holding back a trailing incomplete UTF-8
-// sequence until the rest of it arrives.
+// streamWriter forwards one stream like the desktop's shell core executor
+// (dS): decoded as UTF-8, with a trailing incomplete sequence held back until
+// the rest of it arrives, and cut at maxStreamOutput. The full output, if
+// kept, goes on after the cut.
 type streamWriter struct {
 	out     *shellOutput
 	name    string                            // "stdout" or "stderr"
 	event   func(string) *agentv1.ShellStream // stdoutEvent or stderrEvent
-	file    io.Writer                         // the stream in the terminal file, once detached
 	partial []byte
 	sent    int  // bytes of the stream forwarded so far
 	trimmed bool // maxStreamOutput was reached
 }
 
 // Write never fails: the process must keep running even if the agent or the
-// terminal file stops accepting output, otherwise it would block on a full pipe.
-// Once the command is detached, the output goes to the terminal file only,
-// which goes on counting the stream's bytes.
+// terminal file stops accepting output, otherwise it would block on a full
+// pipe.
 func (w *streamWriter) Write(b []byte) (int, error) {
 	o := w.out
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.finished {
+	full := o.full
+	if o.finished || w.trimmed && !full.live() {
 		return len(b), nil
 	}
-	if o.file != nil {
-		if w.file == nil {
-			w.file = o.file.Stream(w.name, w.sent, w.trimmed)
-		}
-		return w.file.Write(b)
-	}
-	if w.trimmed {
-		return len(b), nil
-	}
-	if w.sent+len(b) > maxStreamOutput {
-		// The held-back bytes still go out, as the desktop flushes its decoder.
+	forward := !w.trimmed && w.sent+len(b) <= maxStreamOutput
+	keep := full.live() && full.fits(len(b))
+	cut := !w.trimmed && !forward
+	held := w.flushHeld(cut, full.live() && !keep)
+	text := w.decode(b, forward || keep)
+	full.take(keep, b, text)
+	switch {
+	case forward:
+		w.sent += len(b)
+		o.emit(w.event, text)
+	case cut:
+		o.emit(w.event, held)
 		w.trimmed = true
-		if len(w.partial) > 0 && o.err == nil {
-			o.err = o.emit(w.event, textcodec.LossyUTF8(w.partial))
+		if o.detached {
+			o.file.Truncated(w.name)
 		}
-		w.partial = nil
-		return len(b), nil
-	}
-	w.sent += len(b)
-	if o.hold {
-		o.held = append(o.held, b...)
-	}
-	if o.err != nil {
-		return len(b), nil
-	}
-	data := append(w.partial, b...)
-	n := textcodec.CompleteLen(data)
-	w.partial = append([]byte(nil), data[n:]...)
-	for data = data[:n]; len(data) > 0; {
-		n := textcodec.ChunkLen(data, streamChunk)
-		if err := o.emit(w.event, textcodec.LossyUTF8(data[:n])); err != nil {
-			o.err = err
-			break
-		}
-		data = data[n:]
 	}
 	return len(b), nil
 }
 
+// flushHeld returns the held-back bytes, decoded, if the stream is cut now,
+// and writes them to the full output if that stops now.
+func (w *streamWriter) flushHeld(cut, stop bool) string {
+	if !cut && !stop {
+		return ""
+	}
+	held := textcodec.LossyUTF8(w.partial)
+	if stop {
+		w.out.full.write(held)
+	}
+	if !cut {
+		return ""
+	}
+	return held
+}
+
+// decode returns b decoded after the held-back bytes, holding back a trailing
+// incomplete sequence, or drops the held-back bytes if b is not used.
+func (w *streamWriter) decode(b []byte, used bool) string {
+	if !used {
+		w.partial = nil
+		return ""
+	}
+	data := append(w.partial, b...)
+	n := textcodec.CompleteLen(data)
+	w.partial = append([]byte(nil), data[n:]...)
+	return textcodec.LossyUTF8(data[:n])
+}
+
+// flush writes the held-back bytes, as the desktop ends its decoder when the
+// command exits.
 func (w *streamWriter) flush() {
-	w.out.mu.Lock()
-	defer w.out.mu.Unlock()
-	if len(w.partial) > 0 && !w.out.detached && !w.out.finished && w.out.err == nil {
-		w.out.err = w.out.emit(w.event, textcodec.LossyUTF8(w.partial))
+	o := w.out
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if len(w.partial) > 0 && !o.finished {
+		text := textcodec.LossyUTF8(w.partial)
+		if o.full.live() {
+			o.full.write(text)
+		}
+		if !w.trimmed {
+			o.emit(w.event, text)
+		}
 	}
 	w.partial = nil
 }

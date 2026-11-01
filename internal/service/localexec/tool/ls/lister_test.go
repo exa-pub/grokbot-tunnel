@@ -12,7 +12,7 @@ import (
 func testLister(t *testing.T) *lister {
 	t.Helper()
 	root := openRoot(t)
-	return &lister{root: root.Dir(), files: root.FS(), budget: listBudget}
+	return &lister{root: root.Dir(), files: root.FS()}
 }
 
 // fakeRG writes an executable that stands in for ripgrep.
@@ -42,32 +42,48 @@ func TestWalkSkipsUnreadableDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chmod(locked, 0o700) }) //nolint:errcheck,gosec // best effort for TempDir cleanup
-	tree, err := l.walk(context.Background(), ".")
-	if err != nil {
+	b := newTreeBuilder(l.root)
+	if err := l.walk(context.Background(), b, ".", true); err != nil {
 		t.Fatal(err)
 	}
+	tree := b.root
 	if len(tree.ChildrenFiles) != 1 || tree.ChildrenWereProcessed || len(tree.ChildrenDirs) != 1 || tree.ChildrenDirs[0].ChildrenWereProcessed {
 		t.Fatal(tree)
 	}
-	if _, err := l.walk(context.Background(), "locked"); err == nil {
+	if err := l.walk(context.Background(), newTreeBuilder(locked), "locked", true); err == nil {
 		t.Fatal("unreadable root listed")
 	}
 }
 
 // rg exits with 2 when some directories cannot be read; its output is still
-// a usable tree. With no output the status is an error, as in the desktop.
+// a usable tree. With no output the status is an error, as in the desktop,
+// which quotes rg's stderr as it is.
 func TestRipgrepExitStatus(t *testing.T) {
 	l := testLister(t)
-	tree, err := l.ripgrep(context.Background(), fakeRG(t, `printf 'a.txt\0d/b.txt\0'; echo denied >&2; exit 2`), ".")
-	if err != nil || len(tree.ChildrenFiles) != 1 || len(tree.ChildrenDirs) != 1 {
-		t.Fatal(tree, err)
+	b := newTreeBuilder(l.root)
+	err := l.ripgrep(context.Background(), b, fakeRG(t, `printf 'a.txt\0d/b.txt\0'; echo denied >&2; exit 2`), ".")
+	if err != nil || len(b.root.ChildrenFiles) != 1 || len(b.root.ChildrenDirs) != 1 {
+		t.Fatal(b.root, err)
 	}
-	_, err = l.ripgrep(context.Background(), fakeRG(t, `echo denied >&2; exit 2`), ".")
-	if err == nil || err.Error() != "Ripgrep failed (exit 2) with no results: denied" {
+	err = l.ripgrep(context.Background(), newTreeBuilder(l.root), fakeRG(t, `echo denied >&2; exit 2`), ".")
+	if err == nil || err.Error() != "Ripgrep failed (exit 2) with no results: denied\n" {
+		t.Fatalf("%q", err)
+	}
+	if err = l.ripgrep(context.Background(), newTreeBuilder(l.root), fakeRG(t, `exit 1`), "."); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = l.ripgrep(context.Background(), fakeRG(t, `exit 1`), "."); err != nil {
-		t.Fatal(err)
+}
+
+// On timeout the partial tree keeps its root marked as processed, as the
+// desktop leaves it.
+func TestRipgrepTimeoutKeepsRoot(t *testing.T) {
+	l := testLister(t)
+	b := newTreeBuilder(l.root)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	err := l.ripgrep(ctx, b, fakeRG(t, `printf 'a.txt\0'; exec sleep 5`), ".")
+	if err == nil || len(b.root.ChildrenFiles) != 1 || !b.root.ChildrenWereProcessed {
+		t.Fatal(b.root, err)
 	}
 }
 
@@ -79,7 +95,7 @@ func TestRipgrepScanErrorKills(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	start := time.Now()
-	_, err := l.ripgrep(ctx, rg, ".")
+	err := l.ripgrep(ctx, newTreeBuilder(l.root), rg, ".")
 	if err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatal(err)
 	}

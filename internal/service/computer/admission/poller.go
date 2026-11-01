@@ -20,6 +20,15 @@ type Poller struct {
 // Request asks for a poll as soon as possible.
 func (p *Poller) Request() { p.need = true }
 
+// Reset forgets the backoff of failed polls and asks for a poll now. It is
+// used when the channel comes back, like the desktop's connected handler,
+// which polls at once and has no poll backoff at all.
+func (p *Poller) Reset() {
+	p.need = true
+	p.next = time.Time{}
+	p.backoff = minPollBackoff
+}
+
 // Needed reports whether a poll was requested and not yet started.
 func (p *Poller) Needed() bool { return p.need }
 

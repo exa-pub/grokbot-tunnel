@@ -24,7 +24,7 @@ func setup(t *testing.T) (*transfer.Transfer, *pathroot.Root) {
 	return transfer.New(root), root
 }
 
-// A new file gets 0644 less the umask, like any file the user creates.
+// A new file gets 0666 less the umask, like any file the user creates.
 func TestUploadNewFileHonorsUmask(t *testing.T) {
 	old := syscall.Umask(0o027)
 	defer syscall.Umask(old)

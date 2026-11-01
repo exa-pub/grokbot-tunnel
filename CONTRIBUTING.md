@@ -23,7 +23,7 @@ or lower ones. `golangci-lint` enforces this with `depguard` (see
 | Layer | Packages | Holds |
 |---|---|---|
 | 1 | `entity`, `gen` | domain values without I/O (identity, machine, credential, permission mode); generated protobuf code |
-| 2 | `pkg/*` | code without business logic: `frames` (user-computer frames), `textcodec`, `proc`, `atomicfile`, `uuid`, `envvar` |
+| 2 | `pkg/*` | code without business logic: `frames` (user-computer frames), `textcodec`, `proc`, `atomicfile`, `nodeerr` (Node-style errno texts), `uuid`, `envvar` |
 | 3 | `adapter/*`, `repository/*` | the outside world: `sandapi` (transport profiles, headers), `oauth`, `githubrelease`, `systemd`, `tty`; `staterepo` (`~/.grok/bot-tunnel`), `instancelock` |
 | 4 | `service/*` | the logic: `computer`, `localexec`, `permission`, `tokens`, `login`, `install`, `selfupdate` |
 | 5 | `api/cli` | cobra commands: flags become the options of one call |

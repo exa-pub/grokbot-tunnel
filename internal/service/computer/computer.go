@@ -9,7 +9,6 @@ package computer
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"math/rand/v2"
 	"time"
@@ -24,7 +23,19 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/credential"
 )
 
-const rpcTimeout = 20 * time.Second
+// Deadlines of the RPCs. Like the desktop provider's user-computer-data and
+// user-computer-control deadlines, a submit attempt gets 120 s, enough for a
+// batch of up to 8 MiB on a slow link, and a poll or a submit on shutdown
+// 10 s. Issuing the credential gets userTimeout; Register has its own.
+const (
+	dataTimeout    = 120 * time.Second
+	controlTimeout = 10 * time.Second
+	userTimeout    = 20 * time.Second
+)
+
+// ErrRemoved ends Run when the computer was removed from the account after
+// this process got a credential for it; connecting again registers it anew.
+var ErrRemoved = credential.ErrRemoved
 
 type (
 	requestFrame  = aiserverv1.GrokBotUserComputerRequestFrame
@@ -53,8 +64,17 @@ type Provider struct {
 	Debug        bool
 	Backend      string
 	AccountScope string
-	Now          func() time.Time
-	Jitter       func(time.Duration) time.Duration
+	// OnConnected, if set, is called once, when the server first accepts the
+	// computer on the watch stream.
+	OnConnected func()
+	// CloseIdle, if set, closes the idle connections of Channel. It is called
+	// when the watch stream went silent, as the desktop renews its client
+	// then, so that polls and submits do not reuse dead connections.
+	CloseIdle func()
+	Now       func() time.Time
+	// Jitter, if set, replaces the random parts of retry delays, given their
+	// bound d; tests make them predictable.
+	Jitter func(d time.Duration) time.Duration
 }
 
 // Run serves requests until ctx is canceled or a fatal error occurs.
@@ -64,12 +84,8 @@ func (pv *Provider) Run(ctx context.Context) error {
 	return s.run(ctx)
 }
 
-func rpcContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(ctx, rpcTimeout)
-}
-
 func (pv *Provider) issue(ctx context.Context) (entity.Credential, error) {
-	ctx, cancel := rpcContext(ctx)
+	ctx, cancel := context.WithTimeout(ctx, userTimeout)
 	defer cancel()
 	req := &aiserverv1.IssueGrokBotUserComputerCredentialRequest{MachineId: pv.Machine.MachineID}
 	r, err := pv.User.IssueGrokBotUserComputerCredential(ctx, connect.NewRequest(req))
@@ -130,10 +146,14 @@ func (pv *Provider) forgetCredential(rejected string) {
 	}
 }
 
-// submitFrames sends one batch and returns how many frames the server
-// accepted. It does not touch session state, so it may run on any goroutine.
-func (pv *Provider) submitFrames(ctx context.Context, credential string, frames []*responseFrame) (int, error) {
-	ctx, cancel := rpcContext(ctx)
+// submitFrames sends one batch within timeout and returns how many frames
+// are done with: all of them once the server answered. Like the desktop, a
+// smaller accepted_count is only logged: the server does not say which
+// frames it refused, and sending them again could repeat the final frame of
+// a request. It does not touch session state, so it may run on any
+// goroutine.
+func (pv *Provider) submitFrames(ctx context.Context, timeout time.Duration, credential string, frames []*responseFrame) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	req := &aiserverv1.SubmitGrokBotUserComputerResponsesRequest{
 		MachineId:  pv.Machine.MachineID,
@@ -144,14 +164,10 @@ func (pv *Provider) submitFrames(ctx context.Context, credential string, frames 
 	if err != nil {
 		return 0, err
 	}
-	n := int(r.Msg.AcceptedCount)
-	if n > len(frames) {
-		return 0, fmt.Errorf("invalid accepted_count %d", n)
+	if n := int(r.Msg.AcceptedCount); n < len(frames) {
+		log.Printf("server accepted %d of %d response frames; the rest were not queued for this machine", n, len(frames))
 	}
-	if n < len(frames) {
-		return n, fmt.Errorf("server accepted only %d response frames", n)
-	}
-	return n, nil
+	return len(frames), nil
 }
 
 func (pv *Provider) now() time.Time {
@@ -166,4 +182,19 @@ func (pv *Provider) jitter(d time.Duration) time.Duration {
 		return pv.Jitter(d)
 	}
 	return time.Duration(rand.Int64N(int64(max(d/2, time.Nanosecond)))) //nolint:gosec // jitter needs no cryptographic randomness
+}
+
+// random returns a random delay of at most d.
+func (pv *Provider) random(d time.Duration) time.Duration {
+	if pv.Jitter != nil {
+		return pv.Jitter(d)
+	}
+	return time.Duration(rand.Int64N(int64(d) + 1)) //nolint:gosec // jitter needs no cryptographic randomness
+}
+
+// closeIdle closes the idle connections of the channel, if it can.
+func (pv *Provider) closeIdle() {
+	if pv.CloseIdle != nil {
+		pv.CloseIdle()
+	}
 }

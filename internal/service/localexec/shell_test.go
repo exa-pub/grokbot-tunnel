@@ -3,6 +3,7 @@ package localexec
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -111,26 +112,96 @@ func TestBackgroundDoesNotWaitForForeground(t *testing.T) {
 	<-done
 }
 
-func TestQueuedShellCancelsWhileWaiting(t *testing.T) {
+// Like the desktop, foreground commands run in parallel, each from the state
+// of the moment it starts, and the one that ends last wins: a command started
+// before a "cd" and ending after it puts the old cwd back. A command whose
+// environment could not be saved keeps the one it started with, not one a
+// parallel command left.
+func TestShellParallelLastWriterWins(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		runShell(t, e, "mkdir sub; export X=0")
+		slow := make(chan shellResult)
+		go func() {
+			slow <- runShell(t, e, `sleep 1; export P=1 GROK_BIG="$(printf '%0200000d' 0)"`)
+		}()
+		time.Sleep(200 * time.Millisecond) // let the slow command start
+		start := time.Now()
+		r := runShell(t, e, "cd sub; export X=1 Q=1")
+		if time.Since(start) > 700*time.Millisecond || r.exit.Cwd != filepath.Join(e.Root, "sub") {
+			t.Fatal("waited for the running command:", time.Since(start), r.exit)
+		}
+		expectStdout(t, e, `printf %s "$X"; pwd`, "1"+filepath.Join(e.Root, "sub")+"\n")
+		if r := <-slow; r.exit.Cwd != e.Root {
+			t.Fatal(r.exit)
+		}
+		expectStdout(t, e, `printf '%s|%s|%s|' "$X" "$Q" "$P"; pwd`, "0|||"+e.Root+"\n")
+	})
+}
+
+// Parallel commands do not wait for each other.
+func TestShellParallelCommands(t *testing.T) {
 	e := setup(t)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 1"}}`))
-	}()
-	time.Sleep(100 * time.Millisecond) // let the first command take the shell
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
 	start := time.Now()
-	err := e.Handle(ctx, execFrame(`{"shellStreamArgs":{"command":"true"}}`), false,
-		func(*aiserverv1.GrokBotUserComputerResponseFrame) error { return nil })
+	var wg sync.WaitGroup
+	for i := range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runShell(t, e, fmt.Sprintf("sleep 1; export P%d=1", i))
+		}()
+	}
+	wg.Wait()
+	if d := time.Since(start); d > 2500*time.Millisecond {
+		t.Fatal("commands ran one at a time:", d)
+	}
+	r := runShell(t, e, `printf %s "$P0$P1$P2$P3"`)
+	if r.stdout != "1" {
+		t.Fatal(r.stdout) // the last one to end wins
+	}
+}
+
+// Like the desktop's dS, with fileOutputThresholdBytes an output above the
+// threshold also goes to <root>/agent-tools/<uuid>.txt, stdout and stderr as
+// they arrive, which the exit reports; the agent still gets at most 1 MiB of
+// each stream. A smaller output goes nowhere.
+func TestShellFullOutputFile(t *testing.T) {
+	e := setup(t)
+	small := runShellFrame(t, e, `{"shellStreamArgs":{"command":"echo hi","fileOutputThresholdBytes":"100"}}`)
+	if small.exit.OutputLocation != nil {
+		t.Fatal(small.exit)
+	}
+	r := runShellFrame(t, e, `{"shellStreamArgs":{"command":"echo err >&2; sleep 0.2; yes a | head -c 1500000; printf 'end\\377'",`+
+		`"fileOutputThresholdBytes":"1000"}}`)
+	loc := r.exit.OutputLocation
+	if loc == nil || filepath.Dir(loc.FilePath) != filepath.Join(e.Root, "agent-tools") || !strings.HasSuffix(loc.FilePath, ".txt") {
+		t.Fatal(r.exit)
+	}
+	data, err := os.ReadFile(loc.FilePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if time.Since(start) > 500*time.Millisecond {
-		t.Fatal("canceled command waited for the running one")
+	want := "err\n" + strings.Repeat("a\n", 750000) + "end�"
+	if string(data) != want || loc.SizeBytes != 1500008 || loc.LineCount != 750001 {
+		t.Fatalf("%d bytes, location %v", len(data), loc)
 	}
-	<-done
+	if len(r.stdout) > 1<<20 || r.stderr != "err\n" {
+		t.Fatal(len(r.stdout), r.stderr)
+	}
+}
+
+// If the full output cannot be saved, the agent is told on stderr, as on the
+// desktop, and the exit has no output location.
+func TestShellFullOutputFileFails(t *testing.T) {
+	e := setup(t)
+	if err := os.WriteFile(filepath.Join(e.Root, "agent-tools"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := runShellFrame(t, e, `{"shellStreamArgs":{"command":"head -c 2000 /dev/zero","fileOutputThresholdBytes":"1000"}}`)
+	prefix := "\nThe full output could not be saved to " + filepath.Join(e.Root, "agent-tools") + "/"
+	if r.exit.OutputLocation != nil || !strings.HasPrefix(r.stderr, prefix) || !strings.HasSuffix(r.stderr, "\n") {
+		t.Fatal(r.exit, r.stderr)
+	}
 }
 
 // Linux limits a single exec argument to 128 KiB; state and commands must not

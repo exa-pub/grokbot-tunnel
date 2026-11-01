@@ -40,8 +40,14 @@ func (s *Store) Load(name string, v any) error {
 	return json.Unmarshal(b, v)
 }
 
+// writeOptions write documents durably: the rename is synced too, so that a
+// rotated refresh token is not lost after a power failure, when the server
+// has already revoked the old one.
+var writeOptions = atomicfile.Options{Prefix: ".tmp-", SyncDir: true}
+
 // Save atomically replaces the named document with v. The directory and the
-// file are readable only by the owner because they hold secrets.
+// file are readable only by the owner because they hold secrets. An
+// entity.Machine is saved in the format of Machine.
 func (s *Store) Save(name string, v any) error {
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
@@ -49,11 +55,17 @@ func (s *Store) Save(name string, v any) error {
 	if err := os.Chmod(s.Dir, 0o700); err != nil { //nolint:gosec // directories need the execute bit
 		return err
 	}
+	switch m := v.(type) {
+	case entity.Machine:
+		v = toFile(m)
+	case *entity.Machine:
+		v = toFile(*m)
+	}
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	return atomicfile.Write(s.path(name), b, atomicfile.Options{Prefix: ".tmp-"})
+	return atomicfile.Write(s.path(name), b, writeOptions)
 }
 
 // lockPoll is how often Lock retries while another process holds the lock.
@@ -90,28 +102,73 @@ func (s *Store) Lock(ctx context.Context) (func(), error) {
 	}
 }
 
-// Machine loads the machine identity, creating it on first use. Identities
-// saved before HostID existed get the current host's.
+// machineFile is machine.json. Label holds only a label chosen with --label
+// and is marked by LabelSet. Files written before LabelSet existed always
+// saved a label, the host name unless one was chosen.
+type machineFile struct {
+	MachineID string `json:"machine_id"`
+	Label     string `json:"label,omitempty"`
+	LabelSet  bool   `json:"label_set,omitempty"`
+	HostID    string `json:"host_id,omitempty"`
+}
+
+// hostname is os.Hostname, empty on error; a variable for tests.
+var hostname = func() string {
+	h, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return h
+}
+
+// Machine loads the machine identity, creating it on first use. Its Label
+// is the saved --label, else the current host name as the desktop
+// registers it, so that it follows renames. Identities saved before HostID
+// existed get the current host's, and older files are rewritten in the
+// current format.
 func (s *Store) Machine() (entity.Machine, error) {
-	var m entity.Machine
-	err := s.Load("machine", &m)
+	var f machineFile
+	err := s.Load("machine", &f)
 	switch {
-	case err == nil && m.MachineID == "":
-		return m, errors.New("invalid machine.json: empty machine_id")
-	case err == nil && (m.HostID != "" || HostID() == ""):
-		return m, nil
-	case err == nil:
-		m.HostID = HostID()
-		return m, s.Save("machine", m)
-	case !errors.Is(err, os.ErrNotExist):
-		return m, err
+	case errors.Is(err, os.ErrNotExist):
+		f = machineFile{MachineID: uuid.New(), HostID: HostID()}
+		err = s.Save("machine", f)
+	case err != nil:
+		return entity.Machine{}, err
+	case f.MachineID == "":
+		return entity.Machine{}, errors.New("invalid machine.json: empty machine_id")
+	default:
+		migrated := f
+		if migrated.HostID == "" {
+			migrated.HostID = HostID()
+		}
+		if migrated.Label != "" && !migrated.LabelSet {
+			// The host name saved as the default label is not a choice.
+			migrated.LabelSet = entity.NormalizeLabel(migrated.Label) != entity.NormalizeLabel(hostname())
+			if !migrated.LabelSet {
+				migrated.Label = ""
+			}
+		}
+		if migrated != f {
+			f = migrated
+			err = s.Save("machine", f)
+		}
 	}
-	m.MachineID = uuid.New()
-	m.HostID = HostID()
-	if host, err := os.Hostname(); err == nil {
-		m.Label = host
+	m := entity.Machine{MachineID: f.MachineID, Label: entity.NormalizeLabel(f.Label), HostID: f.HostID}
+	if m.Label == "" {
+		m.Label = entity.DefaultLabel(hostname())
 	}
-	return m, s.Save("machine", m)
+	return m, err
+}
+
+// toFile returns machine.json for m: its Label is saved only if it is not
+// the default one, which then follows the host name.
+func toFile(m entity.Machine) machineFile {
+	f := machineFile{MachineID: m.MachineID, HostID: m.HostID}
+	if label := entity.NormalizeLabel(m.Label); label != "" && label != entity.DefaultLabel(hostname()) {
+		f.Label, f.LabelSet = label, true
+	}
+	return f
 }
 
 // machineIDPath is the systemd machine ID, unique per installation.

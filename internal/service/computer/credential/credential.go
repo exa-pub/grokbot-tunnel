@@ -26,6 +26,11 @@ const (
 	maxRetryAfter   = 15 * time.Minute
 )
 
+// ErrRemoved ends Run once the server says that the computer, for which this
+// process already issued a credential, was removed from the account.
+var ErrRemoved = errors.New("this computer was removed from Grok Bot; " +
+	"run grokbot-tunnel connect, or grokbot-tunnel install for the service, to add it again")
+
 // Manager holds the current credential.
 type Manager struct {
 	jitter func(time.Duration) time.Duration
@@ -35,6 +40,9 @@ type Manager struct {
 	// proven is set once the watch stream connected with the credential, as in
 	// the desktop; until then a rejection counts as a failed issue.
 	proven bool
+	// held is set once an issue succeeded in this process, like the desktop's
+	// scopes.held: only then does a removal end the session.
+	held bool
 	// Failed issues, and credentials rejected before they were proven, are
 	// retried after nextRenew.
 	issuing   bool
@@ -78,21 +86,23 @@ func (m *Manager) Ensure(now time.Time, stopping bool) (usable, issue bool) {
 	return usable, issue
 }
 
-// Issued applies the result of the issue in flight. Without a session or a
-// registration no credential can ever be issued, so those errors are
-// returned as fatal; other failures are retried with backoff.
+// Issued applies the result of the issue in flight. Without a session no
+// credential can ever be issued, so those errors are returned as fatal. So is
+// a removal of the computer, but only once this process held a credential
+// for it, like the desktop's ket: before that, the removal is retried like
+// any failure. Other failures are retried with backoff.
 func (m *Manager) Issued(now time.Time, c entity.Credential, err error) (fatal error) {
 	m.issuing = false
 	switch {
-	case Removed(err):
-		return fmt.Errorf("computer registration refused: %w", err)
+	case m.held && Removed(err):
+		return fmt.Errorf("%w (%w)", ErrRemoved, err)
 	case errors.Is(err, entity.ErrLogout), errors.Is(err, entity.ErrNotLoggedIn):
 		return err
 	case err != nil:
 		m.fail(now, retryAfter(err))
 		return nil
 	}
-	m.c, m.issuedAt, m.proven = c, now, false
+	m.c, m.issuedAt, m.proven, m.held = c, now, false, true
 	m.nextRenew = time.Time{}
 	return nil
 }

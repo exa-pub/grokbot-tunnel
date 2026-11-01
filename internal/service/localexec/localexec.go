@@ -24,8 +24,10 @@ import (
 
 // Gate decides whether action may run, like the desktop's isLocalUseBlocked.
 // server selects server-authoritative permission checks, in which approved is
-// the server's decision. It returns nil to allow the action, or the error the
-// agent sees.
+// the server's decision. An empty action is an exec request that no tool
+// handles, which the desktop does not describe; like the desktop, the gate
+// does not ask the user about it. It returns nil to allow the action, or the
+// error the agent sees.
 type Gate func(ctx context.Context, action string, server, approved bool) error
 
 // Executor runs user-computer requests below Root.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -68,7 +69,8 @@ func jwt(exp time.Time) string {
 }
 
 // rotatingServer accepts each refresh token once and answers reuse with
-// shouldLogout, like the real server. extra is merged into every response.
+// shouldLogout in a successful response, the only place the desktop reads
+// it. extra is merged into every response.
 func rotatingServer(t *testing.T, extra map[string]any) (*httptest.Server, *atomic.Int32) {
 	var mu sync.Mutex
 	var calls atomic.Int32
@@ -81,7 +83,6 @@ func rotatingServer(t *testing.T, extra map[string]any) (*httptest.Server, *atom
 		defer mu.Unlock()
 		old := body["refresh_token"]
 		if used[old] {
-			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]bool{"shouldLogout": true})
 			return
 		}
@@ -198,5 +199,72 @@ func TestTokenWithoutExpiry(t *testing.T) {
 	source.Identity.ExpiresAtMS = time.Now().Add(time.Minute).UnixMilli()
 	if tok, err := source.Token(context.Background(), false); err != nil || tok != "access-r''" {
 		t.Fatal(tok, err)
+	}
+}
+
+// Like the desktop's unauthenticated recovery, a rejected token is refreshed
+// only while it is the current one, and at most once per cooldown.
+func TestRejected(t *testing.T) {
+	s, calls := rotatingServer(t, nil)
+	source := &TokenSource{Store: &staterepo.Store{Dir: t.TempDir()}, HTTP: s.Client(), Base: s.URL,
+		Identity: entity.Identity{AccessToken: "opaque", RefreshToken: "r"}}
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := source.Rejected(context.Background(), "opaque"); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if calls.Load() != 1 || source.Snapshot().AccessToken != "access-r'" {
+		t.Fatal(calls.Load(), source.Snapshot())
+	}
+	// The new token is rejected too, but within the cooldown.
+	if err := source.Rejected(context.Background(), "access-r'"); err != nil || calls.Load() != 1 {
+		t.Fatal(err, calls.Load())
+	}
+	source.rejectedAt = time.Now().Add(-rejectCooldown)
+	if err := source.Rejected(context.Background(), "access-r'"); err != nil || calls.Load() != 2 {
+		t.Fatal(err, calls.Load())
+	}
+}
+
+// shouldLogout in a failed refresh is a temporary failure: the login stays.
+func TestRefreshFailureKeepsLogin(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"shouldLogout":true}`)
+	}))
+	defer s.Close()
+	store := &staterepo.Store{Dir: t.TempDir()}
+	login := entity.Identity{AccessToken: "a", RefreshToken: "r"}
+	store.Save("auth", login)
+	source := &TokenSource{Store: store, HTTP: s.Client(), Base: s.URL, Identity: login}
+	if _, err := source.Token(context.Background(), true); err == nil || errors.Is(err, entity.ErrLogout) {
+		t.Fatal(err)
+	}
+	var saved entity.Identity
+	store.Load("auth", &saved)
+	if saved != login || source.Snapshot() != login {
+		t.Fatal(saved, source.Snapshot())
+	}
+}
+
+func TestRefreshUsesClientID(t *testing.T) {
+	var got atomic.Value
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		json.NewDecoder(r.Body).Decode(&body)
+		got.Store(body["client_id"])
+		json.NewEncoder(w).Encode(map[string]string{"access_token": "a2"})
+	}))
+	defer s.Close()
+	source := &TokenSource{Store: &staterepo.Store{Dir: t.TempDir()}, HTTP: s.Client(), Base: s.URL, ClientID: "custom",
+		Identity: entity.Identity{RefreshToken: "r"}}
+	if _, err := source.Token(context.Background(), true); err != nil || got.Load() != "custom" {
+		t.Fatal(err, got.Load())
 	}
 }

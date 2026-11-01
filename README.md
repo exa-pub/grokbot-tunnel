@@ -73,12 +73,15 @@ run `install` again with the new ones.
 |------|---------|
 | `--permission` | `always` allows everything; `never` refuses everything; `ask` asks before each action. Required for `install`; `connect` defaults to `ask`. |
 | `--root` | Directory for file operations and commands. Defaults to the home directory. |
-| `--label` | Computer name in Grok Bot. Saved for later runs; defaults to the host name. |
+| `--label` | Computer name in Grok Bot, at most 100 characters. Saved for later runs; defaults to the current host name. |
 | `--no-auto-update` | `install` only: do not update grokbot-tunnel daily. |
 
 With `ask`, the service runs only actions approved in Grok Bot, and `connect`
 in a terminal asks there: `y` allows the action, `a` allows all actions until
-the end of the session, anything else refuses it. If Grok Bot manages
+`connect` exits (and from then on reports `always` to Grok Bot), anything else
+refuses it. The question says when a command can keep running after the
+request ends; requests the tunnel does not support are refused without asking.
+If Grok Bot manages
 permissions itself, the tunnel never asks and runs exactly the actions Grok Bot
 approved, whatever `--permission` says. To refuse all actions then, stop the
 tunnel (`grokbot-tunnel uninstall`, or stop `connect`).
@@ -96,6 +99,9 @@ tunnel (`grokbot-tunnel uninstall`, or stop `connect`).
   started.
 - After the login is revoked the service stops; run `grokbot-tunnel login`
   and then `install` again.
+- If the computer is removed in Grok Bot while the tunnel runs, the tunnel
+  stops and systemd does not restart it; run `install` (or `connect`) again to
+  add it back.
 - `grokbot-tunnel uninstall` stops and removes the service and keeps the binary
   and your login.
 
@@ -123,7 +129,8 @@ service: to try it out, to approve actions in the terminal with
 grokbot-tunnel connect
 ```
 
-Ctrl-C stops running commands; background commands keep running. Only one
+Ctrl-C stops running commands; background commands keep running. Closing the
+terminal or SSH session also stops the tunnel cleanly. Only one
 tunnel runs per user at a time, so stop the service first
 (`systemctl --user stop grokbot-tunnel`); otherwise `connect` exits and says so.
 

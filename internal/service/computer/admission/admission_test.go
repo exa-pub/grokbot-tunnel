@@ -111,6 +111,55 @@ func TestCancelWaitingRequest(t *testing.T) {
 	assert.Nil(t, s.Cancel("unknown"))
 }
 
+// Like the desktop's poll loop, a work frame that follows the cancel of its
+// request in the same poll is answered as canceled before it started, once,
+// and an unrecognized one as unknown; in a later poll, or for a request seen
+// before the cancel, it is ignored.
+func TestCancelBeforeWorkFrame(t *testing.T) {
+	poll := func(s *admission.Scheduler, fs ...*admission.Request) []admission.Verdict {
+		queued := make([]*aiserverv1.GrokBotUserComputerQueuedRequest, 0, len(fs))
+		for _, f := range fs {
+			queued = append(queued, &aiserverv1.GrokBotUserComputerQueuedRequest{Id: fmt.Sprint(f.RequestId, len(queued), f.Frame), Frame: f})
+		}
+		fresh := s.Polled(queued)
+		out := make([]admission.Verdict, 0, len(fresh))
+		for _, f := range fresh {
+			v, err := s.Accept(f, false)
+			if v == admission.Reject {
+				want := frames.ErrCanceledBeforeStart
+				if frames.Unrecognized(f) {
+					want = frames.ErrUnknownFrame
+				}
+				require.ErrorIs(t, err, want)
+			}
+			if v == admission.Cancel {
+				s.Cancel(f.RequestId)
+			}
+			out = append(out, v)
+		}
+		return out
+	}
+	R, C, I, Q := admission.Reject, admission.Cancel, admission.Ignore, admission.Queued
+	for _, tc := range []struct {
+		name  string
+		polls [][]*admission.Request
+		want  [][]admission.Verdict
+	}{
+		{"same poll", [][]*admission.Request{{cancel("a"), exec("a"), exec("a")}}, [][]admission.Verdict{{C, R, I}}},
+		{"later poll", [][]*admission.Request{{cancel("a")}, {exec("a")}}, [][]admission.Verdict{{C}, {I}}},
+		{"seen before", [][]*admission.Request{{exec("a"), cancel("a"), exec("a")}}, [][]admission.Verdict{{Q, C, I}}},
+		{"unrecognized", [][]*admission.Request{{cancel("u"), putURL("u")}}, [][]admission.Verdict{{C, R}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := admission.New()
+			for i, fs := range tc.polls {
+				assert.Equal(t, tc.want[i], poll(s, fs...), i)
+			}
+			assert.Empty(t, s.Tasks())
+		})
+	}
+}
+
 // A started task stays until Finish; the caller stops it.
 func TestCancelStartedRequest(t *testing.T) {
 	s := admission.New()
@@ -229,4 +278,24 @@ func TestPoller(t *testing.T) {
 	assert.True(t, p.Start(now), "acks delivered right away, backoff reset")
 	p.Done(now, nil, false)
 	assert.False(t, p.Needed())
+}
+
+// Reset drops the backoff of failed polls: a channel that came back is
+// polled at once, and the next failure backs off from 1 s again.
+func TestPollerReset(t *testing.T) {
+	var p admission.Poller
+	now := time.Unix(1000, 0)
+	for range 6 {
+		p.Request()
+		now = now.Add(time.Minute)
+		require.True(t, p.Start(now))
+		p.Done(now, assert.AnError, false)
+	}
+	require.False(t, p.Start(now.Add(30*time.Second)), "backoff below 32 s")
+	p.Reset()
+	assert.True(t, p.Needed())
+	require.True(t, p.Start(now), "reset poller held back")
+	p.Done(now, assert.AnError, false)
+	assert.False(t, p.Start(now.Add(time.Second-time.Millisecond)))
+	assert.True(t, p.Start(now.Add(time.Second)), "backoff not reset")
 }
