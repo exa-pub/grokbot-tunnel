@@ -31,6 +31,9 @@ jobs:
         with:
           version: v2.15.0
 
+      - name: Shellcheck
+        run: make shellcheck
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -40,11 +43,66 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install zsh and ripgrep
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh ripgrep
+
       - name: Vet
         run: go vet ./...
 
       - name: Test
-        run: make test-race
+        run: make test-race COVERPROFILE=coverage.out | tee test.log
+
+      - name: Coverage by package
+        run: |
+          grep -E 'coverage: ' test.log | tee coverage.txt
+          go tool cover -func=coverage.out | tail -1 | tee -a coverage.txt
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            coverage.txt
+          if-no-files-found: error
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      - name: End-to-end tests
+        run: make e2e
+
+  systemd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install, update and uninstall under systemd
+        run: make systemd-test
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # The latest Go, not the minimum of go.mod: older toolchains can fail a
+      # fuzz run with "context deadline exceeded" when -fuzztime runs out
+      # (go.dev/issue/75804), without any failing input.
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: stable
+
+      - name: Fuzz parsers for 10 s each
+        run: make fuzz FUZZTIME=10s
 
   proto:
     runs-on: ubuntu-latest
@@ -59,7 +117,7 @@ jobs:
         run: make proto-check
 
   dist:
-    needs: [lint, test, proto]
+    needs: [lint, test, e2e, systemd, fuzz, proto]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

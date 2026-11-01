@@ -1,0 +1,201 @@
+package computer
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
+
+	"connectrpc.com/connect"
+
+	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/replies"
+)
+
+const (
+	shutdownGrace = 8 * time.Second
+	// Part of shutdownGrace kept for the final submit after waiting for workers.
+	finalFlushGrace = 2 * time.Second
+	// The presence is withdrawn on shutdown within this time, as the desktop's
+	// user-computer-presence-withdraw deadline.
+	withdrawTimeout = 750 * time.Millisecond
+	// submitRetryStep is the pause between failed final submits.
+	submitRetryStep = 200 * time.Millisecond
+)
+
+// withdrawPresence tells the server in the background that the session with
+// presence is gone, so the computer goes offline at once instead of when the
+// stream times out. The channel is closed once the call is done.
+func (pv *Provider) withdrawPresence(credential, presence string) <-chan struct{} {
+	done := make(chan struct{})
+	if credential == "" {
+		close(done)
+		return done
+	}
+	req := &aiserverv1.WithdrawGrokBotUserComputerPresenceRequest{
+		MachineId:     pv.Machine.MachineID,
+		Credential:    credential,
+		PresenceToken: presence,
+	}
+	go func() {
+		defer close(done)
+		ctx, cancel := context.WithTimeout(context.Background(), withdrawTimeout)
+		defer cancel()
+		if _, err := pv.Channel.WithdrawGrokBotUserComputerPresence(ctx, connect.NewRequest(req)); err != nil {
+			log.Printf("withdraw presence: %v", err)
+		}
+	}()
+	return done
+}
+
+// ackOnShutdown acknowledges the last polled requests in the background, so
+// that the server does not deliver them again after a restart and they do
+// not run twice (bug B5). There is no ack RPC, so it polls with the acks;
+// requests that poll returns are neither started nor acknowledged and come
+// back later. Go+: the desktop does not poll while closing. The channel is
+// closed once the call is done.
+func (pv *Provider) ackOnShutdown(credential string, acks []string) <-chan struct{} {
+	done := make(chan struct{})
+	if credential == "" || len(acks) == 0 {
+		close(done)
+		return done
+	}
+	req := &aiserverv1.PollGrokBotUserComputerRequestsRequest{
+		MachineId:  pv.Machine.MachineID,
+		Credential: credential,
+		AckIds:     acks,
+		Limit:      1, // 0 could mean the server's default
+	}
+	go func() {
+		defer close(done)
+		ctx, cancel := context.WithTimeout(context.Background(), withdrawTimeout)
+		defer cancel()
+		if _, err := pv.Channel.PollGrokBotUserComputerRequests(ctx, connect.NewRequest(req)); err != nil {
+			log.Printf("acknowledge requests: %v", err)
+		}
+	}()
+	return done
+}
+
+// stop ends the session, whether ctx was canceled or a fatal error occurred:
+// the watch stops, and the last polled requests are acknowledged and the
+// presence withdrawn while shutdown finishes the work.
+func (s *session) stop() {
+	s.stopWatch()
+	credential := s.cred.Current().Credential
+	acked := s.pv.ackOnShutdown(credential, s.admit.Acks())
+	withdrawn := s.pv.withdrawPresence(credential, s.presence)
+	s.shutdown()
+	<-withdrawn
+	<-acked
+}
+
+// shutdown cancels all work and flushes results within shutdownGrace, keeping
+// finalFlushGrace of it for the final submit even if workers or the submit in
+// flight are slow.
+func (s *session) shutdown() {
+	s.stopWork()
+	if s.watchCancel != nil {
+		s.watchCancel()
+	}
+	// Like the desktop, requests that never started learn that the computer
+	// stopped serving.
+	for _, t := range s.admit.Drop() {
+		if err := frames.Reject(t.Frame, admission.ErrStopped, s.out.Sink); err != nil {
+			log.Printf("reject %s: %v", t.ID, err)
+		}
+	}
+	ctx, cancel := s.withTimeout(context.Background(), shutdownGrace)
+	defer cancel()
+	workers, stopWorkers := s.withTimeout(ctx, shutdownGrace-finalFlushGrace)
+	defer stopWorkers()
+	if !s.awaitWorkers(workers) {
+		log.Printf("shutdown: %d requests still running", s.admit.Active())
+	}
+	if s.out.Submitting() {
+		// The workers' budget was the wait for the submit in flight, like the
+		// desktop's wait for the flush in progress, which gives up and submits
+		// the rest. The final submit leaves out the frames still in flight, so
+		// none is sent twice.
+		log.Printf("final submit: previous submit still running; sending the rest")
+	}
+	for drained := false; !drained; {
+		select {
+		case f := <-s.replies:
+			s.out.Take(f, s.admit.Canceled(f.RequestId))
+		default:
+			drained = true
+		}
+	}
+	if err := s.submit(ctx); err != nil {
+		log.Printf("final submit: %v", err)
+	}
+}
+
+// awaitWorkers collects results until all workers and the submit in flight
+// finish. It reports false if ctx expired first. A full batch goes out in
+// the background, like any submit: one cut short by ctx would leave frames
+// the server may have accepted pending, and the final submit would send them
+// again (C3-1). A batch still in flight when ctx expires is left to finish;
+// the final submit leaves out its frames.
+func (s *session) awaitWorkers(ctx context.Context) bool {
+	for s.admit.Active() > 0 || s.out.Submitting() {
+		select {
+		case f := <-s.replies:
+			if s.out.Take(f, s.admit.Canceled(f.RequestId)) {
+				s.startSubmit()
+			}
+		case r := <-s.submitted:
+			s.out.Settle(r.frames, r.accepted)
+			if r.err == nil && len(s.out.Pending()) >= replies.SubmitBatch {
+				s.startSubmit()
+			}
+		case id := <-s.done:
+			s.admit.Finish(id)
+		case <-ctx.Done():
+			return false
+		}
+	}
+	return true
+}
+
+// submit delivers the pending frames on the caller's goroutine, retrying
+// briefly on failure. Frames of a submit in flight are not sent.
+func (s *session) submit(ctx context.Context) error {
+	failures := 0
+	for s.cred.Current().Credential != "" {
+		batch := s.out.Batch()
+		if len(batch) == 0 {
+			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		before := len(s.out.Pending())
+		credential := s.cred.Current().Credential
+		n, err := s.pv.submitFrames(ctx, controlTimeout, credential, batch)
+		s.out.Accepted(batch, n)
+		if err != nil {
+			s.invalidate(credential, err)
+			if s.cred.Current().Credential == "" {
+				return err
+			}
+		}
+		if len(s.out.Pending()) < before {
+			failures = 0
+			continue
+		}
+		failures++
+		if failures >= replies.SubmitAttempts {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(submitRetryStep):
+		}
+	}
+	return nil
+}

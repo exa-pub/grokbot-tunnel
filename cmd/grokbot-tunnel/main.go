@@ -8,20 +8,27 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/cli"
-	"github.com/exa-pub/grokbot-tunnel/internal/service"
+	"github.com/exa-pub/grokbot-tunnel/internal/app"
 )
 
-func main() {
-	if service.Journald() {
-		// The journal stamps every line itself.
-		log.SetFlags(0)
+// stopSignals returns the signals that stop the program cleanly. SIGHUP comes
+// when the terminal of a foreground connect goes away, e.g. with its SSH
+// session. It is left out if the program was started with it ignored, as by
+// nohup: handling it would end the ignoring.
+func stopSignals() []os.Signal {
+	sigs := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	if !signal.Ignored(syscall.SIGHUP) {
+		sigs = append(sigs, syscall.SIGHUP)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	err := cli.Execute(ctx, os.Args[1:])
+	return sigs
+}
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
+	err := app.Run(ctx, os.Args[1:])
 	stop()
 	if err != nil {
 		log.Print(err)
-		os.Exit(cli.ExitCode(err))
+		os.Exit(app.ExitCode(err))
 	}
 }

@@ -48,7 +48,8 @@ on failure and keeps itself up to date.
 
    `--permission` decides what the agent may do, since the service has no
    terminal to ask you in: `always` runs every action the agent requests,
-   `ask` runs only the actions you approve in Grok Bot, `never` refuses all.
+   `ask` runs only the actions you approve in Grok Bot, `never` refuses all
+   unless Grok Bot manages permissions itself (see below).
 
 The service starts at boot, restarts on failure and updates grokbot-tunnel
 daily. Check on it with:
@@ -72,14 +73,23 @@ run `install` again with the new ones.
 |------|---------|
 | `--permission` | `always` allows everything; `never` refuses everything; `ask` asks before each action. Required for `install`; `connect` defaults to `ask`. |
 | `--root` | Directory for file operations and commands. Defaults to the home directory. |
-| `--label` | Computer name in Grok Bot. Saved for later runs; defaults to the host name. |
+| `--label` | Computer name in Grok Bot, at most 100 characters. Saved for later runs; defaults to the current host name. |
 | `--no-auto-update` | `install` only: do not update grokbot-tunnel daily. |
 
 With `ask`, the service runs only actions approved in Grok Bot, and `connect`
 in a terminal asks there: `y` allows the action, `a` allows all actions until
-the end of the session, anything else refuses it. If Grok Bot manages
-permissions itself, the tunnel never asks and runs only the actions Grok Bot
-approved.
+`connect` exits (and from then on reports `always` to Grok Bot), anything else
+refuses it. The question says when a command can keep running after the
+request ends; requests the tunnel does not support are refused without asking.
+A `--permission` given explicitly (always the case for the service) is also
+set as the computer's permission in Grok Bot at every start; a team policy may
+keep a lower one, which the log then says. A plain `connect` without the flag
+leaves the setting in Grok Bot as it is. If Grok Bot manages permissions
+itself, the tunnel never asks and runs exactly the actions Grok Bot approved,
+by that setting; its log then says so. A change made in Grok Bot lasts until
+the tunnel starts again with `--permission`. To refuse all actions, start it
+with `--permission never` or stop it (`grokbot-tunnel uninstall`, or stop
+`connect`).
 
 ## Managing the service
 
@@ -90,10 +100,20 @@ approved.
   `systemctl` and `journalctl` commands.
 - The service keeps the `PATH` and `SHELL` of the shell you run `install` in,
   so the agent's commands find the same programs.
+- The service and the daily update also keep the proxy (`HTTPS_PROXY`,
+  `HTTP_PROXY`, `NO_PROXY`, in either case) and CA (`SSL_CERT_FILE`,
+  `SSL_CERT_DIR`) settings of that shell. A proxy URL with credentials is kept
+  in `~/.grok/bot-tunnel/service.env`, readable only by you, instead of the
+  unit file. Re-run `install` after changing them.
 - Stopping or restarting the service also stops background commands the agent
   started.
 - After the login is revoked the service stops; run `grokbot-tunnel login`
   and then `install` again.
+- If the computer is removed in Grok Bot while the tunnel runs, the tunnel
+  stops and systemd does not restart it; run `install` (or `connect`) again to
+  add it back. The service is still enabled, so the computer comes back the
+  next time the service starts, e.g. after a reboot; run
+  `grokbot-tunnel uninstall` to keep it removed.
 - `grokbot-tunnel uninstall` stops and removes the service and keeps the binary
   and your login.
 
@@ -121,29 +141,34 @@ service: to try it out, to approve actions in the terminal with
 grokbot-tunnel connect
 ```
 
-Ctrl-C stops running commands; background commands keep running. Only one
+Ctrl-C stops running commands; background commands keep running. Closing the
+terminal or SSH session also stops the tunnel cleanly. Only one
 tunnel runs per user at a time, so stop the service first
 (`systemctl --user stop grokbot-tunnel`); otherwise `connect` exits and says so.
 
 ## What the agent gets
 
 - A persistent shell: each command continues from the working directory,
-  variables, aliases and functions the previous one left. Background commands
+  variables, shell options and functions the previous one left (aliases are
+  not kept). Background commands
   write their output to `<root>/terminals/<number>.txt`.
 - File reads, directory listings, and uploads and downloads up to 100 MiB.
+  Paths may start with `~` or be `file://` URLs; they are checked against
+  `--root` after expansion.
 - Names of Codex and Claude Code skills, MCP servers, plugins and commands, with
   keys, links, emails and paths removed.
 
 ## Security
 
-- Commands run with your privileges. `--root` limits only file operations and
-  the starting directory, not what commands can access. Codex and Claude Code
+- Commands run with your privileges. `--root` limits only file operations;
+  commands start in it unless the agent asks for another directory, and can
+  access anything you can. Codex and Claude Code
   settings are read from the home directory even if it is outside `--root`.
 - Tokens are stored unencrypted in `~/.grok/bot-tunnel/`, readable only by you.
 - `--debug` logs requests in full, including commands and file contents; for
   the service they go to the journal.
 
-To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md).
+To build from source or work on the code, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 grokbot-tunnel is an independent project, not affiliated with or endorsed by
 xAI. Grok Bot is a trademark of its owner.

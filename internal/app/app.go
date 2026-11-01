@@ -1,20 +1,31 @@
-// Package app wires configuration, authentication and RPC clients into the
-// login and connect workflows.
+// Package app assembles the program: it reads the environment, builds the
+// HTTP and RPC clients, the store and the services, and hands them to the
+// command line. It holds no logic of its own.
 package app
 
 import (
+	"context"
 	"errors"
+	"io"
+	"log"
 	"net/http"
-	"os"
-	"strings"
 	"time"
+
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/githubrelease"
 
 	"connectrpc.com/connect"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/auth"
-	"github.com/exa-pub/grokbot-tunnel/internal/client"
-	"github.com/exa-pub/grokbot-tunnel/internal/config"
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/oauth"
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/sandapi"
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/systemd"
+	"github.com/exa-pub/grokbot-tunnel/internal/api/cli"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
+	"github.com/exa-pub/grokbot-tunnel/internal/repository/staterepo"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/computer"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/install"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/selfupdate"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/tokens"
 )
 
 const (
@@ -22,37 +33,69 @@ const (
 	maxMessage  = 128 << 20
 )
 
-// Env returns the environment variable key without a trailing slash, or
-// fallback if it is unset.
-func Env(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return strings.TrimRight(v, "/")
+// App implements the commands of the command line.
+type App struct{}
+
+var _ cli.App = App{}
+
+// Run runs the command line with args.
+func Run(ctx context.Context, args []string) error {
+	if systemd.Journald() {
+		// The journal stamps every line itself.
+		log.SetFlags(0)
 	}
-	return fallback
+	return cli.Execute(ctx, args, App{})
 }
 
-func backendURL() string {
-	return Env("SAND_BACKEND_URL", Env("CURSOR_API_BASE_URL", "https://api2.cursor.sh"))
+// ExitCode returns the exit status for an error from Run. A computer removed
+// from the account exits like a revoked login, so that systemd does not
+// restart the service, which would register the computer again.
+func ExitCode(err error) int {
+	if errors.Is(err, computer.ErrRemoved) {
+		return install.ExitLogin
+	}
+	return cli.ExitCode(err)
 }
 
-func websiteURL() string {
-	return Env("SAND_CURSOR_WEBSITE_URL", Env("CURSOR_WEBSITE_URL", "https://cursor.com"))
+// Login signs the user in; see Login.
+func (App) Login(ctx context.Context, opts cli.LoginOptions, out io.Writer) error {
+	return Login(ctx, opts, out)
+}
+
+// Connect serves requests; see Connect.
+func (App) Connect(ctx context.Context, opts cli.ConnectOptions) error { return Connect(ctx, opts) }
+
+// Install installs the service; see install.Install.
+func (App) Install(ctx context.Context, opts install.Options, out io.Writer) error {
+	return install.Install(ctx, opts, out)
+}
+
+// Uninstall removes the service; see install.Uninstall.
+func (App) Uninstall(ctx context.Context, out io.Writer) error { return install.Uninstall(ctx, out) }
+
+// Update replaces this binary; see selfupdate.Run.
+func (App) Update(ctx context.Context, opts selfupdate.Options, out io.Writer) error {
+	opts.Unit = install.TunnelUnit
+	if url := releasesURL(); url != "" {
+		opts.Client = &githubrelease.Client{Base: url}
+	}
+	return selfupdate.Run(ctx, opts, out)
 }
 
 // env holds what both workflows need.
 type env struct {
-	store    *config.Store
-	machine  config.Machine
+	store    *staterepo.Store
+	machine  entity.Machine
 	base     string
 	rest     *http.Client // plain REST calls: login polling and token refresh
 	computer *http.Client // Connect RPC authenticated by the computer credential
 	rpc      *http.Client // Connect RPC authenticated as the user
 	lookup   *http.Client // privacy-mode lookups, as the user but always private
-	privacy  *client.Privacy
+	privacy  *sandapi.Privacy
 }
 
 func newEnv(clientVersion string) (*env, error) {
-	store, err := config.Default()
+	store, err := staterepo.Default()
 	if err != nil {
 		return nil, err
 	}
@@ -64,44 +107,46 @@ func newEnv(clientVersion string) (*env, error) {
 	if !ok {
 		return nil, errors.New("http.DefaultTransport is not an *http.Transport")
 	}
-	http1 := defaultTransport.Clone()
-	http1.ForceAttemptHTTP2 = false
-	privacy := &client.Privacy{}
-	userRPC := client.Transport{
+	// Like the desktop's clients, all of them speak HTTP/1.1 only.
+	http1 := sandapi.HTTP1(defaultTransport)
+	privacy := &sandapi.Privacy{}
+	userRPC := sandapi.Transport{
 		Base:    http1,
 		Machine: machine.MachineID,
 		Version: clientVersion,
-		Profile: client.UserRPC,
+		Profile: sandapi.UserRPC,
 		Privacy: privacy,
 	}
 	return &env{
 		store:   store,
 		machine: machine,
 		base:    backendURL(),
-		rest: &http.Client{Timeout: restTimeout, Transport: client.Transport{
-			Base:    defaultTransport.Clone(),
-			Profile: client.AuthREST,
+		rest: &http.Client{Timeout: restTimeout, Transport: sandapi.Transport{
+			Base:    http1.Clone(),
+			Profile: sandapi.AuthREST,
 		}},
-		computer: &http.Client{Transport: client.Transport{
+		computer: &http.Client{Transport: sandapi.Transport{
 			Base:    http1.Clone(),
 			Version: clientVersion,
-			Profile: client.ComputerRPC,
+			Profile: sandapi.ComputerRPC,
 		}},
 		rpc:     &http.Client{Transport: userRPC},
-		lookup:  client.PrivacyHTTP(userRPC),
+		lookup:  sandapi.PrivacyHTTP(userRPC),
 		privacy: privacy,
 	}, nil
 }
 
 // user holds the RPC clients authenticated as the signed-in user.
 type user struct {
-	tokens    *auth.TokenSource
+	tokens    *tokens.TokenSource
 	dashboard rpc.DashboardServiceClient
 	grokbot   rpc.GrokBotServiceClient
 }
 
-func (e *env) user(identity config.Auth) *user {
-	tokens := &auth.TokenSource{Store: e.store, HTTP: e.rest, Base: e.base, Identity: identity}
+func (e *env) user(identity entity.Identity) *user {
+	tokens := &tokens.TokenSource{
+		Store: e.store, HTTP: e.rest, Base: e.base, ClientID: oauth.ClientIDFor(e.base, authClientID()), Identity: identity,
+	}
 	u := &user{
 		tokens:    tokens,
 		dashboard: rpc.NewDashboardServiceClient(e.rpc, e.base, userOptions(tokens)...),
@@ -112,16 +157,27 @@ func (e *env) user(identity config.Auth) *user {
 	return u
 }
 
+// awaitRefresh waits, at most tokens.WaitTimeout, for a token refresh still
+// in flight before the process exits; see tokens.TokenSource.Wait. ctx has
+// often ended by then, so only its values are kept.
+func awaitRefresh(ctx context.Context, t *tokens.TokenSource) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), tokens.WaitTimeout)
+	defer cancel()
+	if err := t.Wait(ctx); err != nil {
+		log.Printf("token refresh still running at exit: %v", err)
+	}
+}
+
 // computerChannel returns the client for the credential-authenticated channel.
 func (e *env) computerChannel() rpc.GrokBotServiceClient {
-	return rpc.NewGrokBotServiceClient(e.computer, e.base, connect.WithReadMaxBytes(maxMessage), client.Compression())
+	return rpc.NewGrokBotServiceClient(e.computer, e.base, connect.WithReadMaxBytes(maxMessage), sandapi.Compression())
 }
 
 // userOptions authenticate calls with the user's bearer token.
-func userOptions(tokens *auth.TokenSource) []connect.ClientOption {
+func userOptions(tokens *tokens.TokenSource) []connect.ClientOption {
 	return []connect.ClientOption{
-		connect.WithInterceptors(client.Bearer(tokens)),
+		connect.WithInterceptors(sandapi.Bearer(tokens)),
 		connect.WithReadMaxBytes(maxMessage),
-		client.Compression(),
+		sandapi.Compression(),
 	}
 }
