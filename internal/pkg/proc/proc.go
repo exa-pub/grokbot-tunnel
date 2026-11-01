@@ -5,19 +5,29 @@ package proc
 import (
 	"errors"
 	"log"
-	"os"
 	"os/exec"
 	"syscall"
 	"time"
 )
 
-// Kill kills the process group of c, if it was started.
+// killDelay is how long a process group has between SIGTERM and SIGKILL,
+// like the desktop's.
+const killDelay = time.Second
+
+// Kill stops the process group of c, if it was started, like the desktop: a
+// SIGTERM, then a SIGKILL after killDelay, whether or not the group is gone.
 func Kill(c *exec.Cmd) {
 	if c.Process == nil {
 		return
 	}
-	if err := syscall.Kill(-c.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
-		log.Printf("kill process group %d: %v", c.Process.Pid, err)
+	pid := c.Process.Pid
+	signalGroup(pid, syscall.SIGTERM)
+	time.AfterFunc(killDelay, func() { signalGroup(pid, syscall.SIGKILL) })
+}
+
+func signalGroup(pid int, sig syscall.Signal) {
+	if err := syscall.Kill(-pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
+		log.Printf("signal process group %d: %v", pid, err)
 	}
 }
 
@@ -28,18 +38,6 @@ func Wait(c *exec.Cmd) {
 	if err := c.Wait(); err != nil && !errors.As(err, &exitErr) {
 		log.Printf("shell: %v", err)
 	}
-}
-
-// ExitCode follows the shell convention of 128+signal for killed processes;
-// a process that was never reaped counts as killed.
-func ExitCode(state *os.ProcessState) int {
-	if state == nil {
-		return 128 + int(syscall.SIGKILL)
-	}
-	if ws, ok := state.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-		return 128 + int(ws.Signal())
-	}
-	return state.ExitCode()
 }
 
 // PID returns the process ID of the started c.

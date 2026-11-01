@@ -4,8 +4,9 @@ VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo de
 LDFLAGS   := -s -w -X $(PKG)/internal/api/cli.version=$(VERSION)
 PLATFORMS := linux/amd64 linux/arm64
 GOLANGCI_LINT ?= golangci-lint
+FUZZTIME  ?= 10s
 
-.PHONY: all build test test-race e2e systemd-test lint proto proto-check dist clean
+.PHONY: all build test test-race e2e systemd-test fuzz shellcheck lint proto proto-check dist clean
 
 all: lint test build
 
@@ -42,6 +43,13 @@ e2e:
 # needs docker.
 systemd-test:
 	./tests/systemd/run.sh
+
+# Runs every fuzz target for FUZZTIME.
+fuzz:
+	FUZZTIME=$(FUZZTIME) ./scripts/fuzz.sh
+
+shellcheck:
+	shellcheck install.sh scripts/*.sh tests/*/*.sh
 
 lint:
 	$(GOLANGCI_LINT) run ./...

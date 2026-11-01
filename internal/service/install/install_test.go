@@ -101,6 +101,9 @@ func TestQuoting(t *testing.T) {
 			t.Errorf("quoteEnv(%q): %v", bad, err)
 		}
 	}
+	if _, err := quoteExec([]string{"/home/caf\xe9"}); !errors.Is(err, errInvalidUTF8) {
+		t.Errorf("invalid UTF-8 accepted: %v", err)
+	}
 	if got, err := quoteEnv("A=$x y"); err != nil || got != `"A=$x y"` {
 		t.Error(got, err)
 	}

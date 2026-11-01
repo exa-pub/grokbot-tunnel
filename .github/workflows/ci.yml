@@ -31,6 +31,9 @@ jobs:
         with:
           version: v2.15.0
 
+      - name: Shellcheck
+        run: make shellcheck
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -86,6 +89,18 @@ jobs:
       - name: Install, update and uninstall under systemd
         run: make systemd-test
 
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      - name: Fuzz parsers for 10 s each
+        run: make fuzz FUZZTIME=10s
+
   proto:
     runs-on: ubuntu-latest
     steps:
@@ -99,7 +114,7 @@ jobs:
         run: make proto-check
 
   dist:
-    needs: [lint, test, e2e, systemd, proto]
+    needs: [lint, test, e2e, systemd, fuzz, proto]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

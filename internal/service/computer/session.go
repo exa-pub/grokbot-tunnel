@@ -87,6 +87,10 @@ type session struct {
 	admit       *admission.Scheduler
 	poll        admission.Poller
 	out         replies.Queue
+
+	// withTimeout is context.WithTimeout; tests expire shutdown's budgets
+	// without waiting for them.
+	withTimeout func(context.Context, time.Duration) (context.Context, context.CancelFunc)
 }
 
 func newSession(ctx context.Context, pv *Provider) *session {
@@ -102,6 +106,8 @@ func newSession(ctx context.Context, pv *Provider) *session {
 		cred:      credential.New(pv.cachedCredential(), pv.jitter),
 		stream:    watch.New(pv.jitter),
 		admit:     admission.New(),
+
+		withTimeout: context.WithTimeout,
 	}
 	s.life, s.stopLife = context.WithCancel(context.Background())
 	s.work, s.stopWork = context.WithCancel(ctx)

@@ -41,6 +41,10 @@ const (
 	Aborted   = "aborted"
 )
 
+// MaxStream is how many bytes of each output stream a terminal file keeps,
+// like the desktop's 1 MiB; a marker (gN) replaces the rest.
+const MaxStream = 1 << 20
+
 const (
 	timestampFormat = "2006-01-02T15:04:05.000Z"
 	// refresh is how often the header is rewritten (GVe).
@@ -100,8 +104,39 @@ func Start(f *os.File, cmd Command, initial []byte) (*File, error) {
 	return t, nil
 }
 
-// Write appends b to the output.
-func (t *File) Write(b []byte) (int, error) { return t.f.Write(b) }
+// Stream returns the writer of output stream name, "stdout" or "stderr", of
+// which written bytes are already in the file, or were trimmed already. It
+// keeps MaxStream bytes: the write that would exceed them is replaced by a
+// marker and the rest is dropped, as on the desktop. Writes after Exit are
+// dropped. Writes never fail, so the command never blocks on its output.
+func (t *File) Stream(name string, written int, trimmed bool) io.Writer {
+	return &stream{t: t, name: name, written: written, trimmed: trimmed}
+}
+
+type stream struct {
+	t       *File
+	name    string
+	written int
+	trimmed bool
+}
+
+func (s *stream) Write(b []byte) (int, error) {
+	s.t.mu.Lock()
+	defer s.t.mu.Unlock()
+	if s.t.ended || s.trimmed {
+		return len(b), nil
+	}
+	out := b
+	if s.written+len(b) > MaxStream {
+		s.trimmed = true
+		out = []byte(truncated(s.name))
+	}
+	s.written += len(b)
+	if _, err := s.t.f.Write(out); err != nil {
+		log.Printf("terminal file: %v", err)
+	}
+	return len(b), nil
+}
 
 // Exit writes the footer for a command that ended with state, aborted by us
 // or not, sets the final status and closes the file. Like the desktop, the
@@ -110,8 +145,7 @@ func (t *File) Write(b []byte) (int, error) { return t.f.Write(b) }
 func (t *File) Exit(state *os.ProcessState, aborted bool) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.ended = true
-	close(t.stop)
+	t.end()
 	defer func() {
 		if err := t.f.Close(); err != nil {
 			log.Printf("terminal file: %v", err)
@@ -141,6 +175,20 @@ func (t *File) Exit(state *os.ProcessState, aborted bool) error {
 		return err
 	}
 	return t.writeHeader(now)
+}
+
+// Stop stops writing to a file whose command never ran; the caller closes it.
+func (t *File) Stop() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.end()
+}
+
+func (t *File) end() {
+	if !t.ended {
+		t.ended = true
+		close(t.stop)
+	}
 }
 
 // refresh rewrites the header every refresh until Exit.
@@ -175,6 +223,12 @@ func (t *File) writeHeader(now time.Time) error {
 // newline, carriage return and tab are escaped.
 func quote(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`, "\t", `\t`).Replace(s) + `"`
+}
+
+// truncated is the desktop's marker for stream name cut at MaxStream (gN).
+func truncated(name string) string {
+	return fmt.Sprintf("\n[%s truncated by cursor: the command wrote more than %d characters to %s; "+
+		"only the first %d were captured and the rest was dropped from this file]\n", name, MaxStream, name, MaxStream)
 }
 
 // padEnd pads s to the desktop's field width of 9.

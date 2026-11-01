@@ -515,24 +515,32 @@ func TestQueuedEventPreventsStaleDrop(t *testing.T) {
 	}
 }
 
+// A worker that never finishes gets shutdownGrace-finalFlushGrace; the final
+// submit still runs, within shutdownGrace. The budgets expire when the test
+// says so, not in real time (T5).
 func TestShutdownFlushesDespiteSlowWorker(t *testing.T) {
-	if testing.Short() {
-		t.Skip("waits for the worker grace period")
-	}
 	var now time.Time
 	c := &stubCloud{}
 	s := stubSession(t, c, &now)
 	withCredential(s, "c", false)
 	occupy(t, s, "stuck", 1) // never finishes
 	s.out.Add(closeFrame("done"))
+	var budgets []time.Duration
+	s.withTimeout = func(parent context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+		budgets = append(budgets, d)
+		ctx, cancel := context.WithCancel(parent)
+		if d < shutdownGrace {
+			cancel() // the workers' budget is used up
+		}
+		return ctx, cancel
+	}
 	start := time.Now()
 	s.shutdown()
 	if _, submits, _ := c.counts(); submits != 1 || len(s.out.Pending()) != 0 {
 		t.Fatal("final submit skipped", submits)
 	}
-	if d := time.Since(start); d > shutdownGrace {
-		t.Fatal("shutdown overran its grace", d)
-	}
+	assert.Equal(t, []time.Duration{shutdownGrace, shutdownGrace - finalFlushGrace}, budgets)
+	assert.Less(t, time.Since(start), time.Second)
 }
 
 func TestPollFailureRetriesWithBackoff(t *testing.T) {

@@ -185,3 +185,25 @@ func TestDetachedCommandState(t *testing.T) {
 		`"timeout":50,"hardTimeout":300,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`)))
 	expectStdout(t, e, `printf %s "$KEEP"`, "1")
 }
+
+// Like the desktop, a terminal file keeps at most 1 MiB of each stream and
+// marks the cut, for spawned and detached commands alike.
+func TestTerminalStreamTrimmed(t *testing.T) {
+	const big = `yes a | head -c 2400000; echo err >&2`
+	for _, msg := range []string{
+		`{"backgroundShellSpawnArgs":{"command":"` + big + `"}}`,
+		`{"shellStreamArgs":{"command":"sleep 0.2; ` + big + `","timeout":50,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`,
+	} {
+		e := setup(t)
+		data := waitTerminal(t, e, collect(t, e, execFrame(msg)))
+		if strings.Count(data, "[stdout truncated by cursor: the command wrote more than 1048576 characters to stdout;") != 1 {
+			t.Fatalf("%s: no single marker", msg)
+		}
+		if n := strings.Count(data, "a\n") * 2; n > terminalfile.MaxStream || n < terminalfile.MaxStream/2 {
+			t.Fatalf("%s: %d bytes of stdout kept", msg, n)
+		}
+		if !strings.Contains(data, "err\n") {
+			t.Fatalf("%s: stderr lost", msg)
+		}
+	}
+}

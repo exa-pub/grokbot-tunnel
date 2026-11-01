@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -301,4 +302,33 @@ func TestPinnedReadTexts(t *testing.T) {
 	frames = pinnedExec(t, e, `{"readArgs":{"path":"blob.bin"}}`)
 	require.NotEmpty(t, frames)
 	assert.Equal(t, "File content is binary data, not text", frames[0].client.GetReadResult().GetInvalidFile().GetReason())
+}
+
+// Like the desktop, an aborted command reports the session's cwd, not the
+// directory it ran in.
+func TestPinnedAbortedExitCwd(t *testing.T) {
+	e := setup(t)
+	dir := t.TempDir()
+	events := shellEvents(pinnedExec(t, e, `{"shellStreamArgs":{"command":"sleep 5","timeout":100,"workingDirectory":"`+dir+`"}}`))
+	exit := events[len(events)-1].GetExit()
+	require.NotNil(t, exit)
+	assert.True(t, exit.GetAborted())
+	assert.Equal(t, e.Root, exit.GetCwd())
+}
+
+// Like the desktop, an aborted command gets SIGTERM first and SIGKILL a
+// second later.
+func TestPinnedAbortSignals(t *testing.T) {
+	e := setup(t)
+	start := time.Now()
+	events := shellEvents(pinnedExec(t, e, `{"shellStreamArgs":{"command":"trap 'echo term; trap - TERM' TERM; while :; do sleep 0.05; done","timeout":200}}`))
+	assert.GreaterOrEqual(t, time.Since(start), time.Second, "SIGKILL came before the delay")
+	var out strings.Builder
+	for _, ev := range events {
+		out.WriteString(ev.GetStdout().GetData())
+	}
+	assert.Contains(t, out.String(), "term")
+	exit := events[len(events)-1].GetExit()
+	require.NotNil(t, exit)
+	assert.Equal(t, uint32(4294967295), exit.GetCode())
 }

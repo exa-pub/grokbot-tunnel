@@ -1,7 +1,7 @@
 package shell
 
 import (
-	"log"
+	"io"
 	"sync"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
@@ -77,14 +77,17 @@ func (o *shellOutput) sendErr() error {
 }
 
 // maxStreamOutput is how many bytes of a stream the desktop forwards; the
-// agent gets nothing of a stream after the write that would exceed it.
-const maxStreamOutput = 1 << 20
+// agent gets nothing of a stream after the write that would exceed it. A
+// terminal file keeps the same.
+const maxStreamOutput = terminalfile.MaxStream
 
 // streamWriter forwards one stream, holding back a trailing incomplete UTF-8
 // sequence until the rest of it arrives.
 type streamWriter struct {
 	out     *shellOutput
+	name    string                            // "stdout" or "stderr"
 	event   func(string) *agentv1.ShellStream // stdoutEvent or stderrEvent
+	file    io.Writer                         // the stream in the terminal file, once detached
 	partial []byte
 	sent    int  // bytes of the stream forwarded so far
 	trimmed bool // maxStreamOutput was reached
@@ -92,6 +95,8 @@ type streamWriter struct {
 
 // Write never fails: the process must keep running even if the agent or the
 // terminal file stops accepting output, otherwise it would block on a full pipe.
+// Once the command is detached, the output goes to the terminal file only,
+// which goes on counting the stream's bytes.
 func (w *streamWriter) Write(b []byte) (int, error) {
 	o := w.out
 	o.mu.Lock()
@@ -99,27 +104,31 @@ func (w *streamWriter) Write(b []byte) (int, error) {
 	if o.finished {
 		return len(b), nil
 	}
-	if o.hold {
-		o.held = append(o.held, b...)
-	}
 	if o.file != nil {
-		if _, err := o.file.Write(b); err != nil {
-			log.Printf("terminal output: %v", err)
+		if w.file == nil {
+			w.file = o.file.Stream(w.name, w.sent, w.trimmed)
 		}
+		return w.file.Write(b)
 	}
-	if o.detached || o.err != nil || w.trimmed {
+	if w.trimmed {
 		return len(b), nil
 	}
 	if w.sent+len(b) > maxStreamOutput {
 		// The held-back bytes still go out, as the desktop flushes its decoder.
 		w.trimmed = true
-		if len(w.partial) > 0 {
+		if len(w.partial) > 0 && o.err == nil {
 			o.err = o.emit(w.event, textcodec.LossyUTF8(w.partial))
 		}
 		w.partial = nil
 		return len(b), nil
 	}
 	w.sent += len(b)
+	if o.hold {
+		o.held = append(o.held, b...)
+	}
+	if o.err != nil {
+		return len(b), nil
+	}
 	data := append(w.partial, b...)
 	n := textcodec.CompleteLen(data)
 	w.partial = append([]byte(nil), data[n:]...)
@@ -134,7 +143,6 @@ func (w *streamWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// flush sends the held-back bytes once the stream has ended.
 func (w *streamWriter) flush() {
 	w.out.mu.Lock()
 	defer w.out.mu.Unlock()

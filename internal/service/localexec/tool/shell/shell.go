@@ -110,8 +110,8 @@ func (ex *Executor) startShell(x *agentv1.ShellArgs, cwd string, st shellsession
 		return nil, err
 	}
 	defer release() // the child keeps its own descriptors
-	sh.stdout = &streamWriter{out: sh.out, event: stdoutEvent}
-	sh.stderr = &streamWriter{out: sh.out, event: stderrEvent}
+	sh.stdout = &streamWriter{out: sh.out, name: "stdout", event: stdoutEvent}
+	sh.stderr = &streamWriter{out: sh.out, name: "stderr", event: stderrEvent}
 	if err = sh.start(); err != nil {
 		return nil, err
 	}

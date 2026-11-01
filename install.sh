@@ -10,9 +10,12 @@
 # GROKBOT_INSTALL_DIR          target directory (default: ~/.local/bin)
 # GROKBOT_SKIP_CHECKSUM=1      install without verifying checksums.txt
 # GROKBOT_INSTALL_ALLOW_SUDO=1 allow running under sudo (installs for root)
+# GROKBOT_TUNNEL_RELEASES_URL  repository to download from (default: GitHub)
 set -euo pipefail
 
 REPO="exa-pub/grokbot-tunnel"
+REPO_URL="${GROKBOT_TUNNEL_RELEASES_URL:-https://github.com/${REPO}}"
+REPO_URL="${REPO_URL%/}"
 BINARY="grokbot-tunnel"
 OLD_BINARY="grokbot-cli"
 
@@ -102,7 +105,7 @@ else
 fi
 
 if [ "$TARGET" = latest ]; then
-    url="$(resolve_redirect "https://github.com/${REPO}/releases/latest" || true)"
+    url="$(resolve_redirect "${REPO_URL}/releases/latest" || true)"
     VERSION="${url##*/}"
     # Reject anything that is not a tag, e.g. when there are no releases yet.
     [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]] ||
@@ -112,7 +115,7 @@ else
 fi
 
 ARCHIVE="${BINARY}-linux-${ARCH}.tar.gz"
-BASE="https://github.com/${REPO}/releases/download/${VERSION}"
+BASE="${REPO_URL}/releases/download/${VERSION}"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

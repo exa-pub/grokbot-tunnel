@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/systemd"
 )
@@ -141,12 +142,19 @@ func quote(s string) string {
 }
 
 // checkValue rejects control characters, which unit files cannot carry
-// without escapes that systemd would interpret.
+// without escapes that systemd would interpret, and invalid UTF-8, which
+// systemd does not take in a setting.
 func checkValue(s string) error {
+	if !utf8.ValidString(s) {
+		return fmt.Errorf("%q: %w", s, errInvalidUTF8)
+	}
 	if strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 		return fmt.Errorf("%q: %w", s, errControl)
 	}
 	return nil
 }
 
-var errControl = errors.New("control characters are not allowed in service settings")
+var (
+	errControl     = errors.New("control characters are not allowed in service settings")
+	errInvalidUTF8 = errors.New("service settings must be valid UTF-8")
+)

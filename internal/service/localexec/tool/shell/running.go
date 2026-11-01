@@ -221,7 +221,10 @@ func (sh *runningShell) finish(reason agentv1.ShellAbortReason) error {
 		return err
 	}
 	cwd := sh.cwd
-	if !aborted {
+	if aborted {
+		// The session's cwd, as on the desktop: the command did not change it.
+		cwd, _ = sh.ex.session.Cwd("", sh.ex.session.State())
+	} else {
 		st, notice := sh.ex.session.Adopt(sh.snapshot, sh.fallback, sh.cwd)
 		if st != nil {
 			sh.final, cwd = st, st.Cwd()

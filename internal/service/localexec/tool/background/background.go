@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/rand/v2"
 	"os"
@@ -23,10 +24,13 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
-// The range of shell IDs, like the desktop's (yN, Dhe).
 const (
+	// The range of shell IDs, like the desktop's (yN, Dhe).
 	firstID = 1000
 	lastID  = 999_999
+	// waitDelay bounds how long a finished command's output is still
+	// collected while background jobs it started hold its pipes open.
+	waitDelay = time.Second
 )
 
 // Executor starts background commands below a root.
@@ -66,6 +70,8 @@ func (bg *Executor) Execute(ctx context.Context, args *agentv1.BackgroundShellSp
 }
 
 // Spawn starts cmd in its own session with output going to a terminal file.
+// Its output goes through pipes, so that each stream is cut at
+// terminalfile.MaxStream like the desktop's.
 // It starts from the session's state without waiting for running foreground
 // commands, and like the desktop, writes the state it leaves back to the
 // session when it exits on its own: the command that ends last wins. A
@@ -107,22 +113,43 @@ func (bg *Executor) Spawn(ctx context.Context, cmd, path string) (_ *agentv1.Bac
 		return nil, err
 	}
 	defer release() // the child keeps its own descriptors
-	c.Stdout = f
-	c.Stderr = f
-	if err = c.Start(); err != nil {
+	tf, out, err := launch(c, f, open, terminalfile.Command{Cwd: cwd, Command: cmd, Started: started})
+	if err != nil {
 		return nil, err
 	}
-	tf, err := terminalfile.Start(f, terminalfile.Command{PID: c.Process.Pid, Cwd: cwd, Command: cmd, Started: started}, nil)
+	go bg.finish(c, n, tf, out, cwd, snapshot, fallback)
+	return &agentv1.BackgroundShellSpawnSuccess{ShellId: n, Command: cmd, WorkingDirectory: cwd, Pid: proc.PID(c)}, nil
+}
+
+// launch starts c with its output going to terminal file f for cmd, then
+// opens the gate the command waits on, so that the header comes first.
+func launch(c *exec.Cmd, f, gate *os.File, cmd terminalfile.Command) (*terminalfile.File, *output, error) {
+	out, err := newOutput(c)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = c.Start()
+	out.started()
+	if err != nil {
+		out.close()
+		return nil, nil, err
+	}
+	cmd.PID = c.Process.Pid
+	tf, err := terminalfile.Start(f, cmd, nil)
 	if err == nil {
-		_, err = open.WriteString("\n")
+		_, err = gate.WriteString("\n")
 	}
 	if err != nil {
+		if tf != nil {
+			tf.Stop()
+		}
 		proc.Kill(c)
 		proc.Wait(c)
-		return nil, err
+		out.close()
+		return nil, nil, err
 	}
-	go bg.finish(c, n, tf, cwd, snapshot, fallback)
-	return &agentv1.BackgroundShellSpawnSuccess{ShellId: n, Command: cmd, WorkingDirectory: cwd, Pid: proc.PID(c)}, nil
+	out.drain(tf)
+	return tf, out, nil
 }
 
 // Terminal takes the next shell ID that no running command has and creates
@@ -161,8 +188,9 @@ func (bg *Executor) Remove(n uint32) error {
 // finish waits for background command c and writes the state it left to the
 // session, then the footer of its terminal file. The state comes first, as on
 // the desktop: whoever sees the footer sees the state.
-func (bg *Executor) finish(c *exec.Cmd, n uint32, tf *terminalfile.File, cwd string, snapshot, fallback *os.File) {
+func (bg *Executor) finish(c *exec.Cmd, n uint32, tf *terminalfile.File, out *output, cwd string, snapshot, fallback *os.File) {
 	proc.Wait(c)
+	out.wait(waitDelay)
 	bg.session.Commit(snapshot, fallback, cwd)
 	shellsession.CloseStateFiles(snapshot, fallback)
 	if err := tf.Exit(c.ProcessState, false); err != nil {
@@ -187,4 +215,68 @@ func (bg *Executor) take() (uint32, error) {
 		}
 	}
 	return 0, errors.New("No available background shell id in range") //nolint:staticcheck // the desktop's text
+}
+
+// output holds the pipes of a command's stdout and stderr.
+type output struct {
+	stdout, stdoutW *os.File
+	stderr, stderrW *os.File
+	drained         sync.WaitGroup
+}
+
+// newOutput connects c's stdout and stderr to new pipes.
+func newOutput(c *exec.Cmd) (*output, error) {
+	o := &output{}
+	var err error
+	if o.stdout, o.stdoutW, err = os.Pipe(); err != nil {
+		return nil, err
+	}
+	if o.stderr, o.stderrW, err = os.Pipe(); err != nil {
+		proc.CloseLogged(o.stdout)
+		proc.CloseLogged(o.stdoutW)
+		return nil, err
+	}
+	c.Stdout, c.Stderr = o.stdoutW, o.stderrW
+	return o, nil
+}
+
+// started closes the write ends once the command has them, so that the
+// readers see EOF once it and its children are gone.
+func (o *output) started() {
+	proc.CloseLogged(o.stdoutW)
+	proc.CloseLogged(o.stderrW)
+}
+
+// close closes the read ends of a command whose output is not drained.
+func (o *output) close() {
+	proc.CloseLogged(o.stdout)
+	proc.CloseLogged(o.stderr)
+}
+
+// drain copies the output into the streams of tf until EOF. Output after the
+// footer is read and dropped, so that background jobs never block on it.
+func (o *output) drain(tf *terminalfile.File) {
+	o.drained.Add(2)
+	for name, r := range map[string]*os.File{"stdout": o.stdout, "stderr": o.stderr} {
+		go func() {
+			defer o.drained.Done()
+			defer proc.CloseLogged(r)
+			if _, err := io.Copy(tf.Stream(name, 0, false), r); err != nil {
+				log.Printf("background output: %v", err)
+			}
+		}()
+	}
+}
+
+// wait waits until the output is drained, at most delay.
+func (o *output) wait(delay time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		o.drained.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(delay):
+	}
 }

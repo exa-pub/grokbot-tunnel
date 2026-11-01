@@ -34,7 +34,8 @@ func waitEnded(t *testing.T, path string) string {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		b, _ := os.ReadFile(path)
-		if strings.Contains(string(b), "\nended_at: ") {
+		// The footer comes first, then the status, as on the desktop.
+		if strings.Contains(string(b), "\nended_at: ") && !strings.Contains(string(b), terminalfile.StatusField(terminalfile.Running)) {
 			return string(b)
 		}
 		require.True(t, time.Now().Before(deadline), "terminal not finished: %q", b)

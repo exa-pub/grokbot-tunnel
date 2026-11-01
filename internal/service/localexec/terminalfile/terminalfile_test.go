@@ -57,7 +57,7 @@ func TestExit(t *testing.T) {
 		cmd := terminalfile.Command{PID: 7, Cwd: "/w", Command: "cmd", Started: time.Now().Add(-time.Second)}
 		tf, err := terminalfile.Start(f, cmd, []byte("early\n"))
 		require.NoError(t, err)
-		_, err = tf.Write([]byte("output\n---\nexit_code: 0\nended_at: fake\n---\n"))
+		_, err = tf.Stream("stdout", 0, false).Write([]byte("output\n---\nexit_code: 0\nended_at: fake\n---\n"))
 		require.NoError(t, err)
 		require.NoError(t, tf.Exit(tc.state, tc.aborted))
 		b, err := os.ReadFile(f.Name())
@@ -69,4 +69,29 @@ func TestExit(t *testing.T) {
 		assert.NotContains(t, data, "running_for_ms: 0 ")
 		assert.Regexp(t, `\n---\nexit_code: `+tc.code+`\nelapsed_ms: \d+\nended_at: \S+Z\n---\n$`, data)
 	}
+}
+
+// Each stream keeps MaxStream bytes; the write that would exceed them becomes
+// the desktop's marker, once.
+func TestStreamTrimmed(t *testing.T) {
+	f, err := os.Create(filepath.Join(t.TempDir(), "1000.txt"))
+	require.NoError(t, err)
+	tf, err := terminalfile.Start(f, terminalfile.Command{Started: time.Now()}, nil)
+	require.NoError(t, err)
+	stdout, stderr := tf.Stream("stdout", terminalfile.MaxStream-3, false), tf.Stream("stderr", 0, true)
+	for _, w := range []string{"abc", "d", "e"} {
+		n, err := stdout.Write([]byte(w))
+		require.NoError(t, err)
+		assert.Equal(t, len(w), n)
+	}
+	_, _ = stderr.Write([]byte("lost-output"))
+	require.NoError(t, tf.Exit(nil, false))
+	_, _ = stdout.Write([]byte("after exit"))
+	b, err := os.ReadFile(f.Name())
+	require.NoError(t, err)
+	data := string(b)
+	assert.Contains(t, data, "---\nabc\n[stdout truncated by cursor: the command wrote more than 1048576 characters to stdout; "+
+		"only the first 1048576 were captured and the rest was dropped from this file]\n\n---\nexit_code: unknown\n")
+	assert.NotContains(t, data, "lost-output")
+	assert.NotContains(t, data, "after exit")
 }

@@ -93,9 +93,9 @@ func (s *session) shutdown() {
 			log.Printf("reject %s: %v", t.ID, err)
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+	ctx, cancel := s.withTimeout(context.Background(), shutdownGrace)
 	defer cancel()
-	workers, stopWorkers := context.WithTimeout(ctx, shutdownGrace-finalFlushGrace)
+	workers, stopWorkers := s.withTimeout(ctx, shutdownGrace-finalFlushGrace)
 	defer stopWorkers()
 	if !s.awaitWorkers(workers) {
 		log.Printf("shutdown: %d requests still running", s.admit.Active())
