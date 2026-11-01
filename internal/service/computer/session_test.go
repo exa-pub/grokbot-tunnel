@@ -907,3 +907,22 @@ func TestRejectKeepsNewerCachedCredential(t *testing.T) {
 	require.NoError(t, s.pv.Store.Load("computer", &cached))
 	assert.Empty(t, cached.Credential)
 }
+
+// N3: the user learns once that Grok Bot manages permissions, and again
+// when that changes, since --permission has no effect meanwhile.
+func TestAuthorityNotice(t *testing.T) {
+	s := testSession(t)
+	cred := func(server bool) entity.Credential {
+		return entity.Credential{Credential: "c", ServerAuthoritative: server}
+	}
+	assert.Empty(t, s.authorityNotice(entity.Credential{}), "no credential yet")
+	assert.Empty(t, s.authorityNotice(cred(false)), "local permissions, as expected")
+	assert.Equal(t, "Grok Bot manages permissions for this computer: --permission always has no effect; "+
+		"actions run as Grok Bot approves them, and its settings show its own mode", s.authorityNotice(cred(true)))
+	assert.Empty(t, s.authorityNotice(cred(true)), "said once")
+	assert.Equal(t, "Grok Bot no longer manages permissions for this computer: --permission always applies",
+		s.authorityNotice(cred(false)))
+
+	s = testSession(t)
+	assert.NotEmpty(t, s.authorityNotice(cred(true)), "server-authoritative from the start")
+}

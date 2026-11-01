@@ -302,3 +302,34 @@ func TestCheck(t *testing.T) {
 		assert.Equal(t, "SandLocalExecPathError: "+err.Error(), traced.StackTrace())
 	}
 }
+
+// N1: like the desktop's read and ls (cr: kOe, FNt), "~" and file:// URLs are
+// expanded; "~user" and a URL with a host stay as they are. The expanded
+// path is checked against the root, unlike the desktop's q9, which checks
+// <root>/~/secret and so lets read leave a root without the home directory.
+func TestRelativeExpandsHome(t *testing.T) {
+	r := open(t)
+	t.Setenv("HOME", r.Dir())
+	for in, want := range map[string]string{
+		"~":                            ".",
+		"~/":                           ".",
+		"~/a/f":                        filepath.Join("a", "f"),
+		"file://" + r.Dir() + "/a/f":   filepath.Join("a", "f"),
+		"file://" + r.Dir() + "/a%20b": "a b",
+		"~user/f":                      filepath.Join("~user", "f"),
+		"a/~/f":                        filepath.Join("a", "~", "f"),
+		"file://host" + r.Dir() + "/f": filepath.Join("file:", "host"+r.Dir(), "f"),
+	} {
+		rel, err := r.Relative(in)
+		require.NoError(t, err, in)
+		assert.Equal(t, want, rel, in)
+	}
+
+	t.Setenv("HOME", t.TempDir()) // the home directory is outside the root
+	for _, in := range []string{"~/secret", "~", "file://" + os.Getenv("HOME") + "/secret"} {
+		_, err := r.Relative(in)
+		var outside *pathroot.OutsideError
+		require.ErrorAs(t, err, &outside, in)
+		assert.Equal(t, in, outside.Path, "the refusal names the path as requested")
+	}
+}

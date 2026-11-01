@@ -206,9 +206,16 @@ func (r *Root) Remove(rel string) error {
 	return s.fs.Remove(rel)
 }
 
-// Relative converts path, absolute or relative to the root, to a path
-// relative to the root. It rejects lexical escapes; os.Root rejects symlink
-// escapes.
+// Relative converts path, absolute, relative to the root, starting with "~"
+// or a file:// URL, to a path relative to the root. It rejects lexical
+// escapes; os.Root rejects symlink escapes.
+//
+// Like the desktop's read and ls (cr), "~" and file:// URLs are expanded.
+// Unlike the desktop, whose root check (q9) looks at the path before that
+// expansion, the expanded path is checked: there "~/secret" passes as
+// <root>/~/secret and is then read from the home directory, outside a root
+// that does not hold it. Upload and download expand them too, where the
+// desktop writes below a directory named "~" in the root.
 func (r *Root) Relative(path string) (string, error) {
 	rel, ok := r.inside(path)
 	if !ok {
@@ -413,6 +420,7 @@ func (r *Root) inside(path string) (string, bool) {
 	if path == "" {
 		path = "."
 	}
+	path = expandHome(path)
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(r.dir, path)
 	}

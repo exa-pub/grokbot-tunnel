@@ -83,8 +83,10 @@ refuses it. The question says when a command can keep running after the
 request ends; requests the tunnel does not support are refused without asking.
 If Grok Bot manages
 permissions itself, the tunnel never asks and runs exactly the actions Grok Bot
-approved, whatever `--permission` says. To refuse all actions then, stop the
-tunnel (`grokbot-tunnel uninstall`, or stop `connect`).
+approved, whatever `--permission` says; its log then says so, and Grok Bot
+shows its own permission setting for the computer, not the flag. To refuse all
+actions then, change the setting in Grok Bot or stop the tunnel
+(`grokbot-tunnel uninstall`, or stop `connect`).
 
 ## Managing the service
 
@@ -148,6 +150,8 @@ tunnel runs per user at a time, so stop the service first
   not kept). Background commands
   write their output to `<root>/terminals/<number>.txt`.
 - File reads, directory listings, and uploads and downloads up to 100 MiB.
+  Paths may start with `~` or be `file://` URLs; they are checked against
+  `--root` after expansion.
 - Names of Codex and Claude Code skills, MCP servers, plugins and commands, with
   keys, links, emails and paths removed.
 

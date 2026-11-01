@@ -6,6 +6,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 )
 
@@ -26,6 +27,31 @@ func (s *session) onIssued(r issued) error {
 	return nil
 }
 
+// authorityNotice returns what to tell the user when Grok Bot takes over
+// the permission decisions for this computer with credential c, or hands
+// them back, and "" otherwise. In server-authoritative mode --permission has
+// no effect: the server approves or refuses each action and shows its own
+// mode, so the user would not learn otherwise why "ask" never asks.
+func (s *session) authorityNotice(c entity.Credential) string {
+	if c.Credential == "" || s.authorityKnown && s.serverAuthority == c.ServerAuthoritative {
+		return ""
+	}
+	first := !s.authorityKnown
+	s.authorityKnown, s.serverAuthority = true, c.ServerAuthoritative
+	mode := ""
+	if s.pv.Standing != nil {
+		mode = " " + string(s.pv.Standing())
+	}
+	switch {
+	case c.ServerAuthoritative:
+		return "Grok Bot manages permissions for this computer: --permission" + mode +
+			" has no effect; actions run as Grok Bot approves them, and its settings show its own mode"
+	case !first:
+		return "Grok Bot no longer manages permissions for this computer: --permission" + mode + " applies"
+	}
+	return ""
+}
+
 // stopWatch cancels the watch stream and ignores its cancellation event.
 func (s *session) stopWatch() {
 	if s.watchCancel != nil {
@@ -41,6 +67,9 @@ func (s *session) startWatch() {
 		s.watchCancel()
 	}
 	c := s.cred.Current()
+	if notice := s.authorityNotice(c); notice != "" {
+		log.Print(notice)
+	}
 	standing := s.pv.standing(c)
 	gen := s.stream.Start(s.pv.now(), standing)
 	ctx, cancel := context.WithCancel(s.work)

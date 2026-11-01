@@ -285,3 +285,47 @@ func TestRootRetargetedConcurrently(t *testing.T) {
 	require.NoError(t, <-retargeted)
 	assert.Equal(t, 200, got["v1"]+got["v2"], got)
 }
+
+// N1: read and ls expand "~" and file:// URLs like the desktop (cr), and so
+// do upload and download, where the desktop takes "~" as a directory of
+// that name in the root (pinned difference). Results name the expanded
+// path. A home directory outside a narrower root is refused, where the
+// desktop's q9 checks the unexpanded path and reads it anyway.
+func TestFileToolsExpandHome(t *testing.T) {
+	root := t.TempDir()
+	e := newAt(t, root)
+	t.Setenv("HOME", root)
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "d"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "d", "f.txt"), []byte("home"), 0o600))
+
+	assert.Equal(t, "home", readContent(t, e, "~/d/f.txt"))
+	assert.Equal(t, "home", readContent(t, e, "file://"+root+"/d/f.txt"))
+	frames := pinnedExec(t, e, `{"readArgs":{"path":"~/d/f.txt"}}`)
+	assert.Equal(t, filepath.Join(root, "d", "f.txt"), frames[0].client.GetReadResult().GetSuccess().GetPath())
+	frames = pinnedExec(t, e, `{"readArgs":{"path":"~/d/missing.txt"}}`)
+	assert.Equal(t, filepath.Join(root, "d", "missing.txt"), frames[0].client.GetReadResult().GetFileNotFound().GetPath())
+
+	frames = pinnedExec(t, e, `{"lsArgs":{"path":"~/d"}}`)
+	tree := frames[0].client.GetLsResult().GetSuccess().GetDirectoryTreeRoot()
+	assert.Equal(t, filepath.Join(root, "d"), tree.GetAbsPath())
+	require.Len(t, tree.GetChildrenFiles(), 1)
+	assert.Equal(t, "f.txt", tree.GetChildrenFiles()[0].GetName())
+
+	for _, f := range collect(t, e, uploadFrame("~/up/new.txt", []byte("uploaded"))) {
+		require.Nil(t, f.GetFileError(), f.GetFileError().GetError())
+	}
+	b, err := os.ReadFile(filepath.Join(root, "up", "new.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "uploaded", string(b))
+	assert.NoDirExists(t, filepath.Join(root, "~"), "not a directory named ~")
+	data, fileError := download(t, e, "~/up/new.txt")
+	assert.Empty(t, fileError)
+	assert.Equal(t, "uploaded", data)
+
+	outside := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret"), []byte("secret"), 0o600))
+	t.Setenv("HOME", outside)
+	assert.Equal(t, "throw: Path is outside the allowed local-exec root and was refused: ~/secret", readContent(t, e, "~/secret"))
+	_, fileError = download(t, e, "~/secret")
+	assert.Contains(t, fileError, "outside the allowed local-exec root")
+}

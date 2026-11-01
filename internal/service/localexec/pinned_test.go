@@ -459,3 +459,26 @@ func TestPinnedReadLargeWebP(t *testing.T) {
 	assert.Equal(t, "webp codec not registered: registerWebpCodec() must be called by a Node server before decoding/encoding webp",
 		frames[0].client.GetReadResult().GetError().GetError())
 }
+
+// N1 (aligned with the desktop for read and ls, cr): "~" and file:// URLs in
+// file paths are expanded and the expanded path is checked against Root. ≠:
+// the desktop's q9 checks the unexpanded path, so "~/secret" passes as
+// <Root>/~/secret and read then leaves a Root without the home directory;
+// and its upload and download do not expand, writing below a directory named
+// "~" in Root. Both are refused or expanded here on purpose.
+func TestPinnedHomeInFilePaths(t *testing.T) {
+	root := t.TempDir()
+	e := newAt(t, root)
+	outside := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret"), []byte("secret"), 0o600))
+	t.Setenv("HOME", outside)
+	text, _ := requireThrow(t, pinnedExec(t, e, `{"readArgs":{"path":"~/secret"}}`))
+	assert.Equal(t, "Path is outside the allowed local-exec root and was refused: ~/secret", text)
+
+	t.Setenv("HOME", root)
+	for _, f := range collect(t, e, uploadFrame("~/f", []byte("x"))) {
+		require.Nil(t, f.GetFileError())
+	}
+	assert.FileExists(t, filepath.Join(root, "f"))
+	assert.NoDirExists(t, filepath.Join(root, "~"))
+}

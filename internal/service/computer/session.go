@@ -81,12 +81,15 @@ type session struct {
 	polled    chan polled
 	issued    chan issued
 
-	cred        *credential.Manager
-	stream      *watch.Loop
-	watchCancel context.CancelFunc
-	admit       *admission.Scheduler
-	poll        admission.Poller
-	out         replies.Queue
+	cred *credential.Manager
+	// authorityKnown is set once a watch started with a credential, whose
+	// ServerAuthoritative serverAuthority keeps (see authorityNotice).
+	authorityKnown, serverAuthority bool
+	stream                          *watch.Loop
+	watchCancel                     context.CancelFunc
+	admit                           *admission.Scheduler
+	poll                            admission.Poller
+	out                             replies.Queue
 	// connected is set once the server first accepted the computer.
 	connected bool
 

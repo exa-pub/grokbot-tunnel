@@ -119,6 +119,12 @@ func TestLoginConnectShellSigterm(t *testing.T) {
 	})
 
 	cloud.WaitWatching(10 * time.Second)
+	// The server builds the paths of terminal files it shows the agent from
+	// the hello's terminals folder: that of this computer.
+	hello := cloud.Hello()
+	require.NotNil(t, hello)
+	assert.Equal(t, root, hello.GetLocalRoot())
+	assert.Equal(t, filepath.Join(root, "terminals"), hello.GetTerminalsFolder())
 	cloud.Enqueue(fakesand.Exec("shell", `{"id":1,"shellStreamArgs":{"command":"printf shell-ok; pwd >&2"}}`))
 	frames := cloud.Wait(10*time.Second, func(frames []*aiserverv1.GrokBotUserComputerResponseFrame) bool {
 		for _, f := range frames {

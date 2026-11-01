@@ -151,22 +151,32 @@ func (e *nodeError) Unwrap() error { return e.errno }
 // absolute below the root; empty stays empty.
 func (r *Root) expand(path string) string {
 	p := strings.TrimSpace(path)
-	switch {
-	case p == "":
+	if p == "" {
 		return ""
-	case p == "~" || strings.HasPrefix(p, "~/"):
-		if home, err := os.UserHomeDir(); err == nil {
-			p = filepath.Join(home, strings.TrimPrefix(p, "~"))
-		}
-	case strings.HasPrefix(p, "file://"):
-		if u, err := url.Parse(p); err == nil {
-			p = u.Path
-		}
 	}
+	p = expandHome(p)
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(r.dir, p)
 	}
 	return filepath.Clean(p)
+}
+
+// expandHome expands the forms of a path that the desktop resolves before
+// using it (cr: kOe, FNt): "~" and "~/…" become the home directory, and a
+// file:// URL its path; a URL that names a host, which Node's fileURLToPath
+// refuses, and any other path stay as they are.
+func expandHome(p string) string {
+	switch {
+	case p == "~" || strings.HasPrefix(p, "~/"):
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, strings.TrimPrefix(p, "~"))
+		}
+	case strings.HasPrefix(p, "file://"):
+		if u, err := url.Parse(p); err == nil && u.Host == "" && u.Path != "" {
+			return u.Path
+		}
+	}
+	return p
 }
 
 func isDir(path string) bool {
