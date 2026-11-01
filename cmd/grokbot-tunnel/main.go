@@ -11,12 +11,20 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/app"
 )
 
-// stopSignals stop the program cleanly. SIGHUP comes when the terminal of a
-// foreground connect goes away, e.g. with its SSH session.
-var stopSignals = []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP}
+// stopSignals returns the signals that stop the program cleanly. SIGHUP comes
+// when the terminal of a foreground connect goes away, e.g. with its SSH
+// session. It is left out if the program was started with it ignored, as by
+// nohup: handling it would end the ignoring.
+func stopSignals() []os.Signal {
+	sigs := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	if !signal.Ignored(syscall.SIGHUP) {
+		sigs = append(sigs, syscall.SIGHUP)
+	}
+	return sigs
+}
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), stopSignals...)
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
 	err := app.Run(ctx, os.Args[1:])
 	stop()
 	if err != nil {

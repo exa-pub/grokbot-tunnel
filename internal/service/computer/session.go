@@ -283,6 +283,7 @@ func (s *session) onEvent(ev watched) {
 			}
 		}
 	case out.Work:
-		s.poll.Request()
+		// Like the desktop, poll at once, even while failed polls back off.
+		s.poll.Trigger()
 	}
 }

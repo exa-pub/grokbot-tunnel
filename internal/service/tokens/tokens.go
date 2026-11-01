@@ -1,7 +1,8 @@
 // Package tokens hands out the user's access tokens, refreshing them before
 // they expire. Several processes share the saved tokens and the server rotates
 // the refresh token on every refresh, so refreshes are serialized across
-// processes by the store lock.
+// processes by the store lock, and a refresh, once started, is not canceled
+// by its callers: the server may already have rotated the refresh token.
 package tokens
 
 import (
@@ -23,12 +24,17 @@ const (
 	// rejectCooldown is how long a rejected token does not trigger another
 	// refresh, as in the desktop's unauthenticated recovery.
 	rejectCooldown = 5 * time.Minute
+	// refreshTimeout bounds waiting for the store lock and the refresh
+	// request, each, as the desktop's deadline (dAn) bounds its fetch.
+	refreshTimeout = 20 * time.Second
 )
 
 // TokenSource hands out access tokens, refreshing and persisting them as
-// needed. Concurrent callers share a single refresh.
+// needed. Concurrent callers share a single refresh, like the desktop's
+// refreshFlights. Identity is set before first use; afterwards it is read
+// with Snapshot.
 type TokenSource struct {
-	mu       sync.Mutex
+	mu       sync.Mutex // guards Identity, rejectedAt and flight
 	Store    *staterepo.Store
 	HTTP     *http.Client
 	Base     string
@@ -36,6 +42,15 @@ type TokenSource struct {
 	Identity entity.Identity
 
 	rejectedAt time.Time // when Rejected last refreshed
+	flight     *flight   // the refresh in progress, nil if none
+}
+
+// flight is a refresh shared by its callers. token and err are set before
+// done is closed.
+type flight struct {
+	done  chan struct{}
+	token string
+	err   error
 }
 
 // fresh reports whether the access token can be used without a refresh. A
@@ -64,28 +79,39 @@ func sameAccount(a, b entity.Identity) bool {
 // from the tokens on disk: if another process already rotated them, its
 // tokens are adopted instead of refreshing with the stale refresh token, which
 // the server would answer with shouldLogout.
+//
+// A refresh in progress is joined. The caller waits for it or for ctx, but
+// the refresh does not end with ctx: its answer is saved anyway.
 func (s *TokenSource) Token(ctx context.Context, force bool) (string, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !force && fresh(s.Identity) {
-		return s.Identity.AccessToken, nil
+	if s.flight == nil && !force && fresh(s.Identity) {
+		tok := s.Identity.AccessToken
+		s.mu.Unlock()
+		return tok, nil
 	}
-	return s.refresh(ctx)
+	f := s.start(ctx)
+	s.mu.Unlock()
+	return f.wait(ctx)
 }
 
 // Rejected refreshes the access token after the server refused token, like
 // the desktop's unauthenticated recovery (Hz): only if token is still the
 // current one, so that callers that failed together refresh once, and at
 // most once per rejectCooldown, so that a server that keeps refusing is not
-// answered with a refresh each time.
+// answered with a refresh each time. A refresh in progress is joined
+// instead, as in Token.
 func (s *TokenSource) Rejected(ctx context.Context, token string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if token == "" || token != s.Identity.AccessToken || time.Since(s.rejectedAt) < rejectCooldown {
-		return nil
+	if s.flight == nil {
+		if token == "" || token != s.Identity.AccessToken || time.Since(s.rejectedAt) < rejectCooldown {
+			s.mu.Unlock()
+			return nil
+		}
+		s.rejectedAt = time.Now()
 	}
-	s.rejectedAt = time.Now()
-	_, err := s.refresh(ctx)
+	f := s.start(ctx)
+	s.mu.Unlock()
+	_, err := f.wait(ctx)
 	return err
 }
 
@@ -96,28 +122,66 @@ func (s *TokenSource) Snapshot() entity.Identity {
 	return s.Identity
 }
 
-// refresh refreshes the access token. The caller holds s.mu.
+// start returns the refresh in progress, starting one if there is none. The
+// refresh keeps ctx's values but not its cancellation. The caller holds s.mu.
+func (s *TokenSource) start(ctx context.Context) *flight {
+	if s.flight == nil {
+		f := &flight{done: make(chan struct{})}
+		s.flight = f
+		go s.run(context.WithoutCancel(ctx), f)
+	}
+	return s.flight
+}
+
+// run performs the refresh f and hands its result to f's callers.
+func (s *TokenSource) run(ctx context.Context, f *flight) {
+	f.token, f.err = s.refresh(ctx)
+	s.mu.Lock()
+	s.flight = nil
+	s.mu.Unlock()
+	close(f.done)
+}
+
+// wait returns the result of f, or ctx's error if ctx ends first.
+func (f *flight) wait(ctx context.Context) (string, error) {
+	select {
+	case <-f.done:
+		return f.token, f.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// refresh refreshes the access token. It runs only from run, one at a time,
+// and takes s.mu only around the identity so that callers can stop waiting.
 func (s *TokenSource) refresh(ctx context.Context) (string, error) {
-	id := s.Identity
-	unlock, err := s.lock(ctx)
+	lockCtx, cancelLock := context.WithTimeout(ctx, refreshTimeout)
+	defer cancelLock()
+	unlock, err := s.lock(lockCtx)
 	if err != nil {
 		return "", err
 	}
 	defer unlock()
+	s.mu.Lock()
+	id := s.Identity
 	onDisk, persist := s.reload()
-	if s.Identity.RefreshToken != id.RefreshToken {
-		id = s.Identity
-		// The adopted access token is not the one the server rejected.
-		if fresh(id) {
-			return id.AccessToken, nil
-		}
+	adopted := s.Identity.RefreshToken != id.RefreshToken
+	id = s.Identity
+	s.mu.Unlock()
+	// The adopted access token is not the one the server rejected.
+	if adopted && fresh(id) {
+		return id.AccessToken, nil
 	}
 	if id.RefreshToken == "" {
 		return "", entity.ErrNotLoggedIn
 	}
-	next, err := oauth.Refresh(ctx, s.HTTP, s.Base, s.ClientID, id.RefreshToken)
+	httpCtx, cancelHTTP := context.WithTimeout(ctx, refreshTimeout)
+	defer cancelHTTP()
+	next, err := oauth.Refresh(httpCtx, s.HTTP, s.Base, s.ClientID, id.RefreshToken)
 	if errors.Is(err, entity.ErrLogout) {
+		s.mu.Lock()
 		s.Identity = entity.Identity{}
+		s.mu.Unlock()
 		// Only wipe auth.json if it still holds the rejected session.
 		if onDisk == id.RefreshToken {
 			if err := s.Store.Save("auth", entity.Identity{}); err != nil {
@@ -135,7 +199,9 @@ func (s *TokenSource) refresh(ctx context.Context) (string, error) {
 	}
 	// The server already invalidated the old refresh token, so keep the new
 	// one in memory even if it cannot be persisted.
+	s.mu.Lock()
 	s.Identity = id
+	s.mu.Unlock()
 	if persist {
 		if err := s.Store.Save("auth", id); err != nil {
 			log.Printf("save refreshed tokens: %v", err)
@@ -163,7 +229,7 @@ func (s *TokenSource) lock(ctx context.Context) (func(), error) {
 // whether this process may save its tokens there: not if the disk belongs to a
 // different account, which means the user logged in again elsewhere. This
 // process then keeps using its own tokens but leaves the new login alone.
-// The caller holds the store lock.
+// The caller holds the store lock and s.mu.
 func (s *TokenSource) reload() (onDisk string, persist bool) {
 	var disk entity.Identity
 	if err := s.Store.Load("auth", &disk); err != nil || disk.RefreshToken == "" {

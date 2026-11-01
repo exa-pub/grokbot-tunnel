@@ -2,6 +2,7 @@ package localexec
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
@@ -54,6 +56,79 @@ func TestShellBackgroundJobSurvivesCommand(t *testing.T) {
 	for {
 		if _, err := os.Stat(marker); err == nil {
 			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("background job was killed")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// S2-1: like the desktop's io(), which stops listening for the abort once the
+// shell exits, an abort or timeout after the shell has exited, while its
+// background jobs still hold the pipes, kills nothing: the exit comes once
+// the output is finished, as aborted, and the jobs keep running.
+func TestShellAbortAfterShellExitKeepsJobs(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
+	const job = `(sleep 1.2; echo alive > marker) & `
+	for _, c := range []struct {
+		name, msg string
+		cancel    time.Duration // 0: no cancel
+		reason    agentv1.ShellAbortReason
+		backgr    bool // the command moves to the background first
+	}{
+		{name: "timeout", msg: `{"shellStreamArgs":{"command":"` + job + `echo started","timeout":400}}`,
+			reason: agentv1.ShellAbortReason_SHELL_ABORT_REASON_TIMEOUT},
+		{name: "cancel", msg: `{"shellStreamArgs":{"command":"` + job + `echo started"}}`, cancel: 400 * time.Millisecond,
+			reason: agentv1.ShellAbortReason_SHELL_ABORT_REASON_USER_ABORT},
+		{name: "cancel-background", msg: `{"shellStreamArgs":{"command":"` + job + `echo started","timeout":5000,` +
+			`"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`, cancel: 400 * time.Millisecond,
+			reason: agentv1.ShellAbortReason_SHELL_ABORT_REASON_USER_ABORT},
+		{name: "hard-timeout-detached", msg: `{"shellStreamArgs":{"command":"` + job + `sleep 0.2","timeout":50,` +
+			`"hardTimeout":600,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`, backgr: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := setup(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if c.cancel > 0 {
+				time.AfterFunc(c.cancel, cancel)
+			}
+			var frames []*aiserverv1.GrokBotUserComputerResponseFrame
+			err := e.Handle(ctx, execFrame(c.msg), false, func(f *aiserverv1.GrokBotUserComputerResponseFrame) error {
+				frames = append(frames, f)
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.backgr {
+				if data := waitTerminal(t, e, frames); !strings.Contains(data, "\nexit_code: 0\n") {
+					t.Fatalf("%q", data)
+				}
+			} else {
+				var exit *agentv1.ShellStreamExit
+				for _, m := range clientMessages(t, frames) {
+					if x := m.GetShellStream().GetExit(); x != nil {
+						exit = x
+					}
+				}
+				if exit == nil || !exit.Aborted || exit.GetAbortReason() != c.reason {
+					t.Fatal(exit)
+				}
+			}
+			waitFile(t, filepath.Join(e.Root, "marker"), 3*time.Second)
+		})
+	}
+}
+
+// waitFile fails unless path appears within d.
+func waitFile(t *testing.T, path string, d time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("background job was killed")

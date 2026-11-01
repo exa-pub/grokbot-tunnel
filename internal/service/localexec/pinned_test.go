@@ -1,8 +1,12 @@
 package localexec
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"image"
+	_ "image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -411,4 +415,47 @@ func TestPinnedAbortSignals(t *testing.T) {
 	exit := events[len(events)-1].GetExit()
 	require.NotNil(t, exit)
 	assert.Equal(t, uint32(4294967295), exit.GetCode())
+}
+
+// largeWebP is a WEBP sample with its size set to w×h in its header: the
+// lossless one decodes at any size (its pixels take no bits), the animated
+// one does not decode in Go.
+func largeWebP(t *testing.T, animated bool, w, h int) []byte {
+	t.Helper()
+	sample := "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=="
+	if animated {
+		sample = "UklGRlIAAABXRUJQVlA4WAoAAAASAAAAAAAAAAAAQU5JTQYAAAD/////AABBTk1GJgAAAAAAAAAAAAAAAAAAAGQAAABWUDhMDQAAAC8AAAAQBxAREYiI/gcA"
+	}
+	b, err := base64.StdEncoding.DecodeString(sample)
+	require.NoError(t, err)
+	if animated { // VP8X canvas, 24 bits each, minus one
+		w, h = w-1, h-1
+		copy(b[24:30], []byte{byte(w), byte(w >> 8), byte(w >> 16), byte(h), byte(h >> 8), byte(h >> 16)})
+		return b
+	}
+	v := uint32(w-1) | uint32(h-1)<<14 | uint32(b[24]&0xe0)<<24 //nolint:gosec // test sizes
+	copy(b[21:25], []byte{byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24)})
+	return b
+}
+
+// ≠: the desktop 0.78.1 does not decode a WEBP larger than 1280 pixels or
+// 1 MiB and answers with an error, "webp codec not registered…"; we encode
+// it again as JPEG, or PNG when it has transparency. One that Go cannot
+// decode either (animated) gets the desktop's error.
+func TestPinnedReadLargeWebP(t *testing.T) {
+	e := setup(t)
+	require.NoError(t, os.WriteFile(filepath.Join(e.Root, "large.webp"), largeWebP(t, false, 2000, 1500), 0o600))
+	frames := pinnedExec(t, e, `{"readArgs":{"path":"large.webp"}}`)
+	require.NotEmpty(t, frames)
+	data := frames[0].client.GetReadResult().GetSuccess().GetData()
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	require.NoError(t, err)
+	assert.Equal(t, "png", format, "transparent pixels")
+	assert.Equal(t, image.Pt(1280, 960), image.Pt(cfg.Width, cfg.Height))
+
+	require.NoError(t, os.WriteFile(filepath.Join(e.Root, "anim.webp"), largeWebP(t, true, 2000, 1500), 0o600))
+	frames = pinnedExec(t, e, `{"readArgs":{"path":"anim.webp"}}`)
+	require.NotEmpty(t, frames)
+	assert.Equal(t, "webp codec not registered: registerWebpCodec() must be called by a Node server before decoding/encoding webp",
+		frames[0].client.GetReadResult().GetError().GetError())
 }

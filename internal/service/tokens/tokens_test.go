@@ -268,3 +268,75 @@ func TestRefreshUsesClientID(t *testing.T) {
 		t.Fatal(err, got.Load())
 	}
 }
+
+// A refresh outlives the caller that started it, like the desktop's, whose
+// fetch obeys only its own deadline: the server has already rotated the
+// refresh token, so dropping its late answer would log the user out.
+func TestRefreshOutlivesCaller(t *testing.T) {
+	var mu sync.Mutex
+	used := map[string]bool{}
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		old := body["refresh_token"]
+		reused := used[old]
+		used[old] = true
+		mu.Unlock()
+		if reused {
+			json.NewEncoder(w).Encode(map[string]bool{"shouldLogout": true})
+			return
+		}
+		time.Sleep(300 * time.Millisecond) // rotated, but answered late
+		json.NewEncoder(w).Encode(map[string]string{"access_token": "access-" + old + "'", "refresh_token": old + "'"})
+	}))
+	defer s.Close()
+	store := &staterepo.Store{Dir: t.TempDir()}
+	start := entity.Identity{AccessToken: jwt(time.Now().Add(-time.Minute)), RefreshToken: "r", AuthID: "acc"}
+	store.Save("auth", start)
+	source := &TokenSource{Store: store, HTTP: s.Client(), Base: s.URL, Identity: start}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := source.Token(ctx, false); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	// The next caller shares the refresh still in flight.
+	if tok, err := source.Token(context.Background(), false); err != nil || tok != "access-r'" {
+		t.Fatal(tok, err)
+	}
+	var saved entity.Identity
+	store.Load("auth", &saved)
+	if saved.RefreshToken != "r'" || source.Snapshot().RefreshToken != "r'" {
+		t.Fatal(saved, source.Snapshot())
+	}
+}
+
+// A refresh whose caller is gone still saves the answer.
+func TestRefreshSavesAfterCallerLeft(t *testing.T) {
+	release := make(chan struct{})
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		json.NewEncoder(w).Encode(map[string]string{"access_token": "a2", "refresh_token": "r2"})
+	}))
+	defer s.Close()
+	store := &staterepo.Store{Dir: t.TempDir()}
+	source := &TokenSource{Store: store, HTTP: s.Client(), Base: s.URL, Identity: entity.Identity{RefreshToken: "r"}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := source.Token(ctx, true); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	close(release)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var saved entity.Identity
+		store.Load("auth", &saved)
+		if saved.RefreshToken == "r2" && source.Snapshot().AccessToken == "a2" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(saved, source.Snapshot())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

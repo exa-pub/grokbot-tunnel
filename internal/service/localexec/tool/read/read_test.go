@@ -3,6 +3,7 @@ package read_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/png"
@@ -167,4 +168,35 @@ func TestReadNodeErrors(t *testing.T) {
 	assert.Equal(t, "ENOTDIR: not a directory, stat '"+filepath.Join(root.Dir(), "file/sub")+"'", got.GetError())
 	require.NoError(t, syscall.Mkfifo(filepath.Join(root.Dir(), "fifo"), 0o600))
 	assert.Equal(t, "Path is neither a file nor a directory", readFile(t, rd, &agentv1.ReadArgs{Path: "fifo"}).GetInvalidFile().GetReason())
+}
+
+// WEBP samples: a lossless 1×1 and an animated 1×1 (Modernizr's).
+const (
+	webpLossless = "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=="
+	webpAnimated = "UklGRlIAAABXRUJQVlA4WAoAAAASAAAAAAAAAAAAQU5JTQYAAAD/////AABBTk1GJgAAAAAAAAAAAAAAAAAAAGQAAABWUDhMDQAAAC8AAAAQBxAREYiI/gcA"
+)
+
+func webpSample(t *testing.T, sample string) []byte {
+	t.Helper()
+	b, err := base64.StdEncoding.DecodeString(sample)
+	require.NoError(t, err)
+	return b
+}
+
+// A WEBP that fits 1280 pixels and 1 MiB by its header is passed on as it
+// is without decoding, as on the desktop, where no WEBP codec is
+// registered: an animated or cut one too (F2-2).
+func TestReadSmallWebPAsIs(t *testing.T) {
+	rd, root := newReader(t)
+	lossless := webpSample(t, webpLossless)
+	for name, data := range map[string][]byte{
+		"animated.webp": webpSample(t, webpAnimated),
+		"cut.webp":      lossless[:25],
+		"still.webp":    lossless,
+	} {
+		write(t, root, name, data)
+		got := readFile(t, rd, &agentv1.ReadArgs{Path: name})
+		require.NotNil(t, got.GetSuccess(), "%s: %v", name, got)
+		assert.Equal(t, data, got.GetSuccess().GetData(), name)
+	}
 }

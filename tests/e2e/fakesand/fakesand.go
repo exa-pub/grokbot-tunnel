@@ -47,6 +47,7 @@ type Server struct {
 	queue   []*aiserverv1.GrokBotUserComputerQueuedRequest
 	frames  []*aiserverv1.GrokBotUserComputerResponseFrame
 	changed chan struct{} // closed and replaced when frames or watchers change
+	hello   *aiserverv1.GrokBotUserComputerHello
 	watches int
 	notify  []chan struct{} // one per open watch stream
 }
@@ -117,6 +118,13 @@ func (s *Server) Wait(
 			s.t.Fatalf("fakesand: condition not met within %v; %d frames submitted", timeout, len(frames))
 		}
 	}
+}
+
+// Hello returns the hello of the last watch stream, nil before the first.
+func (s *Server) Hello() *aiserverv1.GrokBotUserComputerHello {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hello
 }
 
 // WaitWatching waits until the CLI has a watch stream open.
@@ -235,6 +243,7 @@ func (s *Server) WatchGrokBotUserComputerRequests(
 	}
 	notify := make(chan struct{}, 1)
 	s.mu.Lock()
+	s.hello = r.Msg.GetHello()
 	s.notify = append(s.notify, notify)
 	s.watches++
 	s.signal()

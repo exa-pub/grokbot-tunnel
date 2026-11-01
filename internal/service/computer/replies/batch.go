@@ -13,9 +13,20 @@ const (
 // Metadata goes first; file chunks, at most one per request, are skipped every
 // other batch while metadata is waiting so neither kind starves the other.
 // Requests are served in q.order, which Accepted rotates; it forgets those
-// without pending frames.
+// without pending frames. Frames of the submit in flight are left out, so
+// that shutdown's final submit sends only the rest, like the desktop, whose
+// batch in flight is already off its queue.
 func (q *Queue) Batch() []*Frame {
-	b := newBatcher(q.pending, q.order)
+	pending := q.pending
+	if len(q.inflight) > 0 {
+		pending = make([]*Frame, 0, len(q.pending))
+		for _, f := range q.pending {
+			if !q.inflight[f] {
+				pending = append(pending, f)
+			}
+		}
+	}
+	b := newBatcher(pending, q.order)
 	q.order, q.ordered = b.order, make(map[string]bool, len(b.order))
 	for _, id := range b.order {
 		q.ordered[id] = true

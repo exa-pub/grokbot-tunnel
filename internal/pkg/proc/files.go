@@ -7,10 +7,10 @@ import (
 	"os"
 )
 
-// TempFile returns an unlinked temporary file holding content; only open
-// descriptors keep it alive.
-func TempFile(prefix, content string) (*os.File, error) {
-	f, err := os.CreateTemp("", prefix)
+// TempFile returns an unlinked temporary file in dir holding content,
+// positioned at its start; only open descriptors keep it alive.
+func TempFile(dir, prefix, content string) (*os.File, error) {
+	f, err := os.CreateTemp(dir, prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -18,6 +18,10 @@ func TempFile(prefix, content string) (*os.File, error) {
 		log.Printf("remove %s: %v", f.Name(), err)
 	}
 	if _, err := f.WriteString(content); err != nil {
+		CloseLogged(f)
+		return nil, err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		CloseLogged(f)
 		return nil, err
 	}

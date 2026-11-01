@@ -68,7 +68,12 @@ func served(t *testing.T, frames []*aiserverv1.GrokBotUserComputerResponseFrame)
 
 func TestLoginConnectEndToEndLocal(t *testing.T) {
 	home := t.TempDir()
-	root := t.TempDir()
+	// L2-1: like the desktop, a root given through a symlink is announced
+	// as it is.
+	root := filepath.Join(t.TempDir(), "root")
+	if err := os.Symlink(t.TempDir(), root); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	os.WriteFile(filepath.Join(root, "hello"), []byte("world"), 0600)
 	cloud := fakesand.New(t)
@@ -95,6 +100,9 @@ func TestLoginConnectEndToEndLocal(t *testing.T) {
 	cloud.Wait(5*time.Second, func(frames []*aiserverv1.GrokBotUserComputerResponseFrame) bool { return served(t, frames) })
 	if got := readNotify(t, notifications); got != "READY=1" {
 		t.Fatal("systemd notification", got)
+	}
+	if got := cloud.Hello(); got.GetLocalRoot() != root || got.GetTerminalsFolder() != filepath.Join(root, "terminals") {
+		t.Fatal("hello", got)
 	}
 	cancel()
 	select {

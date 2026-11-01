@@ -26,7 +26,10 @@ func newBackground(t *testing.T) (*background.Executor, *pathroot.Root) {
 	root, err := pathroot.Open(t.TempDir())
 	require.NoError(t, err)
 	t.Cleanup(func() { root.Close() })
-	return background.New(root, shellsession.New(root)), root
+	session, err := shellsession.New(root)
+	require.NoError(t, err)
+	t.Cleanup(func() { session.Close() })
+	return background.New(root, session), root
 }
 
 func waitEnded(t *testing.T, path string) string {

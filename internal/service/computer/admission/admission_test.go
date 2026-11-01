@@ -280,6 +280,63 @@ func TestPoller(t *testing.T) {
 	assert.False(t, p.Needed())
 }
 
+// Trigger polls at once despite the backoff of failed polls (C2-1), one in
+// flight, and again right after a poll during which it came, like the
+// desktop's requestPoll; the backoff keeps growing and still paces the
+// retries that no event asked for, so failing polls follow the events and do
+// not speed up.
+func TestPollerTrigger(t *testing.T) {
+	var p admission.Poller
+	now := time.Unix(1000, 0)
+	for range 6 { // backoff 1, 2, …, 32 s; 60 s next
+		p.Request()
+		now = now.Add(time.Minute)
+		require.True(t, p.Start(now))
+		p.Done(now, assert.AnError, false)
+	}
+	steps := []struct {
+		at   time.Duration // after the last failure
+		op   string        // trigger, request, start, fail, ok
+		want bool          // what start reports
+		why  string
+	}{
+		{at: 0, op: "start", want: false, why: "the retry waits 32 s"},
+		{at: time.Second, op: "request"},
+		{at: time.Second, op: "start", want: false, why: "a request waits for the backoff"},
+		{at: time.Second, op: "trigger"},
+		{at: time.Second, op: "start", want: true, why: "a trigger polls at once"},
+		{at: 2 * time.Second, op: "fail"},
+		{at: 3 * time.Second, op: "start", want: false, why: "the retry waits 60 s: a trigger keeps the backoff"},
+		{at: 61 * time.Second, op: "start", want: false, why: "the retry waits 60 s"},
+		{at: 62 * time.Second, op: "start", want: true, why: "the retry after 60 s"},
+		{at: 62 * time.Second, op: "trigger"},
+		{at: 62 * time.Second, op: "start", want: false, why: "one poll in flight"},
+		{at: 63 * time.Second, op: "fail"},
+		{at: 63 * time.Second, op: "start", want: true, why: "a trigger during a failed poll polls again at once"},
+		{at: 64 * time.Second, op: "fail"},
+		{at: 65 * time.Second, op: "start", want: false, why: "without a trigger the retry waits 60 s"},
+		{at: 65 * time.Second, op: "trigger"},
+		{at: 65 * time.Second, op: "start", want: true, why: "a trigger polls at once"},
+		{at: 65 * time.Second, op: "ok"},
+		{at: 65 * time.Second, op: "start", want: false, why: "nothing asked for a poll"},
+	}
+	for i, st := range steps {
+		at := now.Add(st.at)
+		switch st.op {
+		case "trigger":
+			p.Trigger()
+		case "request":
+			p.Request()
+		case "start":
+			assert.Equal(t, st.want, p.Start(at), "step %d: %s", i, st.why)
+		case "fail":
+			p.Done(at, assert.AnError, false)
+		case "ok":
+			p.Done(at, nil, false)
+		}
+	}
+}
+
 // Reset drops the backoff of failed polls: a channel that came back is
 // polled at once, and the next failure backs off from 1 s again.
 func TestPollerReset(t *testing.T) {

@@ -3,6 +3,7 @@ package read
 import (
 	"bytes"
 	"compress/zlib"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -14,7 +15,6 @@ import (
 	"math"
 	"slices"
 
-	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // registers the WEBP decoder
 )
 
@@ -24,20 +24,30 @@ const (
 	maxImageSide  = 1024    // Gct
 	maxWebPSide   = 1280    // Fct
 	minImageSide  = 8       // Hs
-	// maxImagePixels is the desktop's decode limit ($ct), lowered here so
-	// that decoding a hostile image cannot take gigabytes; 50 Mpx fit an 8K
-	// screenshot.
+	// maxImagePixels is the desktop's decode limit ($ct), lowered here; 50
+	// Mpx fit an 8K screenshot.
 	maxImagePixels  = 50_000_000
 	maxImageSideLen = 1_000_000 // Jct
-	jpegQuality     = 100       // jimp's default
-	webpAsJPEG      = 90
+	// maxDecodeBytes bounds the memory of decoding an image, which a file
+	// of a few hundred KB can make hundreds of MiB.
+	maxDecodeBytes = 256 << 20
+	jpegQuality    = 100 // jimp's default
+	webpAsJPEG     = 90
 )
 
 // webpKeptSizes are WEBP sizes the desktop passes on without resizing (W3r).
 var webpKeptSizes = []image.Point{{1280, 800}, {1456, 840}}
 
+// decodeSlot lets one image at a time be decoded in the process, so that
+// parallel reads do not multiply the memory decoding takes.
+var decodeSlot = make(chan struct{}, 1)
+
 const msgInvalidImage = "File is not a valid image: its data could not be decoded (%s). " +
 	"A truncated or hand-copied file does this; write it again from the original bytes with code."
+
+// msgWebPCodec is the desktop's error for a WEBP it would have to decode
+// (tNe): it registers no WEBP codec.
+const msgWebPCodec = "webp codec not registered: registerWebpCodec() must be called by a Node server before decoding/encoding webp"
 
 // undecodableError is an image whose data does not decode; the agent sees it
 // as an invalid file (Vct).
@@ -70,60 +80,299 @@ func kindOf(b []byte) imageKind {
 	return kindJPEG
 }
 
+// imageHeader is what an image's header tells before decoding.
+type imageHeader struct {
+	w, h int
+	// orientation is a JPEG's EXIF Orientation, 1 when there is none.
+	orientation int
+	// target is the size to pass the image on at, turned by orientation.
+	target image.Point
+	resize bool
+	// rows are those of a PNG that is scaled as it is inflated.
+	rows *pngRows
+}
+
 // prepareImage prepares an image for the model like the desktop's Wct: an
 // image within 1024 pixels (WEBP: 1280) and 1 MiB is passed on as it is once
 // it decodes; a larger one is scaled down and encoded again in its format,
-// smaller by a fifth until it fits 1 MiB. Go has no WEBP encoder: a WEBP
-// that needs it is encoded as JPEG, or PNG when it has transparency.
-func prepareImage(data []byte) ([]byte, error) {
+// smaller by a fifth until it fits 1 MiB. A JPEG is turned by its EXIF
+// Orientation first, as jimp does.
+//
+// Images are decoded one at a time and within maxDecodeBytes; a PNG to
+// scale down is scaled as it is inflated where it can be, as the desktop
+// does with an 8-bit one.
+//
+// The desktop passes such a WEBP on by its header, without decoding: it
+// registers no WEBP codec, and answers a larger one with an error
+// (msgWebPCodec). Here a larger WEBP is decoded and encoded again as JPEG,
+// or PNG when it has transparency.
+func prepareImage(ctx context.Context, data []byte) ([]byte, error) {
 	kind := kindOf(data)
-	img, cfg, err := decodeImage(data, kind)
+	if kind == kindWebP && webpAsIs(data) {
+		return data, nil
+	}
+	select {
+	case decodeSlot <- struct{}{}:
+		defer func() { <-decodeSlot }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	hdr, err := readImageHeader(data, kind)
 	if err != nil {
 		return nil, err
 	}
-	side := maxImageSide
-	if kind == kindWebP {
-		side = maxWebPSide
-	}
-	w, h, resize := fitImage(cfg.Width, cfg.Height, side)
-	if kind == kindWebP && slices.Contains(webpKeptSizes, image.Pt(cfg.Width, cfg.Height)) {
-		w, h, resize = cfg.Width, cfg.Height, false
-	}
-	if !resize && len(data) <= maxImageBytes {
+	if !hdr.resize && len(data) <= maxImageBytes {
+		if _, err = decode(data, kind, hdr); err != nil {
+			return nil, err
+		}
 		return data, nil
 	}
-	out, err := encodeImage(img, kind, w, h)
+	src, err := pixels(ctx, data, kind, hdr)
+	if err != nil {
+		return nil, err
+	}
+	w, h := hdr.target.X, hdr.target.Y
+	out, err := encodeImage(src, kind, hdr.orientation, w, h)
 	for err == nil && len(out) > maxImageBytes && w > minImageSide && h > minImageSide {
 		w, h = max(minImageSide, jsRound(float64(w)*0.8)), max(minImageSide, jsRound(float64(h)*0.8))
-		out, err = encodeImage(img, kind, w, h)
+		out, err = encodeImage(src, kind, hdr.orientation, w, h)
 	}
 	return out, err
 }
 
-// decodeImage checks and decodes an image as the desktop's qct does: its
-// size must be readable and within limits, a PNG must hold all its pixel
-// data, and the data must decode.
-func decodeImage(data []byte, kind imageKind) (image.Image, image.Config, error) {
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
-	switch {
-	case err != nil && kind == kindJPEG:
-		return nil, cfg, undecodable(err)
-	case err != nil:
-		return nil, cfg, errors.New("image dimensions could not be read before decoding")
+// webpAsIs reports a WEBP the desktop passes on as it is by its header
+// (Y3r): of a kept size or within 1280 pixels, and within 1 MiB.
+func webpAsIs(b []byte) bool {
+	size, ok := webpSize(b)
+	if !ok || len(b) > maxImageBytes {
+		return false
 	}
-	if err = checkDimensions(cfg.Width, cfg.Height); err != nil {
-		return nil, cfg, err
+	_, _, resize := fitImage(size.X, size.Y, maxWebPSide)
+	return !resize || slices.Contains(webpKeptSizes, size)
+}
+
+// webpSize reads the size of a WEBP from its header, as the desktop's toe
+// does.
+func webpSize(b []byte) (image.Point, bool) {
+	if len(b) < 16 || string(b[:4]) != "RIFF" || string(b[8:12]) != "WEBP" {
+		return image.Point{}, false
+	}
+	switch string(b[12:16]) {
+	case "VP8 ":
+		if len(b) < 30 || b[23] != 0x9d || b[24] != 0x01 || b[25] != 0x2a {
+			return image.Point{}, false
+		}
+		return image.Pt(int(binary.LittleEndian.Uint16(b[26:])&0x3fff), int(binary.LittleEndian.Uint16(b[28:])&0x3fff)), true
+	case "VP8L":
+		if len(b) < 25 || b[20] != 0x2f {
+			return image.Point{}, false
+		}
+		v := binary.LittleEndian.Uint32(b[21:])
+		return image.Pt(int(v&0x3fff)+1, int(v>>14&0x3fff)+1), true
+	case "VP8X":
+		if len(b) < 30 {
+			return image.Point{}, false
+		}
+		return image.Pt(1+int(b[24])|int(b[25])<<8|int(b[26])<<16, 1+int(b[27])|int(b[28])<<8|int(b[29])<<16), true
+	}
+	return image.Point{}, false
+}
+
+// webpFrameSize reads the size of the first VP8 or VP8L frame of a WEBP,
+// the one Go decodes.
+func webpFrameSize(b []byte) (image.Point, bool) {
+	for n := 12; n+8 <= len(b); {
+		size := int(binary.LittleEndian.Uint32(b[n+4:]))
+		body := b[n+8 : n+8+min(size, len(b)-n-8)]
+		switch string(b[n : n+4]) {
+		case "VP8 ":
+			if len(body) < 10 || body[3] != 0x9d || body[4] != 0x01 || body[5] != 0x2a {
+				return image.Point{}, false
+			}
+			return image.Pt(int(binary.LittleEndian.Uint16(body[6:])&0x3fff), int(binary.LittleEndian.Uint16(body[8:])&0x3fff)), true
+		case "VP8L":
+			if len(body) < 5 || body[0] != 0x2f {
+				return image.Point{}, false
+			}
+			v := binary.LittleEndian.Uint32(body[1:])
+			return image.Pt(int(v&0x3fff)+1, int(v>>14&0x3fff)+1), true
+		}
+		n += 8 + size + size&1
+	}
+	return image.Point{}, false
+}
+
+// readImageHeader checks an image before decoding as the desktop's qct
+// does: its size must be readable and within limits, and a PNG must hold
+// all its pixel data. An image that is decoded must also fit the memory
+// budget, which is checked first.
+func readImageHeader(data []byte, kind imageKind) (imageHeader, error) {
+	hdr := imageHeader{orientation: 1}
+	var err error
+	if hdr.w, hdr.h, err = imageSize(data, kind); err != nil {
+		return hdr, err
+	}
+	if err = checkDimensions(hdr.w, hdr.h); err != nil {
+		return hdr, err
+	}
+	switch kind {
+	case kindJPEG:
+		hdr.orientation = readJPEG(data).orientation
+	case kindWebP:
+		// Go decodes the frame of an extended WEBP whatever its canvas;
+		// one that is not the size of its canvas (or animated) gets the
+		// desktop's error.
+		if frame, ok := webpFrameSize(data); !ok || frame != image.Pt(hdr.w, hdr.h) {
+			return hdr, errors.New(msgWebPCodec)
+		}
+	}
+	hdr.target.X, hdr.target.Y, hdr.resize = hdr.fit(kind)
+	if kind == kindPNG && hdr.resize {
+		if rows, ok := streamablePNG(data); ok {
+			hdr.rows = &rows
+		}
+	}
+	if hdr.rows == nil {
+		if err = checkDecodeBudget(data, kind, hdr); err != nil {
+			return hdr, err
+		}
 	}
 	if kind == kindPNG {
 		if err = checkPNGPixelData(data); err != nil {
-			return nil, cfg, undecodable(err)
+			return hdr, undecodable(err)
 		}
 	}
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, cfg, undecodable(err)
+	return hdr, nil
+}
+
+// imageSize reads the size of an image from its header.
+func imageSize(data []byte, kind imageKind) (int, int, error) {
+	errSize := errors.New("image dimensions could not be read before decoding")
+	if kind == kindWebP {
+		size, ok := webpSize(data)
+		if !ok {
+			return 0, 0, errSize
+		}
+		return size.X, size.Y, nil
 	}
-	return img, cfg, nil
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	switch {
+	case err != nil && kind == kindJPEG:
+		return 0, 0, undecodable(err)
+	case err != nil:
+		return 0, 0, errSize
+	}
+	return cfg.Width, cfg.Height, nil
+}
+
+// fit returns the size to pass an image on at, its sides turned by its
+// orientation.
+func (hdr imageHeader) fit(kind imageKind) (int, int, bool) {
+	w, h := hdr.w, hdr.h
+	if hdr.orientation > 4 {
+		w, h = h, w
+	}
+	switch {
+	case kind == kindWebP && slices.Contains(webpKeptSizes, image.Pt(w, h)):
+		return w, h, false
+	case kind == kindWebP:
+		return fitImage(w, h, maxWebPSide)
+	}
+	return fitImage(w, h, maxImageSide)
+}
+
+// pixels returns the pixels to scale: a PNG that can be is scaled to the
+// target size as it is inflated, as the desktop does (Mct); other images,
+// and one whose rows do not inflate, are decoded.
+func pixels(ctx context.Context, data []byte, kind imageKind, hdr imageHeader) (image.Image, error) {
+	if hdr.rows != nil {
+		img, err := hdr.rows.scale(ctx, hdr.target.X, hdr.target.Y)
+		switch {
+		case err == nil:
+			return img, nil
+		case ctx.Err() != nil:
+			return nil, ctx.Err()
+		}
+	}
+	return decode(data, kind, hdr)
+}
+
+// decode decodes an image whose decoding fits the memory budget.
+func decode(data []byte, kind imageKind, hdr imageHeader) (image.Image, error) {
+	if err := checkDecodeBudget(data, kind, hdr); err != nil {
+		return nil, err
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	switch {
+	case err != nil && kind == kindWebP:
+		return nil, errors.New(msgWebPCodec)
+	case err != nil:
+		return nil, undecodable(err)
+	}
+	if canvas := image.Rect(0, 0, hdr.w, hdr.h); img.Bounds() != canvas {
+		// A GIF's first frame, which may cover part of its canvas.
+		return onCanvas{img, canvas}, nil
+	}
+	return img, nil
+}
+
+// checkDecodeBudget refuses an image whose decoding would take more than
+// maxDecodeBytes, in the words of the pixel limit for its pixel format.
+func checkDecodeBudget(data []byte, kind imageKind, hdr imageHeader) error {
+	n := decodeBytes(data, kind, hdr.w, hdr.h)
+	if n <= maxDecodeBytes {
+		return nil
+	}
+	px := int64(hdr.w) * int64(hdr.h)
+	return fmt.Errorf("image dimensions %dx%d exceed the %d pixel decode limit", hdr.w, hdr.h, maxDecodeBytes*px/n)
+}
+
+// decodeBytes estimates the memory Go's decoder takes for a w×h image: the
+// pixels of the image it returns, with those of the interlacing passes of
+// a PNG and the coefficients of a progressive JPEG.
+func decodeBytes(data []byte, kind imageKind, w, h int) int64 {
+	px := float64(w) * float64(h)
+	perPixel := 1.0 // GIF: a paletted frame
+	switch kind {
+	case kindPNG:
+		perPixel = pngPixelSize(data)
+	case kindJPEG:
+		perPixel = readJPEG(data).pixelSize()
+	case kindWebP:
+		perPixel = 10 // VP8L, alpha: pixels decoded as NRGBA, then copied
+		if len(data) >= 16 && string(data[12:16]) == "VP8 " {
+			perPixel = 2 // YCbCr 4:2:0
+		}
+	}
+	return int64(math.Ceil(px * perPixel))
+}
+
+// pngPixelSize is the bytes a pixel of a PNG takes once decoded.
+func pngPixelSize(b []byte) float64 {
+	if len(b) < 29 {
+		return 8
+	}
+	depth, colorType, interlaced := b[24], b[25], b[28] == 1
+	transparent := false
+	for n := 8; n+8 <= len(b) && string(b[n+4:n+8]) != "IDAT"; n += int(binary.BigEndian.Uint32(b[n:])) + 12 {
+		transparent = transparent || string(b[n+4:n+8]) == "tRNS"
+	}
+	size := 4.0 // RGBA, NRGBA
+	switch {
+	case colorType == 3:
+		size = 1 // Paletted
+	case colorType == 0 && !transparent:
+		size = 1 // Gray
+		if depth == 16 {
+			size = 2
+		}
+	case depth == 16:
+		size = 8
+	}
+	if interlaced {
+		size *= 2
+	}
+	return size
 }
 
 // checkDimensions refuses images too large to decode (oye).
@@ -154,9 +403,13 @@ func fitImage(w, h, side int) (int, int, bool) {
 	return nw, nh, nw != w || nh != h
 }
 
-func encodeImage(img image.Image, kind imageKind, w, h int) ([]byte, error) {
-	dst := image.NewNRGBA(image.Rect(0, 0, w, h))
-	draw.BiLinear.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Src, nil)
+// encodeImage scales img to w×h, turned by orientation, and encodes it.
+func encodeImage(img image.Image, kind imageKind, orientation, w, h int) ([]byte, error) {
+	sw, sh := w, h
+	if orientation > 4 {
+		sw, sh = h, w
+	}
+	dst := orient(scale(img, sw, sh), orientation)
 	var out bytes.Buffer
 	var err error
 	switch {

@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/entity"
@@ -284,4 +286,49 @@ func TestDiscoveryNeedsPermission(t *testing.T) {
 	if frames := collect(t, e, f); len(frames) != 1 || frames[0].GetFileError() == nil {
 		t.Fatal("non-TTY discovery allowed")
 	}
+}
+
+// L2-1: like the desktop (ult, q9), a root given through a symlink is kept
+// as it is, in the hello and for relative working directories; a path is
+// checked lexically against it, so the symlink's target is outside it.
+func TestRootThroughSymlink(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "001")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "d"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "f.txt"), []byte("hello"), 0o600))
+	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(dir, "escape")))
+	require.NoError(t, os.Mkdir(filepath.Join(base, "002"), 0o700))
+	link := filepath.Join(base, "002", "home")
+	require.NoError(t, os.Symlink(dir, link))
+	t.Setenv("HOME", link)
+	t.Setenv("ZDOTDIR", t.TempDir())
+	e, err := New(link, gate(entity.ModeAlways))
+	require.NoError(t, err)
+	defer e.Close()
+	assert.Equal(t, link, e.Root)
+	assert.Equal(t, filepath.Join(link, terminalfile.Dir), e.TerminalsFolder())
+
+	frames := pinnedExec(t, e, `{"readArgs":{"path":"`+link+`/f.txt"}}`)
+	require.NotEmpty(t, frames)
+	assert.Equal(t, "hello", frames[0].client.GetReadResult().GetSuccess().GetContent())
+	text, _ := requireThrow(t, pinnedExec(t, e, `{"readArgs":{"path":"`+dir+`/f.txt"}}`))
+	assert.Equal(t, "Path is outside the allowed local-exec root and was refused: "+dir+"/f.txt", text)
+	text, _ = requireThrow(t, pinnedExec(t, e, `{"lsArgs":{"path":"`+link+`/escape"}}`))
+	assert.Equal(t, "Path resolves through a symlink to outside the allowed local-exec root and was refused: "+link+"/escape", text)
+
+	// The shell starts in the directory as given, and its pwd says so.
+	r := runShell(t, e, "pwd")
+	assert.Equal(t, link+"\n", r.stdout, r.stderr)
+	assert.Equal(t, link, r.exit.GetCwd())
+	r = runShellFrame(t, e, `{"shellStreamArgs":{"command":"pwd","workingDirectory":"d"}}`)
+	assert.Equal(t, filepath.Join(link, "d")+"\n", r.stdout, r.stderr)
+	frames = pinnedExec(t, e, `{"backgroundShellSpawnArgs":{"command":"true","workingDirectory":"d"}}`)
+	require.NotEmpty(t, frames)
+	assert.Equal(t, filepath.Join(link, "d"), frames[0].client.GetBackgroundShellSpawnResult().GetSuccess().GetWorkingDirectory())
+	r = runShellFrame(t, e, `{"shellStreamArgs":{"command":"true","workingDirectory":"missing"}}`)
+	assert.Equal(t, "working directory missing does not exist on this machine; running in "+link+" instead\n", r.stderr)
+	r = runShell(t, e, "cd ~ && pwd")
+	assert.Equal(t, link+"\n", r.stdout, r.stderr)
+	assert.Equal(t, link, r.exit.GetCwd())
 }

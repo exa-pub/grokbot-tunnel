@@ -1,7 +1,8 @@
 // Package pathroot confines the file tools of local-exec to a root directory,
 // like the desktop's local-exec root check (anchor: "Path is outside the
 // allowed local-exec root and was refused"). Lexical escapes are refused here;
-// symlink escapes are refused by os.Root.
+// symlink escapes are refused by os.Root. Like the desktop's root (ult), a
+// root given through a symlink is kept as it is.
 package pathroot
 
 import (
@@ -42,17 +43,16 @@ func (e *OutsideError) StackTrace() string { return "SandLocalExecPathError: " +
 
 // Root is an open root directory.
 type Root struct {
-	dir string
-	fs  *os.Root
+	dir  string // absolute, with its symlinks kept
+	real string // dir with its symlinks resolved; "" if that failed
+	fs   *os.Root
 }
 
-// Open opens dir as the root, resolving symlinks in dir itself.
+// Open opens dir as the root. Like the desktop, symlinks in dir itself are
+// kept: a path is checked lexically against dir, and only its realpath
+// against dir's.
 func Open(dir string) (*Root, error) {
 	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return nil, err
-	}
-	abs, err = filepath.EvalSymlinks(abs)
 	if err != nil {
 		return nil, err
 	}
@@ -60,10 +60,14 @@ func Open(dir string) (*Root, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Root{dir: abs, fs: fs}, nil
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		resolved = "" // like the desktop's q9, the realpath check is skipped
+	}
+	return &Root{dir: abs, real: resolved, fs: fs}, nil
 }
 
-// Dir returns the absolute root directory.
+// Dir returns the absolute root directory, with its symlinks kept.
 func (r *Root) Dir() string { return r.dir }
 
 // FS returns the root for operations that must not leave it.
@@ -88,13 +92,17 @@ func (r *Root) Relative(path string) (string, error) {
 
 // Check is Relative that also refuses a path whose existing part leads
 // outside the root through a symlink, like the desktop's check of file
-// paths. os.Root still guards the access itself.
+// paths (q9): the realpath of the path against the realpath of the root.
+// os.Root still guards the access itself.
 func (r *Root) Check(path string) (string, error) {
 	rel, err := r.Relative(path)
 	if err != nil {
 		return "", err
 	}
-	if _, ok := r.inside(resolveExisting(filepath.Join(r.dir, rel))); !ok {
+	if r.real == "" {
+		return rel, nil
+	}
+	if _, ok := within(r.real, resolveExisting(filepath.Join(r.dir, rel))); !ok {
 		return "", &OutsideError{Path: path, Symlink: true}
 	}
 	return rel, nil
@@ -181,7 +189,17 @@ func (r *Root) UploadTarget(rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return r.Relative(resolved)
+	// The root's own symlinks are resolved too, so resolved is below the
+	// root's realpath.
+	base := r.real
+	if base == "" {
+		base = r.dir
+	}
+	target, ok := within(base, resolved)
+	if !ok {
+		return "", &OutsideError{Path: resolved}
+	}
+	return target, nil
 }
 
 func (r *Root) inside(path string) (string, bool) {
@@ -191,7 +209,13 @@ func (r *Root) inside(path string) (string, bool) {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(r.dir, path)
 	}
-	rel, err := filepath.Rel(r.dir, filepath.Clean(path))
+	return within(r.dir, path)
+}
+
+// within returns the absolute path relative to dir if it is lexically below
+// dir.
+func within(dir, path string) (string, bool) {
+	rel, err := filepath.Rel(dir, filepath.Clean(path))
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", false
 	}

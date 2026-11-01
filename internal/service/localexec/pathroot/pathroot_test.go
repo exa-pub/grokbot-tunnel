@@ -20,17 +20,60 @@ func open(t *testing.T) *pathroot.Root {
 	return r
 }
 
-func TestOpenResolvesSymlinks(t *testing.T) {
-	dir := t.TempDir()
-	link := filepath.Join(t.TempDir(), "link")
+// L2-1: like the desktop (ult, q9), a root given through a symlink is kept
+// as it is: paths are checked lexically against it, and only their realpath
+// against its realpath. Its target is outside the root.
+func TestOpenKeepsSymlinks(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "001")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	require.NoError(t, os.Mkdir(filepath.Join(base, "002"), 0o700))
+	link := filepath.Join(base, "002", "home")
 	require.NoError(t, os.Symlink(dir, link))
-	r, err := pathroot.Open(link)
+	outside := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "d"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "d", "f"), []byte("x"), 0o600))
+	require.NoError(t, os.Symlink("d/f", filepath.Join(dir, "live")))
+	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "escape")))
+
+	r, err := pathroot.Open(link + "/")
 	require.NoError(t, err)
 	defer r.Close()
-	want, err := filepath.EvalSymlinks(dir)
+	assert.Equal(t, link, r.Dir())
+	assert.Equal(t, filepath.Join(link, "a"), r.Abs("a"))
+
+	for in, want := range map[string]string{"d/f": "d/f", link + "/d/f": "d/f", "d/new": "d/new", link: "."} {
+		rel, err := r.Check(in)
+		require.NoError(t, err, in)
+		assert.Equal(t, want, rel, in)
+	}
+	f, err := r.OpenRegular(link + "/d/f")
 	require.NoError(t, err)
-	assert.Equal(t, want, r.Dir())
-	assert.Equal(t, filepath.Join(want, "a"), r.Abs("a"))
+	f.Close()
+
+	for _, in := range []string{dir + "/d/f", dir} {
+		_, err = r.Check(in)
+		require.EqualError(t, err, "Path is outside the allowed local-exec root and was refused: "+in)
+	}
+	for _, in := range []string{"escape", link + "/escape/x"} {
+		_, err = r.Check(in)
+		require.EqualError(t, err, "Path resolves through a symlink to outside the allowed local-exec root and was refused: "+in)
+	}
+
+	got, err := r.UploadTarget("live")
+	require.NoError(t, err)
+	assert.Equal(t, "d/f", got)
+	_, err = r.UploadTarget("escape")
+	require.ErrorIs(t, err, pathroot.ErrOutside)
+
+	for in, want := range map[string]string{"": link, "d": filepath.Join(link, "d")} {
+		cwd, warning := r.Cwd(in)
+		assert.Equal(t, want, cwd, in)
+		assert.Empty(t, warning, in)
+	}
+	cwd, warning := r.Cwd("missing")
+	assert.Equal(t, link, cwd)
+	assert.Equal(t, "working directory missing does not exist on this machine; running in "+link+" instead\n", warning)
 }
 
 func TestRelative(t *testing.T) {

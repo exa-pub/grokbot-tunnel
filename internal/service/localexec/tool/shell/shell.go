@@ -121,7 +121,7 @@ func (ex *Executor) startShell(
 	if threshold := x.GetFileOutputThresholdBytes(); threshold > 0 {
 		sh.out.full = &fullOutput{root: ex.session.Root(), threshold: threshold}
 	}
-	if sh.snapshot, sh.fallback, err = shellsession.StateFiles(); err != nil {
+	if sh.snapshot, sh.fallback, err = ex.session.StateFiles(); err != nil {
 		return nil, err
 	}
 	defer func() {
@@ -131,7 +131,7 @@ func (ex *Executor) startShell(
 	}()
 	env := shellsession.RequestEnv(ex.session.Root().Dir(), x.GetConversationId(), x.GetRequestId())
 	var release func()
-	if sh.cmd, release, err = shellsession.Foreground(st, cwd, x.Command, env, sh.snapshot, sh.fallback); err != nil {
+	if sh.cmd, release, err = ex.session.Foreground(st, cwd, x.Command, env, sh.snapshot, sh.fallback); err != nil {
 		return nil, err
 	}
 	defer release() // the child keeps its own descriptors

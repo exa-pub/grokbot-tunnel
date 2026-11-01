@@ -115,7 +115,10 @@ type stubCloud struct {
 	failIssue, failSubmit  bool
 	failPoll               bool
 	submitted              []*responseFrame
-	block                  chan struct{}                                  // holds submits until closed
+	block                  chan struct{} // holds submits until closed
+	holdFirst              chan struct{} // holds the first submit until closed
+	held                   chan struct{} // closed once the first submit waits on holdFirst
+	holding                bool
 	unauthenticated        bool                                           // submits are rejected
 	rejectWatch            bool                                           // watches are rejected
 	connect                bool                                           // watches report connected
@@ -189,6 +192,13 @@ func (c *stubCloud) SubmitGrokBotUserComputerResponses(
 		<-c.block
 	}
 	c.mu.Lock()
+	if hold := c.holdFirst; hold != nil && !c.holding {
+		c.holding = true
+		close(c.held)
+		c.mu.Unlock()
+		<-hold
+		c.mu.Lock()
+	}
 	defer c.mu.Unlock()
 	c.submits++
 	c.submitTimeout = timeout(ctx)
@@ -586,6 +596,55 @@ func TestShutdownFlushesDespiteSlowWorker(t *testing.T) {
 	assert.Less(t, time.Since(start), time.Second)
 }
 
+// A submit still in flight when the workers' budget runs out does not stop
+// the final submit (C2-2): like the desktop, which gives up waiting for the
+// flush in progress, the frames not in flight go out, here the stream close
+// of a canceled request and the "stopped serving" answer of a backlogged one;
+// the frames in flight are not sent again.
+func TestShutdownSubmitsRestWhileSubmitInFlight(t *testing.T) {
+	var now time.Time
+	c := &stubCloud{holdFirst: make(chan struct{}), held: make(chan struct{})}
+	s := stubSession(t, c, &now)
+	withCredential(s, "c", false)
+	s.out.Add(closeFrame("first"))
+	s.startSubmit() // hangs on the slow link
+	require.True(t, s.out.Submitting())
+	<-c.held
+	s.out.Add(closeFrame("done"))
+	occupy(t, s, "busy", admission.MaxActive)
+	s.accept(pinnedExec("queued"), false)
+	require.Equal(t, 1, s.admit.Backlog())
+	s.withTimeout = func(parent context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+		ctx, cancel := context.WithCancel(parent)
+		if d < shutdownGrace {
+			cancel() // the workers' budget is used up
+		}
+		return ctx, cancel
+	}
+	s.shutdown()
+
+	c.mu.Lock()
+	sent := c.submitted
+	c.mu.Unlock()
+	require.Len(t, sent, 2)
+	got := pinnedFrames(sent, "done")
+	require.Len(t, got, 1)
+	assert.NotNil(t, pinnedControl(t, got[0]).GetStreamClose())
+	got = pinnedFrames(sent, "queued")
+	require.Len(t, got, 1)
+	assert.Equal(t, admission.ErrStopped.Error(), pinnedControl(t, got[0]).GetThrow().GetError())
+	require.Len(t, s.out.Pending(), 1, "the frame in flight stays until its submit settles")
+	assert.Equal(t, "first", s.out.Pending()[0].RequestId)
+
+	close(c.holdFirst)
+	r := <-s.submitted
+	require.NoError(t, r.err)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	assert.Len(t, pinnedFrames(c.submitted, "first"), 1)
+	assert.Len(t, c.submitted, 3)
+}
+
 func TestPollFailureRetriesWithBackoff(t *testing.T) {
 	var now time.Time
 	c := &stubCloud{failPoll: true}
@@ -603,6 +662,66 @@ func TestPollFailureRetriesWithBackoff(t *testing.T) {
 	if _, _, polls := c.counts(); polls != 2 {
 		t.Fatal("failed poll not retried", polls)
 	}
+}
+
+// With the stream alive, a notify or a heartbeat with pending requests polls
+// at once after failed polls, not when their backoff (up to 60 s) runs out,
+// like the desktop, which has no poll backoff (C2-1). Ticks without such an
+// event still wait for the backoff, so failing polls follow the events.
+func TestWorkEventPollsDespiteBackoff(t *testing.T) {
+	var now time.Time
+	c := &stubCloud{failPoll: true}
+	s := stubSession(t, c, &now)
+	withCredential(s, "c", false)
+	s.stream.Start(now, "always")
+	event := func(ev *aiserverv1.WatchGrokBotUserComputerRequestsEvent) {
+		s.onEvent(watched{generation: s.stream.Generation(), event: ev})
+	}
+	heartbeat := func(pending uint32) {
+		event(&aiserverv1.WatchGrokBotUserComputerRequestsEvent{Event: &aiserverv1.WatchGrokBotUserComputerRequestsEvent_Heartbeat{
+			Heartbeat: &aiserverv1.WatchGrokBotUserComputerHeartbeat{PendingRequestCount: pending},
+		}})
+	}
+	polls := func() int {
+		_, _, n := c.counts()
+		return n
+	}
+	event(&aiserverv1.WatchGrokBotUserComputerRequestsEvent{Event: &aiserverv1.WatchGrokBotUserComputerRequestsEvent_Connected{
+		Connected: &aiserverv1.WatchGrokBotUserComputerConnected{},
+	}})
+	// tickAt advances the clock, keeps the stream alive with a heartbeat that
+	// says nothing waits, and ticks.
+	tickAt := func(d time.Duration) {
+		now = now.Add(d)
+		heartbeat(0)
+		require.NoError(t, tick(t, s))
+	}
+	require.NoError(t, tick(t, s))
+	for i, wait := range []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 32 * time.Second} {
+		require.Equal(t, i+1, polls())
+		tickAt(wait - time.Second)
+		require.Equal(t, i+1, polls(), "retry before the backoff")
+		tickAt(time.Second)
+	}
+	require.Equal(t, 7, polls()) // the next retry waits 60 s
+
+	tickAt(time.Second)
+	require.Equal(t, 7, polls())
+	heartbeat(1)
+	require.NoError(t, tick(t, s))
+	assert.Equal(t, 8, polls(), "heartbeat with pending requests waited for the backoff")
+	tickAt(10 * time.Second)
+	assert.Equal(t, 8, polls(), "a retry without an event did not wait for the backoff")
+
+	c.mu.Lock()
+	c.failPoll = false
+	c.mu.Unlock()
+	event(&aiserverv1.WatchGrokBotUserComputerRequestsEvent{Event: &aiserverv1.WatchGrokBotUserComputerRequestsEvent_Notify{
+		Notify: &aiserverv1.WatchGrokBotUserComputerNotify{},
+	}})
+	require.NoError(t, tick(t, s))
+	assert.Equal(t, 9, polls(), "notify waited for the backoff")
+	assert.True(t, s.stream.Alive())
 }
 
 func TestServerAuthoritativeStandingChangeKeepsWatch(t *testing.T) {

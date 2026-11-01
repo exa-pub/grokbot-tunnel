@@ -22,7 +22,11 @@ func newShell(t *testing.T) (*Executor, *pathroot.Root) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { root.Close() })
-	session := shellsession.New(root)
+	session, err := shellsession.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { session.Close() })
 	return New(session, background.New(root, session)), root
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -26,14 +27,14 @@ func TestTimer(t *testing.T) {
 }
 
 func TestTempFileIsUnlinked(t *testing.T) {
-	f, err := proc.TempFile("proc-test-", "content")
+	dir := t.TempDir()
+	f, err := proc.TempFile(dir, "proc-test-", "content")
 	require.NoError(t, err)
 	defer proc.CloseLogged(f)
+	assert.Equal(t, dir, filepath.Dir(f.Name()))
 	_, err = os.Stat(f.Name())
 	require.ErrorIs(t, err, os.ErrNotExist)
-	_, err = f.Seek(0, io.SeekStart)
-	require.NoError(t, err)
-	b, err := io.ReadAll(f)
+	b, err := io.ReadAll(f) // positioned at the start
 	require.NoError(t, err)
 	assert.Equal(t, "content", string(b))
 	proc.RemoveLogged(f.Name()) // already gone: not logged as an error

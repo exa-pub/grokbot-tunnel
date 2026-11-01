@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -154,21 +156,55 @@ func TestShellProfileReadOnce(t *testing.T) {
 	})
 }
 
+// startupFile makes bash ($BASH_ENV) and zsh (.zshenv) run script when they
+// start.
+func startupFile(t *testing.T, home, script string) {
+	t.Helper()
+	startup := filepath.Join(home, "startup.sh")
+	if err := os.WriteFile(startup, []byte(script+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BASH_ENV", startup)
+	if err := os.WriteFile(filepath.Join(home, ".zshenv"), []byte(". '"+startup+"'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// S2-5, like the desktop's B3 and U3: a startup file that closes or replaces
+// descriptor 5 makes the command fail with the desktop's text and exit code
+// 126; from then on the session passes commands as arguments, so the next
+// foreground and background commands run, with the state kept.
 func TestShellStartupFileClosingCommandDescriptor(t *testing.T) {
+	const text = "The command did not run: a shell startup file ($BASH_ENV or .zshenv) closed or replaced file " +
+		"descriptor 5, which carries the command. Run it again; this shell now passes commands as arguments.\n"
+	for name, script := range map[string]string{"closed": "exec 5<&-", "empty": "exec 5</dev/null", "write-only": `exec 5>"$HOME/startup.log"`} {
+		t.Run(name, func(t *testing.T) {
+			eachShell(t, func(t *testing.T, home string) {
+				startupFile(t, home, script)
+				e := setupHome(t, home)
+				r := runShell(t, e, "export KEPT=1; printf ran")
+				if r.stdout != "" || r.exit.Code != 126 || !strings.HasSuffix(r.stderr, text) {
+					t.Fatalf("%q %q %v", r.stdout, r.stderr, r.exit)
+				}
+				expectStdout(t, e, `export KEPT=2; printf 'ran|%s' "${KEPT}"`, "ran|2")
+				expectStdout(t, e, `printf 'ran|%s' "${KEPT}"`, "ran|2")
+				frames := collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"printf 'bg|%s' \"$KEPT\""}}`))
+				if data := waitTerminal(t, e, frames); !strings.Contains(data, "---\nbg|2\n---\n") {
+					t.Fatalf("%q", data)
+				}
+			})
+		})
+	}
+}
+
+// Like the desktop, which skips the replay when it cannot read descriptor 3,
+// a startup file that closes it does not stop commands from running.
+func TestShellStartupFileClosingReplayDescriptor(t *testing.T) {
 	eachShell(t, func(t *testing.T, home string) {
-		startup := filepath.Join(home, "startup.sh")
-		if err := os.WriteFile(startup, []byte("exec 5<&-\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("BASH_ENV", startup)
-		if err := os.WriteFile(filepath.Join(home, ".zshenv"), []byte(". "+startup+"\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		startupFile(t, home, "exec 3<&-")
 		e := setupHome(t, home)
-		r := runShell(t, e, "printf ran")
-		if r.stdout != "" || r.exit.Code != 126 || !strings.Contains(r.stderr, "did not run") {
-			t.Fatal(r)
-		}
+		expectStdout(t, e, "export KEPT=1; printf ran", "ran")
+		expectStdout(t, e, `printf 'ran|%s' "${KEPT}"`, "ran|1")
 	})
 }
 
@@ -414,5 +450,120 @@ func TestShellBlankWorkingDirectory(t *testing.T) {
 	r := runShellFrame(t, e, `{"shellStreamArgs":{"command":"pwd","workingDirectory":"  "}}`)
 	if r.stdout != filepath.Join(e.Root, "sub")+"\n" || r.stderr != "" {
 		t.Fatal(r.stdout, r.stderr)
+	}
+}
+
+// shellTemp isolates the temporary files of executors in a new $TMPDIR,
+// which it returns.
+func shellTemp(t *testing.T) string {
+	t.Helper()
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	return tmp
+}
+
+// tempEntries returns the names in dir.
+func tempEntries(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names
+}
+
+// S2-3: the fallback snapshots of shells that outlive the executor do not
+// stay in $TMPDIR: they live in a private directory that Close removes, so
+// the EXIT trap of a shell that exits later writes nothing.
+func TestShellStateFilesRemovedOnClose(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		tmp := shellTemp(t)
+		e := setupHome(t, home)
+		runShell(t, e, "export GROK_SECRET=hunter2")
+		collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"sleep 0.5; exit 0"}}`))
+		collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 0.5; exit 3","timeout":10,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`))
+		names := tempEntries(t, tmp)
+		if len(names) != 1 || !strings.HasPrefix(names[0], "grok-shell-") {
+			t.Fatal(names)
+		}
+		if info, err := os.Stat(filepath.Join(tmp, names[0])); err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
+			t.Fatal(info, err)
+		}
+		if err := e.Close(); err != nil {
+			t.Fatal(err)
+		}
+		for range 2 {
+			if names := tempEntries(t, tmp); len(names) != 0 {
+				t.Fatal(names)
+			}
+			time.Sleep(time.Second) // the shells exit
+		}
+	})
+}
+
+// S2-3: a new executor removes the shell files that executors of processes
+// no longer running left in $TMPDIR, and the fallback snapshots of older
+// versions, and keeps those of running processes.
+func TestShellStaleStateFilesRemoved(t *testing.T) {
+	tmp := shellTemp(t)
+	dead := exec.CommandContext(t.Context(), "true")
+	if err := dead.Run(); err != nil {
+		t.Fatal(err)
+	}
+	live := exec.CommandContext(t.Context(), "sleep", "30") // killed at the end of the test
+	if err := live.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = live.Wait() })
+	stale := []string{"grok-shell-state-123", "grok-shell-" + strconv.Itoa(dead.Process.Pid) + "-1"}
+	kept := []string{
+		"grok-shell-state-456", // an older version's, open while its command runs
+		"grok-shell-" + strconv.Itoa(live.Process.Pid) + "-1",
+		"grok-shell-" + strconv.Itoa(os.Getpid()) + "-1", // another executor of this process
+		"grok-shell-other",
+	}
+	for _, name := range []string{stale[0], kept[0]} {
+		if err := os.WriteFile(filepath.Join(tmp, name), []byte("GROK_SECRET=hunter2"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open, err := os.Open(filepath.Join(tmp, kept[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer open.Close()
+	for _, dir := range append(stale[1:], kept[1:]...) {
+		if err := os.Mkdir(filepath.Join(tmp, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(tmp, dir, "fallback"), []byte("GROK_SECRET=hunter2"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := setup(t)
+	expectStdout(t, e, "printf ran", "ran")
+	names := tempEntries(t, tmp)
+	for _, name := range stale {
+		if slices.Contains(names, name) {
+			t.Fatal("stale", name, "kept")
+		}
+	}
+	for _, name := range kept {
+		if !slices.Contains(names, name) {
+			t.Fatal(name, "removed")
+		}
+	}
+	if len(names) != len(kept)+1 {
+		t.Fatal(names)
+	}
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if names := tempEntries(t, tmp); len(names) != len(kept) {
+		t.Fatal(names)
 	}
 }

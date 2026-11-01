@@ -80,7 +80,7 @@ func (rd *Executor) result(ctx context.Context, rel string, x *agentv1.ReadArgs)
 	success := &agentv1.ReadSuccess{Path: path, FileSize: min(st.Size(), math.MaxUint32)}
 	switch {
 	case format.Image:
-		return rd.image(f, path, success)
+		return rd.image(ctx, f, path, success)
 	case extname(path) == ".pdf", format.Binary && isVideo(path):
 		data, err := readAll(f)
 		if err != nil {
@@ -125,14 +125,16 @@ func (rd *Executor) check(rel, path string) (*agentv1.ReadResult, error) {
 }
 
 // image returns an image as the desktop prepares it for the model.
-func (rd *Executor) image(f *os.File, path string, success *agentv1.ReadSuccess) (*agentv1.ReadResult, error) {
+func (rd *Executor) image(ctx context.Context, f *os.File, path string, success *agentv1.ReadSuccess) (*agentv1.ReadResult, error) {
 	data, err := readAll(f)
 	if err != nil {
 		return readError(path, err), nil
 	}
-	img, err := prepareImage(data)
+	img, err := prepareImage(ctx, data)
 	var undecodable *undecodableError
 	switch {
+	case ctx.Err() != nil:
+		return nil, ctx.Err()
 	case errors.As(err, &undecodable):
 		return invalidFile(path, undecodable.Reason()), nil
 	case err != nil:

@@ -26,6 +26,10 @@ import (
 // the drainers have hit EOF or waitDelay has passed, the output is finished:
 // nothing more reaches the agent or the terminal file, but the drainers keep
 // reading until the last writer is gone.
+//
+// Like the desktop's io(), which stops listening for the abort once the shell
+// exits, an abort after the shell has exited kills nothing: the background
+// jobs left in its process group keep running.
 type runningShell struct {
 	ex       *Executor
 	args     *agentv1.ShellArgs
@@ -41,6 +45,9 @@ type runningShell struct {
 	snapshot *os.File    // receives the state on exit
 	fallback *os.File    // receives the state from the EXIT trap; linked until the shell exits
 	killed   atomic.Bool // a detached command was killed by the hard timeout
+
+	exitMu sync.Mutex // guards gone
+	gone   bool       // the shell has exited and been reaped
 }
 
 // start launches the command with its output pipes and their drainers.
@@ -85,6 +92,10 @@ func (sh *runningShell) drain(r *os.File, w *streamWriter) {
 // reap waits for the process and its output and finalizes the output.
 func (sh *runningShell) reap() {
 	proc.Wait(sh.cmd)
+	sh.exitMu.Lock()
+	sh.gone = true
+	sh.exitMu.Unlock()
+	sh.ex.session.Exited(sh.cmd, sh.snapshot, sh.fallback)
 	proc.RemoveLogged(sh.fallback.Name())
 	drained := make(chan struct{})
 	go func() {
@@ -113,6 +124,20 @@ func (sh *runningShell) reap() {
 		sh.ex.background.Release(shellID)
 	}
 	close(sh.done)
+}
+
+// kill kills the command's process group unless the shell has exited; if it
+// does, marked, if any, is set first.
+func (sh *runningShell) kill(marked *atomic.Bool) {
+	sh.exitMu.Lock()
+	defer sh.exitMu.Unlock()
+	if sh.gone {
+		return
+	}
+	if marked != nil {
+		marked.Store(true)
+	}
+	proc.Kill(sh.cmd)
 }
 
 // exited reports whether the command has exited and its output is finished.
@@ -170,12 +195,12 @@ func (sh *runningShell) wait(ctx context.Context) error {
 	return sh.finish(reason)
 }
 
-// abandon stops the output from reaching the agent and kills the command; its
-// state is not kept.
+// abandon stops the output from reaching the agent and kills the command
+// unless its shell has exited; its state is not kept.
 func (sh *runningShell) abandon() {
 	_, _, full := sh.out.finish()
 	full.release()
-	proc.Kill(sh.cmd)
+	sh.kill(nil)
 }
 
 // detach leaves the command running in the background, like the desktop's
@@ -217,8 +242,7 @@ func (sh *runningShell) detach(waited int32) error {
 			select {
 			case <-sh.done:
 			case <-time.After(max(remaining, time.Millisecond)):
-				sh.killed.Store(true)
-				proc.Kill(sh.cmd)
+				sh.kill(&sh.killed)
 			}
 		}()
 	}
@@ -234,13 +258,14 @@ func (sh *runningShell) detach(waited int32) error {
 	}}))
 }
 
-// finish kills the command if it was aborted and reports its exit with the
-// session's cwd, as the desktop does: a command that ended on its own has
-// written the state it left first. An aborted command's state is discarded.
+// finish kills the command if it was aborted while its shell still ran and
+// reports its exit with the session's cwd once its output is finished, as the
+// desktop does: a command that ended on its own has written the state it left
+// first. An aborted command's state is discarded.
 func (sh *runningShell) finish(reason agentv1.ShellAbortReason) error {
 	aborted := reason != agentv1.ShellAbortReason_SHELL_ABORT_REASON_UNSPECIFIED
 	if aborted {
-		proc.Kill(sh.cmd)
+		sh.kill(nil)
 		<-sh.done
 	}
 	if err := sh.out.sendErr(); err != nil {

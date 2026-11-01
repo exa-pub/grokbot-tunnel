@@ -93,7 +93,8 @@ func (s *session) stop() {
 }
 
 // shutdown cancels all work and flushes results within shutdownGrace, keeping
-// finalFlushGrace of it for the final submit even if workers are slow.
+// finalFlushGrace of it for the final submit even if workers or the submit in
+// flight are slow.
 func (s *session) shutdown() {
 	s.stopWork()
 	if s.watchCancel != nil {
@@ -114,9 +115,11 @@ func (s *session) shutdown() {
 		log.Printf("shutdown: %d requests still running", s.admit.Active())
 	}
 	if s.out.Submitting() {
-		// The frames of a submit still in flight must not be sent twice.
-		log.Printf("final submit: previous submit still running")
-		return
+		// The workers' budget was the wait for the submit in flight, like the
+		// desktop's wait for the flush in progress, which gives up and submits
+		// the rest. The final submit leaves out the frames still in flight, so
+		// none is sent twice.
+		log.Printf("final submit: previous submit still running; sending the rest")
 	}
 	for drained := false; !drained; {
 		select {
@@ -155,15 +158,18 @@ func (s *session) awaitWorkers(ctx context.Context) bool {
 }
 
 // submit delivers the pending frames on the caller's goroutine, retrying
-// briefly on failure.
+// briefly on failure. Frames of a submit in flight are not sent.
 func (s *session) submit(ctx context.Context) error {
 	failures := 0
-	for len(s.out.Pending()) > 0 && s.cred.Current().Credential != "" {
+	for s.cred.Current().Credential != "" {
+		batch := s.out.Batch()
+		if len(batch) == 0 {
+			return nil
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		before := len(s.out.Pending())
-		batch := s.out.Batch()
 		credential := s.cred.Current().Credential
 		n, err := s.pv.submitFrames(ctx, controlTimeout, credential, batch)
 		s.out.Accepted(batch, n)

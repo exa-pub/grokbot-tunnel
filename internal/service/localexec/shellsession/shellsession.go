@@ -19,7 +19,7 @@
 //
 //	3  replay script (options, functions), read and closed first
 //	4  state snapshot, closed while the command runs
-//	5  command text, read and closed first
+//	5  command text ended by a NUL, read and closed first
 //
 // The dump runs after the command, not from an EXIT trap: a trap can be
 // replaced by the command, and when the command exits from a function or is
@@ -34,11 +34,15 @@
 // it; it does nothing in subshells or once the regular dump has run. A command
 // that replaces the trap, execs another program or is killed leaves no
 // snapshot, and the previous state stays in effect silently, as on the
-// desktop.
+// desktop. The fallback files live in the session's private directory, which
+// Close removes, so a shell that outlives the session writes no state.
 //
 // The state and the command reach the shell through files, not arguments:
 // Linux limits a single argument to 128 KiB, and functions from a profile or
-// a command with a heredoc can exceed that.
+// a command with a heredoc can exceed that. Like the desktop's, a shell whose
+// startup file ($BASH_ENV, .zshenv) closed or replaced descriptor 5 does not
+// run the command, and the session passes commands as arguments from then
+// on. One that closed descriptor 3 runs the command without the replay.
 package shellsession
 
 import (
@@ -50,6 +54,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -71,19 +76,36 @@ const (
 
 // Session is the shell state shared by the commands of one root.
 type Session struct {
-	root  *pathroot.Root
+	root *pathroot.Root
+	// dir is the private directory of the shells' temporary files.
+	dir   string
 	mu    sync.Mutex // guards state
 	state State
 	// initOnce starts reading the user's profile into state; initDone is
 	// closed once it is done.
 	initOnce sync.Once
 	initDone chan struct{}
+	// commandArg is set once a startup file broke descriptor 5, like the
+	// desktop's commandPipeUnreadable: shells then get the command as an
+	// argument.
+	commandArg atomic.Bool
 }
 
-// New returns a Session whose commands run below root by default.
-func New(root *pathroot.Root) *Session {
-	return &Session{root: root}
+// New returns a Session whose commands run below root by default, with its
+// private directory for temporary files created; Close removes it. Private
+// directories and fallback files that processes no longer running left
+// behind are removed first.
+func New(root *pathroot.Root) (*Session, error) {
+	dir, err := tempDir()
+	if err != nil {
+		return nil, err
+	}
+	return &Session{root: root, dir: dir}, nil
 }
+
+// Close removes the session's private directory. Shells still running then
+// save no fallback state.
+func (s *Session) Close() error { return os.RemoveAll(s.dir) }
 
 // Root is the root the commands run below by default.
 func (s *Session) Root() *pathroot.Root { return s.root }
@@ -189,21 +211,15 @@ func (s *Session) Commit(snapshot, fallback *os.File, started State) {
 	}
 }
 
-func (s *Session) cwd(st State) string {
-	if st.cwd == "" {
-		return s.root.Dir()
-	}
-	return st.cwd
-}
-
 // StateFiles returns the files a command saves its state to: the snapshot,
-// unlinked, and the fallback of its EXIT trap, linked until the command
-// exits. Close them with CloseStateFiles.
-func StateFiles() (snapshot, fallback *os.File, err error) {
-	if snapshot, err = proc.TempFile("grok-shell-state-", ""); err != nil {
+// unlinked, and the fallback of its EXIT trap, linked in the session's
+// private directory until the command exits. Close them with
+// CloseStateFiles.
+func (s *Session) StateFiles() (snapshot, fallback *os.File, err error) {
+	if snapshot, err = proc.TempFile(s.dir, "state-", ""); err != nil {
 		return nil, nil, err
 	}
-	if fallback, err = os.CreateTemp("", "grok-shell-state-"); err != nil {
+	if fallback, err = os.CreateTemp(s.dir, "fallback-"); err != nil {
 		proc.CloseLogged(snapshot)
 		return nil, nil, err
 	}
@@ -217,8 +233,15 @@ func CloseStateFiles(snapshot, fallback *os.File) {
 	proc.CloseLogged(fallback)
 }
 
+func (s *Session) cwd(st State) string {
+	if st.cwd == "" {
+		return s.root.Dir()
+	}
+	return st.cwd
+}
+
 func (s *Session) profileState() (State, error) {
-	snapshot, err := proc.TempFile("grok-shell-state-", "")
+	snapshot, err := proc.TempFile(s.dir, "state-", "")
 	if err != nil {
 		return State{}, err
 	}

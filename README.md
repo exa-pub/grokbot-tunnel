@@ -101,7 +101,9 @@ tunnel (`grokbot-tunnel uninstall`, or stop `connect`).
   and then `install` again.
 - If the computer is removed in Grok Bot while the tunnel runs, the tunnel
   stops and systemd does not restart it; run `install` (or `connect`) again to
-  add it back.
+  add it back. The service is still enabled, so the computer comes back the
+  next time the service starts, e.g. after a reboot; run
+  `grokbot-tunnel uninstall` to keep it removed.
 - `grokbot-tunnel uninstall` stops and removes the service and keeps the binary
   and your login.
 

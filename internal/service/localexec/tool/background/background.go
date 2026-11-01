@@ -101,7 +101,7 @@ func (bg *Executor) Spawn(ctx context.Context, args *agentv1.BackgroundShellSpaw
 	if gone != "" {
 		return bg.refuse(n, f, header, gone)
 	}
-	snapshot, fallback, err := shellsession.StateFiles()
+	snapshot, fallback, err := bg.session.StateFiles()
 	if err != nil {
 		proc.CloseLogged(f)
 		bg.Release(n)
@@ -121,7 +121,7 @@ func (bg *Executor) Spawn(ctx context.Context, args *agentv1.BackgroundShellSpaw
 	defer gate.Close()
 	defer open.Close()
 	env := shellsession.RequestEnv(bg.root.Dir(), args.GetConversationId(), args.GetRequestId())
-	c, release, err := shellsession.Background(st, cwd, cmd, env, gate, snapshot, fallback)
+	c, release, err := bg.session.Background(st, cwd, cmd, env, gate, snapshot, fallback)
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +230,7 @@ func (bg *Executor) finish(
 	c *exec.Cmd, n uint32, tf *terminalfile.File, out *output, started shellsession.State, snapshot, fallback *os.File,
 ) {
 	proc.Wait(c)
+	bg.session.Exited(c, snapshot, fallback)
 	out.wait(waitDelay)
 	bg.session.Commit(snapshot, fallback, started)
 	shellsession.CloseStateFiles(snapshot, fallback)

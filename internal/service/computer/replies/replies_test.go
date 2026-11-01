@@ -209,6 +209,28 @@ func TestNextAndAccepting(t *testing.T) {
 	assert.Len(t, q.Pending(), replies.SubmitBatch)
 }
 
+// Batch leaves out the frames of the submit in flight, so that shutdown's
+// final submit does not send them twice (C2-2); once it settles, they are
+// gone or batched again.
+func TestBatchLeavesOutSubmitInFlight(t *testing.T) {
+	var q replies.Queue
+	now := time.Unix(1000, 0)
+	q.Add(closeFrame("a"))
+	inflight := q.Next(now)
+	require.Len(t, inflight, 1)
+	assert.Empty(t, q.Batch(), "only the frame in flight is pending")
+	q.Add(closeFrame("a"))
+	q.Add(closeFrame("b"))
+	rest := q.Batch()
+	require.Len(t, rest, 2)
+	assert.NotSame(t, inflight[0], rest[0])
+	assert.NotSame(t, inflight[0], rest[1])
+	q.Accepted(rest, len(rest))
+	assert.Len(t, q.Pending(), 1)
+	q.Settle(inflight, 0)
+	assert.Equal(t, inflight, q.Batch(), "a settled frame is batched again")
+}
+
 // Invariant 11, ≠ desktop: keep-alives go to started tasks and to requests
 // with unsent frames, not to waiting or canceled ones, nor once a stream is
 // closed or a keep-alive is pending; the desktop keeps alive the backlog,

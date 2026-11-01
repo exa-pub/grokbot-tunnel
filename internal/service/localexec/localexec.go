@@ -8,6 +8,7 @@ package localexec
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
@@ -46,13 +47,17 @@ type Executor struct {
 	discovery  *discovery.Discoverer
 }
 
-// New opens an executor rooted at root, resolving symlinks in root itself.
+// New opens an executor rooted at root; like the desktop, symlinks in root
+// itself are kept.
 func New(root string, gate Gate) (*Executor, error) {
 	r, err := pathroot.Open(root)
 	if err != nil {
 		return nil, err
 	}
-	session := shellsession.New(r)
+	session, err := shellsession.New(r)
+	if err != nil {
+		return nil, errors.Join(err, r.Close())
+	}
 	bg := background.New(r, session)
 	return &Executor{
 		Root:       r.Dir(),
@@ -71,5 +76,6 @@ func New(root string, gate Gate) (*Executor, error) {
 // TerminalsFolder is where background command output files are written.
 func (e *Executor) TerminalsFolder() string { return filepath.Join(e.Root, terminalfile.Dir) }
 
-// Close releases the root directory handle.
-func (e *Executor) Close() error { return e.root.Close() }
+// Close removes the shells' temporary files and releases the root directory
+// handle.
+func (e *Executor) Close() error { return errors.Join(e.session.Close(), e.root.Close()) }
