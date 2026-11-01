@@ -10,10 +10,11 @@ import (
 // binaryExtensions are returned as data instead of text.
 var binaryExtensions = []string{".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
-// Messages shown to the agent, matching the desktop.
+// Messages shown to the agent, matching the desktop (dut, Kpe).
 const (
-	msgBinaryFile = "File is binary and cannot be read as text"
+	msgBinaryFile = "File content is binary data, not text"
 	msgDirectory  = "Path is a directory, not a file"
+	msgEmptyPath  = "path is empty or only whitespace"
 )
 
 func readMessage(r *agentv1.ReadResult) *agentv1.ExecClientMessage {

@@ -58,7 +58,10 @@ func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send exec
 			return err
 		}
 	}
-	start := &agentv1.ShellStream_Start{Start: &agentv1.ShellStreamStart{Command: &x.Command}}
+	// Like the desktop's after local approval: no command, no sandbox.
+	start := &agentv1.ShellStream_Start{Start: &agentv1.ShellStreamStart{
+		SandboxPolicy: &agentv1.SandboxPolicy{Type: agentv1.SandboxPolicy_TYPE_INSECURE_NONE},
+	}}
 	if err := send(shellMessage(&agentv1.ShellStream{Event: start})); err != nil {
 		return err
 	}

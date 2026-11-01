@@ -2,7 +2,6 @@ package read
 
 import (
 	"math"
-	"path/filepath"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -10,7 +9,6 @@ import (
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/textcodec"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
-	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 const (
@@ -30,19 +28,15 @@ const (
 
 // fileText is a decoded text file.
 type fileText struct {
-	text     string
-	terminal bool // a terminal file, read whole up to max_chars
+	text string
 	// base is the file offset from which text holds the file's bytes as they
 	// are, or -1 if it was converted.
 	base int
 }
 
-// decodeFile decodes text, keeping the envelope of terminal files as UTF-8.
-func decodeFile(rel string, b []byte, hint string) (fileText, error) {
-	if filepath.Dir(rel) == terminalfile.Dir && terminalfile.HeaderEnd(b) >= 0 {
-		text, err := terminalfile.Decode(b, hint)
-		return fileText{text: text, terminal: true, base: -1}, err
-	}
+// decodeFile decodes text. Terminal files are read like any other, as on the
+// desktop's local-exec.
+func decodeFile(b []byte, hint string) (fileText, error) {
 	text, base, err := textcodec.Decode(b, hint)
 	return fileText{text: text, base: base}, err
 }
@@ -57,7 +51,7 @@ func setTextRange(r *agentv1.ReadSuccess, f fileText, x *agentv1.ReadArgs) {
 	r.TotalLines = int32(min(len(lines), math.MaxInt32)) //nolint:gosec // clamped
 	r.RangeApplied = ranged && text != "" && (x.Offset == nil || int(x.GetOffset()) <= len(lines))
 	selected := lines[start:end]
-	units, byLines := maxCharsLimit(f, x, r.RangeApplied)
+	units, byLines := maxCharsLimit(x, r.RangeApplied)
 	if byLines {
 		selected, r.Truncated = limitChars(lines, start, end, int(x.GetMaxChars()), f.base)
 	}
@@ -78,18 +72,12 @@ func setTextRange(r *agentv1.ReadSuccess, f fileText, x *agentv1.ReadArgs) {
 // maxCharsLimit returns how many UTF-16 code units of content max_chars
 // leaves, or -1, and whether the lines are limited first as the desktop's
 // streaming read does. Like the desktop, max_chars does not limit reads from
-// the end, nor an offset past the end, which returns the whole text. A
-// terminal file is read whole up to two characters more than asked, so a
-// longer one shows as truncated, and its ranges are not limited.
-func maxCharsLimit(f fileText, x *agentv1.ReadArgs, rangeApplied bool) (int, bool) {
+// the end, nor an offset past the end, which returns the whole text.
+func maxCharsLimit(x *agentv1.ReadArgs, rangeApplied bool) (int, bool) {
 	ranged := x.Offset != nil || x.Limit != nil
 	switch {
 	case x.MaxChars == nil:
 		return -1, false
-	case f.terminal && ranged:
-		return -1, false
-	case f.terminal:
-		return int(x.GetMaxChars()) + 2, false
 	case x.GetOffset() < 0 || ranged && !rangeApplied:
 		return -1, false
 	}

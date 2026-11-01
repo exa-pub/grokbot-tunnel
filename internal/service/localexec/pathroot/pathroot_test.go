@@ -82,11 +82,16 @@ func TestUploadTarget(t *testing.T) {
 	r := open(t)
 	outside := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(r.Dir(), "d"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(r.Dir(), "d", "file"), nil, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "x"), nil, 0o600))
+	require.NoError(t, os.Symlink("d/file", filepath.Join(r.Dir(), "live")))
 	require.NoError(t, os.Symlink("d/target", filepath.Join(r.Dir(), "dangling")))
+	require.NoError(t, os.Symlink(filepath.Join(outside, "missing"), filepath.Join(r.Dir(), "dangling-out")))
 	require.NoError(t, os.Symlink(filepath.Join(outside, "x"), filepath.Join(r.Dir(), "out")))
 	require.NoError(t, os.Symlink("loop", filepath.Join(r.Dir(), "loop")))
 
-	for in, want := range map[string]string{"new": "new", "dangling": "d/target", "d": "d"} {
+	// A dangling symlink is replaced, as on the desktop.
+	for in, want := range map[string]string{"new": "new", "live": "d/file", "dangling": "dangling", "dangling-out": "dangling-out", "d": "d"} {
 		got, err := r.UploadTarget(in)
 		require.NoError(t, err, in)
 		assert.Equal(t, want, got, in)

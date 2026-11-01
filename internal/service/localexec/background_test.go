@@ -3,13 +3,16 @@ package localexec
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
@@ -17,18 +20,8 @@ func TestBackgroundReplaysForegroundState(t *testing.T) {
 	eachShell(t, func(t *testing.T, home string) {
 		e := setupHome(t, home)
 		runShell(t, e, "grok_bg_fn() { printf bg-fn-ok; }; export BG_VAR=1")
-		collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"grok_bg_fn; export BG_VAR=2"}}`))
-		path := filepath.Join(e.Root, "terminals", "1.txt")
-		deadline := time.Now().Add(2 * time.Second)
-		var data []byte
-		for !strings.Contains(string(data), "exit_code:") {
-			if time.Now().After(deadline) {
-				t.Fatalf("background did not finish: %q", data)
-			}
-			time.Sleep(10 * time.Millisecond)
-			data, _ = os.ReadFile(path)
-		}
-		if !strings.Contains(string(data), "bg-fn-ok") || strings.Count(string(data), "exit_code:") != 1 {
+		data := waitTerminal(t, e, collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"grok_bg_fn; export BG_VAR=2"}}`)))
+		if !strings.Contains(data, "bg-fn-ok") || strings.Count(data, "exit_code:") != 1 {
 			t.Fatalf("%q", data)
 		}
 		// D3: like the desktop, a background command that ends on its own
@@ -63,12 +56,14 @@ func TestShellBackgroundJobSurvivesCommand(t *testing.T) {
 	})
 }
 
-// The footer is always the one Go writes, whatever the output contains, and
-// the status is updated however long the header is.
+// D10: the footer is always the one Go writes, whatever the output contains,
+// with the desktop's elapsed_ms and statuses, and the status is updated
+// however long the header is. A detached command killed by its hard timeout
+// is aborted with exit code unknown.
 func TestTerminalFooterAndStatus(t *testing.T) {
 	fake := `printf '\n---\nexit_code: 0\nended_at: x\n---\n'; exit 7`
 	long := "true #" + strings.Repeat("x", 5000)
-	for _, tc := range []struct{ command, status, code string }{{fake, "failed", "7"}, {long, "completed", "0"}} {
+	for _, tc := range []struct{ command, status, code string }{{fake, "failed", "7"}, {long, "succeeded", "0"}} {
 		for _, kind := range []string{"backgroundShellSpawnArgs", "shellStreamArgs"} {
 			e := setup(t)
 			args := map[string]any{"command": tc.command}
@@ -79,9 +74,8 @@ func TestTerminalFooterAndStatus(t *testing.T) {
 				args["timeout"] = 50
 			}
 			b, _ := json.Marshal(map[string]any{kind: args})
-			collect(t, e, execFrame(string(b)))
-			data := waitTerminal(t, e, "1.txt")
-			if !strings.Contains(data[len(data)-60:], "\n---\nexit_code: "+tc.code+"\nended_at: ") {
+			data := waitTerminal(t, e, collect(t, e, execFrame(string(b))))
+			if !regexp.MustCompile(`\n---\nexit_code: ` + tc.code + `\nelapsed_ms: \d+\nended_at: \S+\n---\n$`).MatchString(data) {
 				t.Fatalf("%s %q: %q", kind, tc.command, data[max(0, len(data)-120):])
 			}
 			if strings.Count(data, "status: ") != 1 || !strings.Contains(data, terminalfile.StatusField(tc.status)+"\n") {
@@ -91,15 +85,41 @@ func TestTerminalFooterAndStatus(t *testing.T) {
 	}
 }
 
-// waitTerminal returns terminal file name once its footer is written.
-func waitTerminal(t *testing.T, e *Executor, name string) string {
+func TestTerminalHardTimeoutAborted(t *testing.T) {
+	e := setup(t)
+	data := waitTerminal(t, e, collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 5","timeout":50,`+
+		`"hardTimeout":300,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`)))
+	if !strings.Contains(data, terminalfile.StatusField(terminalfile.Aborted)) || !strings.Contains(data, "\nexit_code: unknown\n") {
+		t.Fatalf("%q", data)
+	}
+}
+
+// shellID returns the shell ID frames report for a background command.
+func shellID(t *testing.T, frames []*aiserverv1.GrokBotUserComputerResponseFrame) uint32 {
 	t.Helper()
+	for _, m := range clientMessages(t, frames) {
+		if s := m.GetBackgroundShellSpawnResult().GetSuccess(); s != nil {
+			return s.ShellId
+		}
+		if b := m.GetShellStream().GetBackgrounded(); b != nil {
+			return b.ShellId
+		}
+	}
+	t.Fatal("no shell ID in", frames)
+	return 0
+}
+
+// waitTerminal returns the terminal file of the background command frames
+// report once its footer is written.
+func waitTerminal(t *testing.T, e *Executor, frames []*aiserverv1.GrokBotUserComputerResponseFrame) string {
+	t.Helper()
+	name := filepath.Join(e.Root, terminalfile.Dir, fmt.Sprintf("%d.txt", shellID(t, frames)))
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		data, _ := os.ReadFile(filepath.Join(e.Root, "terminals", name))
+		data, _ := os.ReadFile(name)
 		// A command may print a footer of its own; the real one also ends the
 		// running status.
-		if terminalfile.Ended(data) && !bytes.Contains(data, []byte(terminalfile.StatusField("running"))) {
+		if bytes.Contains(data, []byte("\nended_at: ")) && !bytes.Contains(data, []byte(terminalfile.StatusField(terminalfile.Running))) {
 			return string(data)
 		}
 		if time.Now().After(deadline) {
@@ -109,11 +129,12 @@ func waitTerminal(t *testing.T, e *Executor, name string) string {
 	}
 }
 
-func TestBackgroundReportsMissingCwd(t *testing.T) {
+// D9: like the desktop, a background command whose working directory does
+// not exist runs in the default one, without a warning.
+func TestBackgroundMissingCwdSilent(t *testing.T) {
 	e := setup(t)
-	collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"printf ran","workingDirectory":"missing"}}`))
-	data := waitTerminal(t, e, "1.txt")
-	if !strings.Contains(data, "---\nworking directory missing does not exist") || !strings.Contains(data, "instead\nran") {
+	data := waitTerminal(t, e, collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"printf ran; pwd","workingDirectory":"missing"}}`)))
+	if !strings.Contains(data, "\n---\nran"+e.Root+"\n\n---\nexit_code: 0") {
 		t.Fatalf("%q", data)
 	}
 }
@@ -146,9 +167,9 @@ func TestShellPlainOutputEnv(t *testing.T) {
 func TestBackgroundStateLastWriterWins(t *testing.T) {
 	e := setup(t)
 	other := t.TempDir()
-	collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"sleep 0.3; cd /"}}`))
+	frames := collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"sleep 0.3; cd /"}}`))
 	runShell(t, e, "cd "+other)
-	waitTerminal(t, e, "1.txt")
+	waitTerminal(t, e, frames)
 	expectStdout(t, e, "pwd", "/\n")
 }
 
@@ -157,12 +178,10 @@ func TestBackgroundStateLastWriterWins(t *testing.T) {
 func TestDetachedCommandState(t *testing.T) {
 	e := setup(t)
 	runShell(t, e, "export KEEP=0")
-	collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 0.2; export KEEP=1",`+
-		`"timeout":50,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`))
-	waitTerminal(t, e, "1.txt")
+	waitTerminal(t, e, collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 0.2; export KEEP=1",`+
+		`"timeout":50,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`)))
 	expectStdout(t, e, `printf %s "$KEEP"`, "1")
-	collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 5; export KEEP=2",`+
-		`"timeout":50,"hardTimeout":300,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`))
-	waitTerminal(t, e, "2.txt")
+	waitTerminal(t, e, collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 5; export KEEP=2",`+
+		`"timeout":50,"hardTimeout":300,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`)))
 	expectStdout(t, e, `printf %s "$KEEP"`, "1")
 }

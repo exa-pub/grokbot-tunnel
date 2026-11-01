@@ -1,6 +1,7 @@
-// Package terminalfile writes and reads the output files of shell commands,
-// <root>/terminals/<n>.txt, in the desktop's format: a metadata header, the
-// raw output and, once the command exits, a footer.
+// Package terminalfile writes the output files of background commands,
+// <root>/terminals/<n>.txt, like the desktop's terminal logger (Fhe): a
+// metadata header, rewritten in place every 5 s and when the status changes,
+// the raw output and, once the command exits, a footer.
 //
 //	---
 //	pid: 42
@@ -8,135 +9,173 @@
 //	command: "make"
 //	status: running
 //	started_at: 2026-01-01T00:00:00.000Z
-//	running_for_ms: 0
+//	running_for_ms: 5004
 //	---
 //	<output>
 //	---
 //	exit_code: 0
-//	ended_at: 2026-01-01T00:00:01.000Z
+//	elapsed_ms: 61234
+//	ended_at: 2026-01-01T00:01:01.234Z
 //	---
 package terminalfile
 
 import (
-	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
-	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
-
-	"github.com/exa-pub/grokbot-tunnel/internal/pkg/textcodec"
 )
 
 // Dir is the directory of terminal files below the root.
 const Dir = "terminals"
 
+// The statuses of a command.
 const (
-	timestampFormat = "2006-01-02T15:04:05.000Z"
-	envelopeStart   = "---\n"
-	envelopeEnd     = "\n---\n"
-	exitMarker      = "\n---\nexit_code: "
-	errorMarker     = "\n---\nerror: "
+	Running   = "running"
+	Succeeded = "succeeded"
+	Failed    = "failed"
+	Aborted   = "aborted"
 )
 
-// StatusField is the status line without its newline, padded so it can be
-// rewritten in place.
-func StatusField(status string) string { return fmt.Sprintf("status: %-9s", status) }
+const (
+	timestampFormat = "2006-01-02T15:04:05.000Z"
+	// refresh is how often the header is rewritten (GVe).
+	refresh = 5 * time.Second
+)
 
-// Header returns the header of a command started at started; pid 0 is left
-// out.
-func Header(cwd, command string, pid int, started time.Time) string {
-	return HeaderAt(cwd, command, pid, started, 0)
+// Command describes the command a terminal file belongs to; PID 0 is left
+// out of the header.
+type Command struct {
+	PID     int
+	Cwd     string
+	Command string
+	Started time.Time
 }
 
-// HeaderAt is Header for a command that has been running for runningFor.
-func HeaderAt(cwd, command string, pid int, started time.Time, runningFor time.Duration) string {
+// File is a terminal file being written. Output goes to the underlying file at
+// its offset, for example from the command itself; the header is rewritten in
+// place.
+type File struct {
+	f   *os.File
+	cmd Command
+
+	mu     sync.Mutex
+	status string
+	ended  bool
+	stop   chan struct{}
+}
+
+// StatusField is the status line without its newline, padded like the
+// desktop's so it can be rewritten in place.
+func StatusField(status string) string { return "status: " + padEnd(status) }
+
+// Header returns the header of cmd with status, as of now (hN).
+func Header(cmd Command, status string, now time.Time) string {
 	var b strings.Builder
-	b.WriteString(envelopeStart)
-	if pid > 0 {
-		fmt.Fprintf(&b, "pid: %d\n", pid)
+	b.WriteString("---\n")
+	if cmd.PID != 0 {
+		fmt.Fprintf(&b, "pid: %d\n", cmd.PID)
 	}
-	fmt.Fprintf(&b, "cwd: %s\n", strconv.Quote(cwd))
-	fmt.Fprintf(&b, "command: %s\n", strconv.Quote(command))
-	b.WriteString(StatusField("running") + "\n")
-	fmt.Fprintf(&b, "started_at: %s\n", started.UTC().Format(timestampFormat))
-	fmt.Fprintf(&b, "running_for_ms: %-9d\n", runningFor.Milliseconds())
+	fmt.Fprintf(&b, "cwd: %s\n", quote(cmd.Cwd))
+	fmt.Fprintf(&b, "command: %s\n", quote(cmd.Command))
+	b.WriteString(StatusField(status) + "\n")
+	fmt.Fprintf(&b, "started_at: %s\n", cmd.Started.UTC().Format(timestampFormat))
+	fmt.Fprintf(&b, "running_for_ms: %s\n", padEnd(fmt.Sprint(now.Sub(cmd.Started).Milliseconds())))
 	b.WriteString("---\n")
 	return b.String()
 }
 
-// WriteHeader writes the header, followed by note, and returns the offset of
-// its status for AppendExit. The quoted cwd and command contain no newlines,
-// so the status line is found unambiguously, however long the header is.
-func WriteHeader(w io.Writer, cwd, command string, pid int, note string) (int64, error) {
+// Start writes the header of cmd and initial output to f, a new or truncated
+// file, and keeps the header up to date until Exit.
+func Start(f *os.File, cmd Command, initial []byte) (*File, error) {
+	t := &File{f: f, cmd: cmd, status: Running, stop: make(chan struct{})}
+	if _, err := f.Write(append([]byte(Header(cmd, Running, time.Now())), initial...)); err != nil {
+		return nil, err
+	}
+	go t.refresh()
+	return t, nil
+}
+
+// Write appends b to the output.
+func (t *File) Write(b []byte) (int, error) { return t.f.Write(b) }
+
+// Exit writes the footer for a command that ended with state, aborted by us
+// or not, sets the final status and closes the file. Like the desktop, the
+// status is aborted for an aborted command, else succeeded for exit code 0,
+// else failed; a command killed by a signal has exit code unknown.
+func (t *File) Exit(state *os.ProcessState, aborted bool) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.ended = true
+	close(t.stop)
+	defer func() {
+		if err := t.f.Close(); err != nil {
+			log.Printf("terminal file: %v", err)
+		}
+	}()
+	code := "unknown"
+	if state != nil {
+		if ws, ok := state.Sys().(syscall.WaitStatus); !ok || !ws.Signaled() {
+			code = fmt.Sprint(state.ExitCode())
+		}
+	}
+	switch {
+	case aborted:
+		t.status = Aborted
+	case code == "0":
+		t.status = Succeeded
+	default:
+		t.status = Failed
+	}
 	now := time.Now()
-	return WriteHeaderAt(w, cwd, command, pid, now, now, note)
-}
-
-// WriteHeaderAt is WriteHeader for a command started at started, as of now.
-func WriteHeaderAt(w io.Writer, cwd, command string, pid int, started, now time.Time, note string) (int64, error) {
-	header := HeaderAt(cwd, command, pid, started, now.Sub(started))
-	statusAt := strings.Index(header, "\n"+StatusField("running")+"\n") + 1
-	_, err := io.WriteString(w, header+note)
-	return int64(statusAt), err
-}
-
-// AppendExit adds the footer with code and updates the status in the header
-// at statusAt. The footer is always written: only Go writes it, and output
-// that looks like a footer must not stand in for the real one.
-func AppendExit(f *os.File, code int, statusAt int64) error {
-	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+	footer := fmt.Sprintf("\n---\nexit_code: %s\nelapsed_ms: %d\nended_at: %s\n---\n",
+		code, now.Sub(t.cmd.Started).Milliseconds(), now.UTC().Format(timestampFormat))
+	if _, err := t.f.Seek(0, io.SeekEnd); err != nil {
 		return err
 	}
-	footer := fmt.Sprintf("%s%d\nended_at: %s%s", exitMarker, code, time.Now().UTC().Format(timestampFormat), envelopeEnd)
-	if _, err := f.WriteString(footer); err != nil {
+	if _, err := t.f.WriteString(footer); err != nil {
 		return err
 	}
-	status := "completed"
-	if code != 0 {
-		status = "failed"
+	return t.writeHeader(now)
+}
+
+// refresh rewrites the header every refresh until Exit.
+func (t *File) refresh() {
+	tick := time.NewTicker(refresh)
+	defer tick.Stop()
+	for {
+		select {
+		case <-t.stop:
+			return
+		case now := <-tick.C:
+			t.mu.Lock()
+			if !t.ended {
+				if err := t.writeHeader(now); err != nil {
+					log.Printf("terminal file: %v", err)
+				}
+			}
+			t.mu.Unlock()
+		}
 	}
-	_, err := f.WriteAt([]byte(StatusField(status)), statusAt)
+}
+
+// writeHeader rewrites the header at the start of the file. Like the desktop,
+// a running time beyond the padding, after 11 days, makes it longer than the
+// one it overwrites.
+func (t *File) writeHeader(now time.Time) error {
+	_, err := t.f.WriteAt([]byte(Header(t.cmd, t.status, now)), 0)
 	return err
 }
 
-// Ended reports whether b ends with a footer.
-func Ended(b []byte) bool {
-	i := max(bytes.LastIndex(b, []byte(exitMarker)), bytes.LastIndex(b, []byte(errorMarker)))
-	if i < 0 || !bytes.HasSuffix(b, []byte(envelopeEnd)) {
-		return false
-	}
-	tail := string(b[i:])
-	return strings.Contains(tail, "ended_at: ") && (strings.Contains(tail, "exit_code: ") || strings.Contains(tail, "error: "))
+// quote quotes s like the desktop's SN: only backslash, double quote,
+// newline, carriage return and tab are escaped.
+func quote(s string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`, "\t", `\t`).Replace(s) + `"`
 }
 
-// HeaderEnd returns the offset just past the header of a terminal file, or
-// -1 if b has none.
-func HeaderEnd(b []byte) int {
-	if !bytes.HasPrefix(b, []byte(envelopeStart)) {
-		return -1
-	}
-	i := bytes.Index(b[len(envelopeStart):], []byte(envelopeEnd))
-	if i < 0 {
-		return -1
-	}
-	return len(envelopeStart) + i + len(envelopeEnd)
-}
-
-// Decode decodes the output of a terminal file with hint while keeping the
-// UTF-8 header and footer intact.
-func Decode(b []byte, hint string) (string, error) {
-	start := max(HeaderEnd(b), 0)
-	end := len(b)
-	if i := max(bytes.LastIndex(b, []byte(exitMarker)), bytes.LastIndex(b, []byte(errorMarker))); i >= start && Ended(b) {
-		end = i
-	}
-	body, _, err := textcodec.Decode(b[start:end], hint)
-	if err != nil {
-		return "", err
-	}
-	// The envelope is UTF-8 when written by Go, but the file may have been
-	// edited.
-	return strings.ToValidUTF8(string(b[:start]), "�") + body + strings.ToValidUTF8(string(b[end:]), "�"), nil
-}
+// padEnd pads s to the desktop's field width of 9.
+func padEnd(s string) string { return fmt.Sprintf("%-9s", s) }

@@ -28,6 +28,11 @@ func New(root *pathroot.Root) *Executor { return &Executor{root: root} }
 // Execute reads args.Path and sends the read result. A path outside the root
 // fails the request instead of producing a result, as on the desktop.
 func (rd *Executor) Execute(ctx context.Context, x *agentv1.ReadArgs, send execstream.Send) error {
+	if strings.TrimSpace(x.Path) == "" {
+		return send(readMessage(&agentv1.ReadResult{Result: &agentv1.ReadResult_Error{
+			Error: &agentv1.ReadError{Path: x.Path, Error: msgEmptyPath},
+		}}))
+	}
 	rel, err := rd.root.Check(x.Path)
 	if err != nil {
 		return err
@@ -70,7 +75,7 @@ func (rd *Executor) result(ctx context.Context, rel string, x *agentv1.ReadArgs)
 		}
 		success.Output = &agentv1.ReadSuccess_Data{Data: b}
 	} else {
-		text, err := decodeFile(rel, b, x.GetEncodingHint())
+		text, err := decodeFile(b, x.GetEncodingHint())
 		if errors.Is(err, textcodec.ErrBinary) {
 			return invalidFile(path, msgBinaryFile), nil
 		}

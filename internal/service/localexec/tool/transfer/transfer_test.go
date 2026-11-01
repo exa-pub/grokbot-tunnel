@@ -114,31 +114,81 @@ func TestUploadAtomicModeAndInsideSymlink(t *testing.T) {
 // Invariant 25, Go+: the desktop replaces a dangling symlink with a regular
 // file and does not refuse one that points outside the root (rnd-v2,
 // SUMMARY row 10). Pinned until aligned.
+// D9: like the desktop, an upload writes through a symlink to an existing
+// file, but replaces a dangling symlink, wherever it points, with a regular
+// file.
 func TestUploadThroughDanglingSymlink(t *testing.T) {
 	tr, root := setup(t)
-	if err := os.Symlink("sub/target", filepath.Join(root.Dir(), "link")); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.Mkdir(filepath.Join(root.Dir(), "sub"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := tr.Upload("link", []byte("new")); err != nil {
+	if err := os.WriteFile(filepath.Join(root.Dir(), "sub", "existing"), []byte("old"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if b, err := os.ReadFile(filepath.Join(root.Dir(), "sub", "target")); err != nil || string(b) != "new" {
+	if err := os.Symlink("sub/existing", filepath.Join(root.Dir(), "live")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Upload("live", []byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(root.Dir(), "sub", "existing")); err != nil || string(b) != "new" {
 		t.Fatal(string(b), err)
 	}
-	if st, _ := os.Lstat(filepath.Join(root.Dir(), "link")); st.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("symlink replaced")
-	}
 	outside := filepath.Join(t.TempDir(), "outside")
-	if err := os.Symlink(outside, filepath.Join(root.Dir(), "escape")); err != nil {
-		t.Fatal(err)
-	}
-	if err := tr.Upload("escape", []byte("x")); err == nil {
-		t.Fatal("upload escaped root")
+	for _, target := range []string{"sub/missing", outside} {
+		link := filepath.Join(root.Dir(), "dangling")
+		_ = os.Remove(link)
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+		if err := tr.Upload("dangling", []byte("x")); err != nil {
+			t.Fatal(target, err)
+		}
+		if st, err := os.Lstat(link); err != nil || !st.Mode().IsRegular() {
+			t.Fatal(target, "dangling symlink not replaced", err)
+		}
 	}
 	if _, err := os.Stat(outside); err == nil {
 		t.Fatal("file written outside root")
+	}
+	if _, err := os.Stat(filepath.Join(root.Dir(), "sub", "missing")); err == nil {
+		t.Fatal("dangling symlink followed")
+	}
+}
+
+// Upload keeps the setuid, setgid and sticky bits of the file it replaces,
+// and writes a file with other hard links in place, keeping them (bug B7).
+func TestUploadKeepsSpecialBitsAndHardLinks(t *testing.T) {
+	tr, root := setup(t)
+	target := filepath.Join(root.Dir(), "tool")
+	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o700|os.ModeSetuid|os.ModeSetgid|os.ModeSticky); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Upload("tool", []byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(target)
+	if err != nil || st.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != os.ModeSetuid|os.ModeSetgid|os.ModeSticky || st.Mode().Perm() != 0o700 {
+		t.Fatal(st.Mode(), err)
+	}
+	original := filepath.Join(root.Dir(), "linked")
+	if err := os.WriteFile(original, []byte("old"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(t.TempDir(), "other-link")
+	if err := os.Link(original, other); err != nil {
+		t.Skip("no hard links across these directories:", err)
+	}
+	if err := tr.Upload("linked", []byte("new content")); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(other); err != nil || string(b) != "new content" {
+		t.Fatal("hard link cut", string(b), err)
+	}
+	if st, err := os.Stat(original); err != nil || st.Mode().Perm() != 0o640 {
+		t.Fatal(st.Mode(), err)
 	}
 }

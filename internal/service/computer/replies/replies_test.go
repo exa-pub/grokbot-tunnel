@@ -343,3 +343,28 @@ func TestAcceptingBackpressure(t *testing.T) {
 	}
 	assert.False(t, q.Accepting())
 }
+
+// A cancel leaves the frames of the submit in flight alone, so that a last
+// chunk the server accepts does not get a second final frame (bug B6).
+func TestCancelSparesSubmitInFlight(t *testing.T) {
+	var q replies.Queue
+	now := time.Unix(1000, 0)
+	q.Add(file("dl", 0, 1, false))
+	q.Add(file("dl", 1, 1, true))
+	batch := q.Next(now)
+	require.Len(t, batch, 1, "one chunk per request per batch")
+	q.Cancel("dl")
+	require.Len(t, q.Pending(), 2)
+	assert.Same(t, batch[0], q.Pending()[0], "frame in flight replaced")
+	assert.Equal(t, context.Canceled.Error(), q.Pending()[1].GetFileError().GetError())
+	q.Submitted(now, batch, 1, false, never)
+	require.Len(t, q.Pending(), 1)
+	assert.NotNil(t, q.Pending()[0].GetFileError())
+	// The last chunk itself in flight: accepted, nothing else ends the request.
+	var r replies.Queue
+	r.Add(file("x", 0, 1, true))
+	batch = r.Next(now)
+	r.Cancel("x")
+	r.Submitted(now, batch, 1, false, never)
+	assert.Empty(t, r.Pending())
+}

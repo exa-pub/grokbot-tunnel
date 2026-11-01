@@ -67,7 +67,7 @@ func (s *session) startJobs() {
 		t.Cancel = cancel
 		go func() {
 			defer cancel()
-			if err := s.pv.Handler.Handle(ctx, t.Frame, t.Server, s.sink); err != nil {
+			if err := s.pv.Handler.Handle(ctx, t.Frame, t.Server, s.taskSink(ctx)); err != nil {
 				log.Printf("request %s: %v", t.ID, err)
 			}
 			select {

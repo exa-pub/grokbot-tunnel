@@ -97,16 +97,17 @@ func (sh *runningShell) reap() {
 	}
 	sh.stdout.flush()
 	sh.stderr.flush()
-	if f, shellID, statusAt := sh.out.finish(); f != nil {
+	if f, shellID := sh.out.finish(); f != nil {
 		// A detached command writes its state once it ends on its own, like
 		// the desktop, before the footer: the command that ends last wins.
-		if !sh.killed.Load() {
+		killed := sh.killed.Load()
+		if !killed {
 			sh.ex.session.Commit(sh.snapshot, sh.fallback, sh.cwd)
 		}
-		if err := terminalfile.AppendExit(f, proc.ExitCode(sh.cmd.ProcessState), statusAt); err != nil {
+		if err := f.Exit(sh.cmd.ProcessState, killed); err != nil {
 			log.Printf("terminal %d: %v", shellID, err)
 		}
-		proc.CloseLogged(f)
+		sh.ex.background.Release(shellID)
 	}
 	close(sh.done)
 }
@@ -165,13 +166,22 @@ func (sh *runningShell) detach(waited int32) error {
 	if err != nil {
 		return err
 	}
-	if !sh.out.detach(f, shellID, func(w io.Writer) (int64, error) {
-		return terminalfile.WriteHeaderAt(w, sh.cwd, sh.args.Command, sh.cmd.Process.Pid, sh.started, time.Now(), "")
-	}) {
+	detached, err := sh.out.detach(shellID, func(held []byte) (*terminalfile.File, error) {
+		cmd := terminalfile.Command{PID: sh.cmd.Process.Pid, Cwd: sh.cwd, Command: sh.args.Command, Started: sh.started}
+		return terminalfile.Start(f, cmd, held)
+	})
+	if !detached {
 		proc.CloseLogged(f)
 		if err := sh.ex.background.Remove(shellID); err != nil {
 			log.Printf("terminal %d: %v", shellID, err)
 		}
+	}
+	if err != nil {
+		proc.Kill(sh.cmd)
+		<-sh.done
+		return err
+	}
+	if !detached {
 		<-sh.done
 		return sh.finish(agentv1.ShellAbortReason_SHELL_ABORT_REASON_UNSPECIFIED)
 	}
@@ -222,12 +232,11 @@ func (sh *runningShell) finish(reason agentv1.ShellAbortReason) error {
 			}
 		}
 	}
-	return sh.out.send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_Exit{Exit: &agentv1.ShellStreamExit{
-		Code:        exitCode(sh.cmd.ProcessState),
-		Cwd:         cwd,
-		Aborted:     aborted,
-		AbortReason: &reason,
-	}}}))
+	exit := &agentv1.ShellStreamExit{Code: exitCode(sh.cmd.ProcessState), Cwd: cwd, Aborted: aborted}
+	if aborted {
+		exit.AbortReason = &reason // only on abort, as on the desktop
+	}
+	return sh.out.send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_Exit{Exit: exit}}))
 }
 
 func (sh *runningShell) canBackground() bool {

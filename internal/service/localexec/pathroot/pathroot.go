@@ -16,9 +16,6 @@ import (
 // MaxFile is the largest file read or transferred.
 const MaxFile = 100 << 20
 
-// maxSymlinks bounds a chain of symlinks, like Linux's MAXSYMLINKS.
-const maxSymlinks = 40
-
 // ErrOutside matches every *OutsideError.
 var ErrOutside = errors.New("path is outside the allowed local-exec root")
 
@@ -159,37 +156,20 @@ func (r *Root) OpenRegular(path string) (*os.File, error) {
 	return f, nil
 }
 
-// UploadTarget follows symlinks in rel, including dangling ones, so that an
-// upload writes through a symlink to its target instead of replacing it. The
-// target must stay inside the root.
+// UploadTarget resolves the symlinks in rel, so that an upload writes
+// through a symlink to its target instead of replacing it; the target must
+// stay inside the root. Like the desktop's atomic write (f0), a path that
+// does not resolve, such as a dangling symlink, is used as it is: the upload
+// replaces the dangling symlink with a regular file.
 func (r *Root) UploadTarget(rel string) (string, error) {
-	for range maxSymlinks {
-		path := filepath.Join(r.dir, rel)
-		resolved, err := filepath.EvalSymlinks(path)
-		if err == nil {
-			return r.Relative(resolved)
-		}
-		if !errors.Is(err, os.ErrNotExist) {
-			return "", err
-		}
-		// Something is missing: either the file, which is created, or the
-		// target of a dangling symlink, which is followed.
-		target, err := os.Readlink(path)
-		if err != nil {
-			return rel, nil //nolint:nilerr // not a symlink: create the file
-		}
-		if !filepath.IsAbs(target) {
-			dir, err := filepath.EvalSymlinks(filepath.Dir(path))
-			if err != nil {
-				return "", err
-			}
-			target = filepath.Join(dir, target)
-		}
-		if rel, err = r.Relative(target); err != nil {
-			return "", err
-		}
+	resolved, err := filepath.EvalSymlinks(filepath.Join(r.dir, rel))
+	if errors.Is(err, os.ErrNotExist) {
+		return rel, nil
 	}
-	return "", syscall.ELOOP
+	if err != nil {
+		return "", err
+	}
+	return r.Relative(resolved)
 }
 
 func (r *Root) inside(path string) (string, bool) {

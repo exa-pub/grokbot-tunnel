@@ -273,3 +273,32 @@ func TestPinnedShellTimeouts(t *testing.T) {
 		assert.Equal(t, killed, exit.GetCode())
 	})
 }
+
+// D9: like the desktop, start carries the sandbox policy of a local approval
+// and no command, and exit carries an abort reason only when aborted.
+func TestPinnedShellStartAndExit(t *testing.T) {
+	events := shellEvents(pinnedExec(t, setup(t), `{"shellStreamArgs":{"command":"true"}}`))
+	start := events[0].GetStart()
+	require.NotNil(t, start)
+	assert.Nil(t, start.Command)
+	assert.Equal(t, agentv1.SandboxPolicy_TYPE_INSECURE_NONE, start.GetSandboxPolicy().GetType())
+	exit := events[len(events)-1].GetExit()
+	require.NotNil(t, exit)
+	assert.Nil(t, exit.AbortReason)
+}
+
+// D9: the desktop's read texts for an empty path and a binary file.
+func TestPinnedReadTexts(t *testing.T) {
+	e := setup(t)
+	frames := pinnedExec(t, e, `{"readArgs":{"path":"  "}}`)
+	require.NotEmpty(t, frames)
+	readErr := frames[0].client.GetReadResult().GetError()
+	require.NotNil(t, readErr)
+	assert.Equal(t, "  ", readErr.GetPath())
+	assert.Equal(t, "path is empty or only whitespace", readErr.GetError())
+
+	require.NoError(t, os.WriteFile(filepath.Join(e.Root, "blob.bin"), []byte{0, 1, 2, 0xff, 0}, 0o600))
+	frames = pinnedExec(t, e, `{"readArgs":{"path":"blob.bin"}}`)
+	require.NotEmpty(t, frames)
+	assert.Equal(t, "File content is binary data, not text", frames[0].client.GetReadResult().GetInvalidFile().GetReason())
+}

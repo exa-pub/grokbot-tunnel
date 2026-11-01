@@ -9,9 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"os"
 	"os/exec"
-	"sync/atomic"
+	"sync"
+	"time"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/proc"
@@ -21,17 +23,33 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
+// The range of shell IDs, like the desktop's (yN, Dhe).
+const (
+	firstID = 1000
+	lastID  = 999_999
+)
+
 // Executor starts background commands below a root.
 type Executor struct {
 	root    *pathroot.Root
 	session *shellsession.Session
-	// last numbers the terminal files in <root>/terminals.
-	last atomic.Uint32
+
+	mu sync.Mutex
+	// next is the next shell ID to try; it starts at random, like the
+	// desktop's.
+	next uint32
+	// running holds the IDs of the commands still running.
+	running map[uint32]bool
 }
 
 // New returns an Executor whose commands replay session's state.
 func New(root *pathroot.Root, session *shellsession.Session) *Executor {
-	return &Executor{root: root, session: session}
+	return &Executor{
+		root:    root,
+		session: session,
+		next:    firstID + rand.Uint32N(lastID-firstID+1), //nolint:gosec // an ID, not a secret
+		running: map[uint32]bool{},
+	}
 }
 
 // Execute starts args.Command and sends its shell ID.
@@ -50,16 +68,17 @@ func (bg *Executor) Execute(ctx context.Context, args *agentv1.BackgroundShellSp
 // Spawn starts cmd in its own session with output going to a terminal file.
 // It starts from the session's state without waiting for running foreground
 // commands, and like the desktop, writes the state it leaves back to the
-// session when it exits on its own: the command that ends last wins.
-// Descriptors are those of a foreground shell, plus 6, a gate opened once the
-// terminal header is written; the footer is appended when the process exits.
-// A warning about the working directory follows the header.
+// session when it exits on its own: the command that ends last wins. A
+// working directory that does not exist is replaced by the default one
+// silently, as on the desktop. Descriptors are those of a foreground shell,
+// plus 6, a gate opened once the terminal header is written.
 func (bg *Executor) Spawn(ctx context.Context, cmd, path string) (_ *agentv1.BackgroundShellSpawnSuccess, err error) {
 	if err = bg.session.Init(ctx); err != nil {
 		return nil, err
 	}
 	st := bg.session.State()
-	cwd, warning := bg.session.Cwd(path, st)
+	cwd, _ := bg.session.Cwd(path, st)
+	started := time.Now()
 	n, f, err := bg.Terminal()
 	if err != nil {
 		return nil, err
@@ -67,12 +86,14 @@ func (bg *Executor) Spawn(ctx context.Context, cmd, path string) (_ *agentv1.Bac
 	snapshot, fallback, err := shellsession.StateFiles()
 	if err != nil {
 		proc.CloseLogged(f)
+		bg.Release(n)
 		return nil, err
 	}
 	defer func() {
 		if err != nil {
 			proc.CloseLogged(f)
 			shellsession.CloseStateFiles(snapshot, fallback)
+			bg.Release(n)
 		}
 	}()
 	gate, open, err := os.Pipe()
@@ -91,7 +112,7 @@ func (bg *Executor) Spawn(ctx context.Context, cmd, path string) (_ *agentv1.Bac
 	if err = c.Start(); err != nil {
 		return nil, err
 	}
-	statusAt, err := terminalfile.WriteHeader(f, cwd, cmd, c.Process.Pid, warning)
+	tf, err := terminalfile.Start(f, terminalfile.Command{PID: c.Process.Pid, Cwd: cwd, Command: cmd, Started: started}, nil)
 	if err == nil {
 		_, err = open.WriteString("\n")
 	}
@@ -100,40 +121,70 @@ func (bg *Executor) Spawn(ctx context.Context, cmd, path string) (_ *agentv1.Bac
 		proc.Wait(c)
 		return nil, err
 	}
-	go bg.finish(c, n, f, statusAt, cwd, snapshot, fallback)
+	go bg.finish(c, n, tf, cwd, snapshot, fallback)
 	return &agentv1.BackgroundShellSpawnSuccess{ShellId: n, Command: cmd, WorkingDirectory: cwd, Pid: proc.PID(c)}, nil
 }
 
-// Terminal creates the next free <root>/terminals/<n>.txt output file and
-// returns its number, which is also the shell ID.
+// Terminal takes the next shell ID that no running command has and creates
+// or truncates its terminal file <root>/terminals/<n>.txt, like the desktop.
+// The ID is taken until Release.
 func (bg *Executor) Terminal() (uint32, *os.File, error) {
 	if err := bg.root.FS().MkdirAll(terminalfile.Dir, 0o700); err != nil {
 		return 0, nil, err
 	}
-	for {
-		n := bg.last.Add(1)
-		f, err := bg.root.FS().OpenFile(fmt.Sprintf("%s/%d.txt", terminalfile.Dir, n), os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
-		if errors.Is(err, os.ErrExist) {
-			continue
-		}
-		return n, f, err
+	n, err := bg.take()
+	if err != nil {
+		return 0, nil, err
 	}
+	f, err := bg.root.FS().OpenFile(fmt.Sprintf("%s/%d.txt", terminalfile.Dir, n), os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o600)
+	if err != nil {
+		bg.Release(n)
+		return 0, nil, err
+	}
+	return n, f, nil
 }
 
-// Remove deletes terminal file n, created by Terminal but not used.
+// Release frees shell ID n once its command has ended.
+func (bg *Executor) Release(n uint32) {
+	bg.mu.Lock()
+	defer bg.mu.Unlock()
+	delete(bg.running, n)
+}
+
+// Remove deletes the terminal file of shell ID n, taken by Terminal but not
+// used, and releases the ID.
 func (bg *Executor) Remove(n uint32) error {
+	defer bg.Release(n)
 	return bg.root.FS().Remove(fmt.Sprintf("%s/%d.txt", terminalfile.Dir, n))
 }
 
 // finish waits for background command c and writes the state it left to the
-// session, then the footer of its terminal file n. The state comes first, as
-// on the desktop: whoever sees the footer sees the state.
-func (bg *Executor) finish(c *exec.Cmd, n uint32, f *os.File, statusAt int64, cwd string, snapshot, fallback *os.File) {
+// session, then the footer of its terminal file. The state comes first, as on
+// the desktop: whoever sees the footer sees the state.
+func (bg *Executor) finish(c *exec.Cmd, n uint32, tf *terminalfile.File, cwd string, snapshot, fallback *os.File) {
 	proc.Wait(c)
 	bg.session.Commit(snapshot, fallback, cwd)
 	shellsession.CloseStateFiles(snapshot, fallback)
-	if err := terminalfile.AppendExit(f, proc.ExitCode(c.ProcessState), statusAt); err != nil {
+	if err := tf.Exit(c.ProcessState, false); err != nil {
 		log.Printf("terminal %d: %v", n, err)
 	}
-	proc.CloseLogged(f)
+	bg.Release(n)
+}
+
+// take returns the next free shell ID (generateShellId).
+func (bg *Executor) take() (uint32, error) {
+	bg.mu.Lock()
+	defer bg.mu.Unlock()
+	for range lastID - firstID + 1 {
+		if bg.next > lastID {
+			bg.next = firstID
+		}
+		n := bg.next
+		bg.next++
+		if !bg.running[n] {
+			bg.running[n] = true
+			return n, nil
+		}
+	}
+	return 0, errors.New("No available background shell id in range") //nolint:staticcheck // the desktop's text
 }

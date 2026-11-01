@@ -197,28 +197,30 @@ func TestFIFORejectedPromptly(t *testing.T) {
 // Invariant 21, Go+: the desktop has no terminal-file branch in local-exec
 // read and reads <root>/terminals/<n>.txt as plain text (rnd-v2 Q1). Pinned
 // until the branch is removed.
-func TestTerminalReadMaxChars(t *testing.T) {
+// D13: like the desktop's local-exec, a terminal file is read like any other
+// file.
+func TestTerminalReadLikeAnyFile(t *testing.T) {
 	e := setup(t)
 	if err := e.root.FS().MkdirAll(terminalfile.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	text := terminalfile.Header("/w", "x", 1, time.Unix(0, 0)) + "0123456789\n"
-	if err := os.WriteFile(filepath.Join(e.Root, terminalfile.Dir, "1.txt"), []byte(text), 0o600); err != nil {
-		t.Fatal(err)
+	cmd := terminalfile.Command{PID: 1, Cwd: "/w", Command: "x", Started: time.Unix(0, 0)}
+	text := terminalfile.Header(cmd, terminalfile.Running, time.Unix(0, 0)) + "0123456789\n"
+	for _, name := range []string{terminalfile.Dir + "/1000.txt", "plain.txt"} {
+		if err := os.WriteFile(filepath.Join(e.Root, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	read := func(args string) *agentv1.ReadSuccess {
+	read := func(name, args string) *agentv1.ReadSuccess {
 		t.Helper()
-		frames := collect(t, e, execFrame(`{"id":1,"readArgs":{"path":"`+terminalfile.Dir+`/1.txt",`+args+`}}`))
+		frames := collect(t, e, execFrame(`{"id":1,"readArgs":{"path":"`+name+`",`+args+`}}`))
 		return clientMessages(t, frames)[0].GetReadResult().GetSuccess()
 	}
-	if r := read(`"maxChars":5`); r.GetContent() != text[:7] || !r.Truncated {
-		t.Fatalf("whole: %q %v", r.GetContent(), r.Truncated)
-	}
-	if r := read(`"maxChars":5,"offset":1`); r.GetContent() != text || r.Truncated {
-		t.Fatalf("range: %q %v", r.GetContent(), r.Truncated)
-	}
-	if r := read(`"maxChars":1000`); r.GetContent() != text || r.Truncated {
-		t.Fatalf("short: %q %v", r.GetContent(), r.Truncated)
+	for _, args := range []string{`"maxChars":5`, `"maxChars":5,"offset":1`, `"maxChars":1000`} {
+		terminal, plain := read(terminalfile.Dir+"/1000.txt", args), read("plain.txt", args)
+		if terminal.GetContent() != plain.GetContent() || terminal.Truncated != plain.Truncated {
+			t.Fatalf("%s: %q %v, plain %q %v", args, terminal.GetContent(), terminal.Truncated, plain.GetContent(), plain.Truncated)
+		}
 	}
 }
 

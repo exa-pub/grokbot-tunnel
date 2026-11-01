@@ -32,8 +32,9 @@ type Queue struct {
 	// previousFile alternates file chunks with metadata between batches.
 	previousFile bool
 	submitting   bool
-	failures     int       // consecutive submits without progress in this round
-	roundStart   time.Time // when the first submit of this round started
+	inflight     map[*Frame]bool // the batch of the submit in flight
+	failures     int             // consecutive submits without progress in this round
+	roundStart   time.Time       // when the first submit of this round started
 	nextSubmit   time.Time
 	// closingSince is when the round started in which a kept closing frame
 	// first failed; its budget counts from there.
@@ -75,11 +76,16 @@ func (q *Queue) Take(f *Frame, canceled bool) bool {
 }
 
 // Cancel discards the undelivered frames of request id, keeping those that
-// end its stream.
+// end its stream. Frames of the submit in flight stay as they are: the
+// server may accept them, and a replaced last chunk would end the request
+// twice (bug B6). A failed round drops them later as frames of a canceled
+// request.
 func (q *Queue) Cancel(id string) {
-	q.pending = slices.DeleteFunc(q.pending, func(f *Frame) bool { return f.RequestId == id && !frames.Keep(f) })
+	q.pending = slices.DeleteFunc(q.pending, func(f *Frame) bool {
+		return f.RequestId == id && !frames.Keep(f) && !q.inflight[f]
+	})
 	for i, f := range q.pending {
-		if f.RequestId == id {
+		if f.RequestId == id && !q.inflight[f] {
 			q.pending[i] = frames.CanceledFile(f)
 		}
 	}
@@ -119,7 +125,12 @@ func (q *Queue) Next(now time.Time) []*Frame {
 	if q.failures == 0 {
 		q.roundStart = now
 	}
-	return q.Batch()
+	batch := q.Batch()
+	q.inflight = make(map[*Frame]bool, len(batch))
+	for _, f := range batch {
+		q.inflight[f] = true
+	}
+	return batch
 }
 
 // Accepted removes the first n frames of a submitted batch from the queue.
@@ -136,6 +147,7 @@ func (q *Queue) Accepted(batch []*Frame, n int) {
 // bookkeeping.
 func (q *Queue) Settle(batch []*Frame, n int) {
 	q.submitting = false
+	q.inflight = nil
 	q.Accepted(batch, n)
 }
 

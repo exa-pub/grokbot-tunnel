@@ -1,14 +1,13 @@
 package shell
 
 import (
-	"io"
 	"log"
-	"os"
 	"sync"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/textcodec"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 func shellMessage(s *agentv1.ShellStream) *agentv1.ExecClientMessage {
@@ -31,33 +30,29 @@ type shellOutput struct {
 	send     execstream.Send
 	hold     bool   // keep the raw output for a terminal file, the command may be detached
 	held     []byte // raw output so far, while hold
-	file     *os.File
+	file     *terminalfile.File
 	shellID  uint32 // number of the terminal file
-	statusAt int64  // offset of the status in the terminal file
 	detached bool   // the command was backgrounded; stop streaming
 	finished bool   // the command has exited; discard further output
 	err      error  // first send failure
 }
 
-// detach starts the terminal file f with header and the output so far, and
-// stops streaming to the agent. It reports false, leaving f alone, if the
-// command has already finished.
-func (o *shellOutput) detach(f *os.File, shellID uint32, header func(io.Writer) (int64, error)) bool {
+// detach starts terminal file shellID with start, given the output so far,
+// and stops streaming to the agent. It reports false, without calling start,
+// if the command has already finished.
+func (o *shellOutput) detach(shellID uint32, start func(held []byte) (*terminalfile.File, error)) (bool, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.finished {
-		return false
+		return false, nil
 	}
-	statusAt, err := header(f)
-	if err == nil {
-		_, err = f.Write(o.held)
-	}
+	f, err := start(o.held)
 	if err != nil {
-		log.Printf("terminal %d: %v", shellID, err)
+		return false, err
 	}
-	o.file, o.shellID, o.statusAt = f, shellID, statusAt
+	o.file, o.shellID = f, shellID
 	o.hold, o.held, o.detached = false, nil, true
-	return true
+	return true, nil
 }
 
 func (o *shellOutput) emit(event func(string) *agentv1.ShellStream, data string) error {
@@ -67,12 +62,12 @@ func (o *shellOutput) emit(event func(string) *agentv1.ShellStream, data string)
 // finish discards all further output, so that nothing reaches the agent after
 // the command's exit or the terminal file after its footer. It returns the
 // terminal file, if the command was detached, for the footer.
-func (o *shellOutput) finish() (*os.File, uint32, int64) {
+func (o *shellOutput) finish() (*terminalfile.File, uint32) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.finished = true
 	o.held = nil
-	return o.file, o.shellID, o.statusAt
+	return o.file, o.shellID
 }
 
 func (o *shellOutput) sendErr() error {

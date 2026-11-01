@@ -9,14 +9,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
-	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
 
 func clientMessages(t *testing.T, frames []*aiserverv1.GrokBotUserComputerResponseFrame) []*agentv1.ExecClientMessage {
@@ -141,26 +139,15 @@ func TestReadTypedErrorsEncodingAndEscapedLimit(t *testing.T) {
 		t.Fatal("JSON escaped limit not respected")
 	}
 }
+
+// Like the desktop's, ls fills no TerminalMetadata for terminal files.
 func TestListingTimeoutAndTerminalMetadata(t *testing.T) {
 	e := setup(t)
 	frames := collect(t, e, execFrame(`{"lsArgs":{"path":".","timeoutMs":0}}`))
 	if clientMessages(t, frames)[0].GetLsResult().GetTimeout() == nil {
 		t.Fatal("timeout did not return partial tree")
 	}
-	collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"printf terminal-ok"}}`))
-	deadline := time.Now().Add(time.Second)
-	var data []byte
-	for time.Now().Before(deadline) {
-		data, _ = os.ReadFile(filepath.Join(e.Root, "terminals", "1.txt"))
-		if bytes.Contains(data, []byte("exit_code:")) {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	metadata := terminalfile.Metadata(data)
-	if metadata == nil || len(metadata.LastCommands) != 1 || metadata.LastCommands[0].GetExitCode() != 0 || metadata.GetCwd() != e.Root {
-		t.Fatal(string(data), metadata)
-	}
+	waitTerminal(t, e, collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"printf terminal-ok"}}`)))
 	frames = collect(t, e, execFrame(`{"lsArgs":{"path":"terminals"}}`))
 	tree := clientMessages(t, frames)[0].GetLsResult().GetSuccess().DirectoryTreeRoot
 	if len(tree.ChildrenFiles) != 1 || tree.ChildrenFiles[0].TerminalMetadata != nil {

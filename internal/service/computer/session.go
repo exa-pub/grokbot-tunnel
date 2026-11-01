@@ -5,6 +5,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+
 	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/uuid"
@@ -121,6 +123,31 @@ func (s *session) sink(f *responseFrame) error {
 		return nil
 	case <-s.life.Done():
 		return s.life.Err()
+	}
+}
+
+// taskSink is sink for a task run under ctx. Once ctx is canceled, a frame
+// that does not end the request is dropped instead of waiting for room, so
+// that a worker blocked on a full queue notices the cancellation (bug B8);
+// the session drops such frames of canceled requests anyway.
+func (s *session) taskSink(ctx context.Context) frames.Sink {
+	return func(f *responseFrame) error {
+		select {
+		case s.replies <- f:
+			return nil
+		default:
+		}
+		if frames.Keep(f) {
+			return s.sink(f)
+		}
+		select {
+		case s.replies <- f:
+			return nil
+		case <-s.life.Done():
+			return s.life.Err()
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 }
 

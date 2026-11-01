@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"connectrpc.com/connect"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/entity"
@@ -24,10 +27,21 @@ import (
 
 // testHandler runs every request until it is canceled. Requests whose ID
 // starts with "close" then report a stream close; those starting with
-// "stuck" ignore the cancellation until the test ends.
+// "stuck" ignore the cancellation until the test ends; those starting with
+// "flood" send output until the sink fails.
 type testHandler struct{ end <-chan struct{} }
 
 func (h testHandler) Handle(ctx context.Context, f *requestFrame, _ bool, sink frames.Sink) error {
+	if strings.HasPrefix(f.RequestId, "flood") {
+		output := &responseFrame{RequestId: f.RequestId, Frame: &aiserverv1.GrokBotUserComputerResponseFrame_Client{
+			Client: &aiserverv1.GrokBotUserComputerClientMessage{MessageJson: `{"shellStream":{"stdout":{"data":"x"}}}`},
+		}}
+		for {
+			if err := sink(output); err != nil {
+				return err
+			}
+		}
+	}
 	if strings.HasPrefix(f.RequestId, "stuck") {
 		<-h.end
 		return nil
@@ -636,4 +650,38 @@ func TestShutdownAcknowledgesPolledRequests(t *testing.T) {
 	if c.polls != 1 {
 		t.Fatal("polled without acks or credential")
 	}
+}
+
+// A worker blocked on a full reply queue notices the cancellation of its
+// request instead of waiting for room (bug B8).
+func TestCanceledWorkerNotBlockedByFullQueue(t *testing.T) {
+	s := testSession(t)
+	withCredential(s, "c", false)
+	s.accept(execFrame("flood"), false)
+	require.Eventually(t, func() bool { return len(s.replies) == cap(s.replies) }, 5*time.Second, 10*time.Millisecond)
+	s.cancel("flood")
+	select {
+	case id := <-s.done:
+		assert.Equal(t, "flood", id)
+	case <-time.After(5 * time.Second):
+		t.Fatal("canceled worker still blocked on the full queue")
+	}
+}
+
+// A rejected credential is removed from the cache only if the cache still
+// holds it, not a newer one another process saved meanwhile (bug B9).
+func TestRejectKeepsNewerCachedCredential(t *testing.T) {
+	s := testSession(t)
+	withCredential(s, "old", false)
+	newer := entity.Credential{Credential: "newer", ExpiresAtMS: s.pv.now().Add(time.Hour).UnixMilli()}
+	require.NoError(t, s.pv.Store.Save("computer", newer))
+	s.invalidate("", connect.NewError(connect.CodeUnauthenticated, errors.New("expired")))
+	var cached entity.Credential
+	require.NoError(t, s.pv.Store.Load("computer", &cached))
+	assert.Equal(t, "newer", cached.Credential)
+
+	withCredential(s, "newer", false)
+	s.invalidate("", connect.NewError(connect.CodeUnauthenticated, errors.New("expired")))
+	require.NoError(t, s.pv.Store.Load("computer", &cached))
+	assert.Empty(t, cached.Credential)
 }

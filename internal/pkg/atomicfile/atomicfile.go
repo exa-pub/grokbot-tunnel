@@ -65,11 +65,10 @@ func write(fs fsys, path string, data []byte, opts Options) error {
 		return err
 	}
 	defer fs.Remove(tmp) //nolint:errcheck // gone after the rename
-	if !opts.Umask {
+	// The mode is set after writing: a write clears setuid and setgid.
+	_, err = f.Write(data)
+	if err == nil && !opts.Umask {
 		err = f.Chmod(mode)
-	}
-	if err == nil {
-		_, err = f.Write(data)
 	}
 	if err == nil {
 		err = f.Sync()
@@ -97,7 +96,8 @@ func createTemp(fs fsys, path, prefix string, mode os.FileMode) (*os.File, strin
 	dir := filepath.Dir(path)
 	for range 10000 {
 		name := filepath.Join(dir, prefix+strconv.FormatUint(rand.Uint64(), 36)) //nolint:gosec // a unique name, not a secret
-		f, err := fs.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+		// Special bits go through Chmod; os.Root refuses them here.
+		f, err := fs.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode.Perm())
 		if errors.Is(err, os.ErrExist) {
 			continue
 		}

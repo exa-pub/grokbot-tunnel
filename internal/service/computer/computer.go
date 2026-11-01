@@ -109,10 +109,20 @@ func (pv *Provider) cachedCredential() entity.Credential {
 	return c
 }
 
-// forgetCredential overwrites the cached credential after the server rejected
-// it.
-func (pv *Provider) forgetCredential() {
+// forgetCredential removes the cached credential after the server rejected
+// it, unless the cache already holds another one, e.g. issued by another
+// process meanwhile (bug B9).
+func (pv *Provider) forgetCredential(rejected string) {
 	if pv.Store == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if unlock, err := pv.Store.Lock(ctx); err == nil {
+		defer unlock()
+	}
+	var cached entity.Credential
+	if err := pv.Store.Load("computer", &cached); err != nil || cached.Credential != rejected {
 		return
 	}
 	if err := pv.Store.Save("computer", entity.Credential{}); err != nil {

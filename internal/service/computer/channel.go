@@ -76,10 +76,11 @@ func (s *session) startWatch() {
 // invalidate drops the credential if err shows the server rejected it; a
 // result for credential, if given, says nothing about a newer one.
 func (s *session) invalidate(credential string, err error) {
+	rejected := s.cred.Current().Credential
 	if !s.cred.Reject(s.pv.now(), credential, err) {
 		return
 	}
-	s.pv.forgetCredential()
+	s.pv.forgetCredential(rejected)
 	s.stopWatch()
 	s.stream.DelayDial(s.pv.now(), channelRetry)
 }
