@@ -10,10 +10,12 @@ import (
 	"strings"
 )
 
-// lister builds a directory tree below root.
+// lister builds a directory tree below root, the absolute path of the
+// listed directory as requested; base is the same directory in files.
 type lister struct {
 	root   string
 	files  *os.Root
+	base   string
 	ignore []string // glob patterns
 }
 
@@ -76,7 +78,7 @@ func (l *lister) walk(ctx context.Context, b *treeBuilder, dir string, top bool)
 }
 
 func (l *lister) readDir(dir string) ([]os.DirEntry, error) {
-	f, err := l.files.Open(dir)
+	f, err := l.files.Open(filepath.Join(l.base, dir))
 	if err != nil {
 		return nil, err
 	}

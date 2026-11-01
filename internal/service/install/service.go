@@ -7,10 +7,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/systemd"
 	"github.com/exa-pub/grokbot-tunnel/internal/entity"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/atomicfile"
 	"github.com/exa-pub/grokbot-tunnel/internal/repository/instancelock"
 	"github.com/exa-pub/grokbot-tunnel/internal/repository/staterepo"
 )
@@ -34,14 +36,35 @@ var errPermissionRequired = errors.New("--permission is required: " +
 	"\"ask\" runs only actions approved in Grok Bot, since a service has no terminal to ask in; " +
 	"\"never\" refuses all actions, unless Grok Bot manages permissions itself")
 
+// networkEnv lists the variables through which install's environment
+// reaches the server: Go's ProxyFromEnvironment reads the proxies (but not
+// ALL_PROXY) and crypto/x509 the CA certificates. The desktop has proxy
+// settings of its own (Dz C@443922, kz C@443811); a service started without
+// these could not connect or update behind a proxy.
+var networkEnv = []string{
+	"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy",
+	"SSL_CERT_FILE", "SSL_CERT_DIR",
+}
+
+// proxyURLs are the variables of networkEnv holding a proxy URL, which may
+// carry credentials.
+var proxyURLs = []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"}
+
 // serviceEnv lists the variables the service keeps from the environment of
-// install: the user manager starts services with a minimal PATH, and the
-// others select the server.
-var serviceEnv = []string{
+// install: the user manager starts services with a minimal PATH, the SAND_
+// and CURSOR_ ones select the server, and networkEnv reaches it.
+var serviceEnv = append([]string{
 	"PATH", "SHELL",
 	"SAND_BACKEND_URL", "SAND_CURSOR_WEBSITE_URL", "SAND_CLIENT_APP_VERSION", "SAND_AUTH_CLIENT_ID",
 	"CURSOR_API_BASE_URL", "CURSOR_WEBSITE_URL",
-}
+}, networkEnv...)
+
+// EnvFile is the file in the store that passes the services the variables
+// with credentials: proxy URLs with a user. Environment= would put them in
+// a world-readable unit file, and of a system unit systemctl show tells
+// them to every user; the file is readable only by its owner and systemd
+// shows only its path.
+const EnvFile = "service.env"
 
 // Install runs connect as a systemd service that starts at boot.
 func Install(ctx context.Context, opts Options, out io.Writer) error {
@@ -68,11 +91,8 @@ func Install(ctx context.Context, opts Options, out io.Writer) error {
 		return err
 	}
 	c := Config{Exe: exe, Args: args, Version: opts.Version, AutoUpdate: opts.AutoUpdate}
-	for _, k := range serviceEnv {
-		if v := os.Getenv(k); v != "" {
-			c.Env = append(c.Env, k+"="+v)
-			fmt.Fprintf(out, "The service runs with %s=%s\n", k, v)
-		}
+	if err = keepEnv(&c, store, out); err != nil {
+		return err
 	}
 	if opts.Permission == string(entity.ModeAsk) {
 		fmt.Fprintln(out, "Note: with --permission ask the service has no terminal to ask in, "+
@@ -89,6 +109,64 @@ func Install(ctx context.Context, opts Options, out io.Writer) error {
 		fmt.Fprintln(out, "It updates grokbot-tunnel daily; re-run install with --no-auto-update to turn that off.")
 	}
 	return nil
+}
+
+// keepEnv adds the variables of serviceEnv set for install to c and prints
+// them, credentials masked. Those with credentials go to EnvFile in store,
+// which is removed if there are none.
+func keepEnv(c *Config, store *staterepo.Store, out io.Writer) error {
+	var secret []string
+	for _, k := range serviceEnv {
+		v := os.Getenv(k)
+		if v == "" {
+			continue
+		}
+		fmt.Fprintf(out, "The service runs with %s=%s\n", k, maskProxy(k, v))
+		if slices.Contains(proxyURLs, k) && strings.Contains(v, "@") {
+			secret = append(secret, k+"="+v)
+		} else {
+			c.Env = append(c.Env, k+"="+v)
+		}
+	}
+	path := filepath.Join(store.Dir, EnvFile)
+	if len(secret) == 0 {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	content, err := envFile(c.Version, secret)
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(store.Dir, 0o700); err != nil {
+		return err
+	}
+	if err = atomicfile.Write(path, []byte(content), atomicfile.Options{Mode: 0o600, Prefix: ".tmp-" + EnvFile + "-"}); err != nil {
+		return err
+	}
+	c.EnvFile = path
+	fmt.Fprintf(out, "The proxy credentials are kept in %s, readable only by its owner\n", path)
+	return nil
+}
+
+// maskProxy masks the credentials in the value of a proxy URL variable k for
+// printing: a password becomes ***, and so does a user without one, which
+// may be a token. Go takes proxy URLs without a scheme too.
+func maskProxy(k, v string) string {
+	at := strings.LastIndex(v, "@")
+	if !slices.Contains(proxyURLs, k) || at < 0 {
+		return v
+	}
+	start := 0
+	if i := strings.Index(v[:at], "://"); i >= 0 {
+		start = i + len("://")
+	}
+	user, _, ok := strings.Cut(v[start:at], ":")
+	if !ok {
+		return v[:start] + "***" + v[at:]
+	}
+	return v[:start] + user + ":***" + v[at:]
 }
 
 // connectArgs validates the connect flags and renders them for ExecStart.
@@ -175,7 +253,11 @@ func Uninstall(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	removed, err := removeUnits(ctx, m)
+	store, err := staterepo.Default()
+	if err != nil {
+		return err
+	}
+	removed, err := removeUnits(ctx, m, filepath.Join(store.Dir, EnvFile))
 	if err != nil {
 		return err
 	}

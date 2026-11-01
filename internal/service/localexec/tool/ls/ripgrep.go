@@ -17,7 +17,7 @@ import (
 // opened through Root, pinned by its descriptor, and does not follow
 // symlinks. On timeout the tree stays as it is, like the desktop's.
 func (l *lister) ripgrep(ctx context.Context, b *treeBuilder, rg, dir string) error {
-	fd, err := l.files.Open(dir)
+	fd, err := l.files.Open(filepath.Join(l.base, dir))
 	if err != nil {
 		return err
 	}

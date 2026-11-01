@@ -222,3 +222,45 @@ func TestImageDecodeOneAtATime(t *testing.T) {
 	t.Logf("peak heap: %d MiB for one read, %d MiB for eight", one>>20, eight>>20)
 	assert.Less(t, eight, 4*one, "peak heap: %d MiB for one read, %d MiB for eight", one>>20, eight>>20)
 }
+
+// sofJPEG is the start of a JPEG with a frame of w×h whose components have
+// the sampling factors hv, progressive or not: enough for the budget.
+func sofJPEG(w, h int, progressive bool, hv ...byte) []byte {
+	marker := byte(0xc0)
+	if progressive {
+		marker = 0xc2
+	}
+	n := 8 + 3*len(hv)
+	b := []byte{0xff, 0xd8, 0xff, marker, byte(n >> 8), byte(n), 8, byte(h >> 8), byte(h), byte(w >> 8), byte(w), byte(len(hv))}
+	for i, f := range hv {
+		b = append(b, byte(i+1), f, 0)
+	}
+	return append(b, 0xff, 0xd9)
+}
+
+// A progressive JPEG gets a larger budget: every one the desktop's jpeg-js
+// decodes within its 512 MiB fits, up to 24.4 Mpx at 4:4:4 (F3-1). The
+// limits of jpeg-js were measured by running it from the desktop's bundle:
+// 24.38 Mpx at 4:4:4, 36.95 at 4:2:0, 53.67 for gray, progressive or not.
+func TestImageDecodeBudgetProgressiveJPEG(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data []byte
+		ok   bool
+	}{
+		{"progressive 4:4:4 24 Mpx", sofJPEG(6000, 4000, true, 0x11, 0x11, 0x11), true},
+		{"progressive 4:4:4 24.4 Mpx", sofJPEG(6048, 4032, true, 0x11, 0x11, 0x11), true},
+		{"progressive 4:2:0 50 Mpx", sofJPEG(8660, 5770, true, 0x22, 0x11, 0x11), true},
+		{"progressive gray 50 Mpx", sofJPEG(8660, 5770, true, 0x11), true},
+		{"progressive 4:4:4 28 Mpx", sofJPEG(7000, 4000, true, 0x11, 0x11, 0x11), false},
+		{"baseline 4:4:4 50 Mpx", sofJPEG(8660, 5770, false, 0x11, 0x11, 0x11), true},
+	} {
+		hdr := imageHeader{w: int(binary.BigEndian.Uint16(tc.data[9:])), h: int(binary.BigEndian.Uint16(tc.data[7:]))}
+		err := checkDecodeBudget(tc.data, kindJPEG, hdr)
+		if tc.ok {
+			assert.NoError(t, err, tc.name)
+		} else {
+			assert.ErrorContains(t, err, "pixel decode limit", tc.name)
+		}
+	}
+}

@@ -103,10 +103,11 @@ func writeUnit(m *systemd.Manager, name, content string) error {
 	return nil
 }
 
-// removeUnits disables, removes and stops the units that exist. It reports
-// whether there were any. Stopping comes last: run from inside the service,
-// e.g. by the agent, it ends this process too.
-func removeUnits(ctx context.Context, m *systemd.Manager) (bool, error) {
+// removeUnits disables, removes and stops the units that exist, and removes
+// their environment file envFile with them. It reports whether there were
+// any units. Stopping comes last: run from inside the service, e.g. by the
+// agent, it ends this process too.
+func removeUnits(ctx context.Context, m *systemd.Manager, envFile string) (bool, error) {
 	found, err := m.Existing(TunnelUnit, UpdateUnit, UpdateTimer)
 	if err != nil || len(found) == 0 {
 		return false, err
@@ -132,6 +133,11 @@ func removeUnits(ctx context.Context, m *systemd.Manager) (bool, error) {
 			return true, err
 		}
 		fmt.Fprintf(m.Out, "Removed %s\n", path)
+	}
+	if err = os.Remove(envFile); err == nil {
+		fmt.Fprintf(m.Out, "Removed %s\n", envFile)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return true, err
 	}
 	if _, err = m.Systemctl(ctx, "daemon-reload"); err != nil {
 		return true, err

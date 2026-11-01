@@ -178,14 +178,14 @@ func launch(c *exec.Cmd, f, gate *os.File, cmd terminalfile.Command) (*terminalf
 // or truncates its terminal file <root>/terminals/<n>.txt, like the desktop.
 // The ID is taken until Release.
 func (bg *Executor) Terminal() (uint32, *os.File, error) {
-	if err := bg.root.FS().MkdirAll(terminalfile.Dir, 0o700); err != nil {
+	if err := bg.root.MkdirAll(terminalfile.Dir, 0o700); err != nil {
 		return 0, nil, err
 	}
 	n, err := bg.take()
 	if err != nil {
 		return 0, nil, err
 	}
-	f, err := bg.root.FS().OpenFile(fmt.Sprintf("%s/%d.txt", terminalfile.Dir, n), os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o600)
+	f, err := bg.root.OpenFile(fmt.Sprintf("%s/%d.txt", terminalfile.Dir, n), os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o600)
 	if err != nil {
 		bg.Release(n)
 		return 0, nil, err
@@ -204,7 +204,7 @@ func (bg *Executor) Release(n uint32) {
 // used, and releases the ID.
 func (bg *Executor) Remove(n uint32) error {
 	defer bg.Release(n)
-	return bg.root.FS().Remove(fmt.Sprintf("%s/%d.txt", terminalfile.Dir, n))
+	return bg.root.Remove(fmt.Sprintf("%s/%d.txt", terminalfile.Dir, n))
 }
 
 // refuse writes the terminal file f of shell ID n for a command that does not

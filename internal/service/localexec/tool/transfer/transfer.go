@@ -40,33 +40,49 @@ func (t *Transfer) Upload(path string, data []byte) error {
 	if len(data) > pathroot.MaxFile {
 		return pathroot.FileTooLarge(int64(len(data)))
 	}
-	rel, err := t.root.Check(path)
+	p, err := t.root.Check(path)
+	var unavailable *pathroot.RootError
+	if errors.As(err, &unavailable) && errors.Is(err, os.ErrNotExist) {
+		// Like the desktop's recursive mkdir, the upload creates a root
+		// directory that was removed.
+		if err = os.MkdirAll(t.root.Dir(), 0o777); err != nil { //nolint:gosec // like the desktop, 0777 less the umask
+			return nodeerr.Wrap(err, t.root.Dir())
+		}
+		p, err = t.root.Check(path)
+	}
+	if errors.As(err, &unavailable) {
+		return nodeerr.Wrap(unavailable.Err, unavailable.Path)
+	}
 	if err != nil {
 		return err
 	}
-	// Like the desktop, the directory is created before symlinks resolve.
-	if err = t.root.FS().MkdirAll(filepath.Dir(rel), 0o777); err != nil {
-		return t.wrap(err, filepath.Dir(rel))
+	defer p.Close()
+	fs := p.FS()
+	// Like the desktop, the directory is created before the file's own
+	// symlink resolves.
+	if err = fs.MkdirAll(filepath.Dir(p.Real), 0o777); err != nil {
+		return t.wrap(err, filepath.Dir(p.Rel))
 	}
-	if rel, err = t.root.UploadTarget(rel); errors.Is(err, pathroot.ErrOutside) {
+	rel, err := p.UploadTarget()
+	if errors.Is(err, pathroot.ErrOutside) {
 		return &pathroot.OutsideError{Path: path, Symlink: true}
 	} else if err != nil {
-		return t.wrap(err, rel)
+		return t.wrap(err, p.Rel)
 	}
 	defer t.locks.lock(rel)()
-	target, err := t.target(rel)
+	target, err := t.target(fs, rel)
 	if err != nil {
 		return t.wrap(err, rel)
 	}
 	if target.links > 1 {
-		opened, err := t.overwrite(rel, data, target.mode)
+		opened, err := t.overwrite(fs, rel, data, target.mode)
 		if opened || !errors.Is(err, os.ErrPermission) {
 			return t.wrap(err, rel)
 		}
 		// A file we may not write into can still be replaced, as on the
 		// desktop, at the cost of its other links.
 	}
-	return t.wrap(atomicfile.WriteIn(t.root.FS(), rel, data, atomicfile.Options{
+	return t.wrap(atomicfile.WriteIn(fs, rel, data, atomicfile.Options{
 		Mode: target.mode, ExactMode: target.existed, Umask: !target.existed, Owner: target.owner, Prefix: ".grok-upload-",
 	}), rel)
 }
@@ -75,11 +91,17 @@ func (t *Transfer) Upload(path string, data []byte) error {
 // is known is read up to that size; a file that reports size 0, such as one
 // in procfs, is read to its end, up to the transfer limit.
 func (t *Transfer) Download(ctx context.Context, requestID, path string, sink frames.Sink) error {
-	rel, err := t.root.Check(path)
+	p, err := t.root.Check(path)
+	var unavailable *pathroot.RootError
+	if errors.As(err, &unavailable) {
+		return nodeerr.Wrap(unavailable.Err, unavailable.Path)
+	}
 	if err != nil {
 		return err
 	}
-	f, size, err := t.openDownload(rel)
+	defer p.Close()
+	rel := p.Rel
+	f, size, err := t.openDownload(p)
 	if err != nil {
 		return err
 	}
@@ -112,7 +134,8 @@ func (t *Transfer) Download(ctx context.Context, requestID, path string, sink fr
 	}
 }
 
-// wrap words err as Node would for the file rel.
+// wrap words err as Node would for the file rel, relative to the root's
+// path or to its realpath, which name the same directory.
 func (t *Transfer) wrap(err error, rel string) error {
 	if pathroot.Escaped(err) {
 		return err
@@ -133,8 +156,8 @@ type uploadTarget struct {
 // process, its owner; or 0666 for a new file, which also replaces a dangling
 // symlink. Like the desktop, an upload replaces a FIFO or socket but not a
 // directory.
-func (t *Transfer) target(rel string) (uploadTarget, error) {
-	st, err := t.root.FS().Lstat(rel)
+func (t *Transfer) target(fs *os.Root, rel string) (uploadTarget, error) {
+	st, err := fs.Lstat(rel)
 	switch {
 	case errors.Is(err, os.ErrNotExist), err == nil && st.Mode()&os.ModeSymlink != 0:
 		return uploadTarget{mode: 0o666}, nil
@@ -159,8 +182,8 @@ func (t *Transfer) target(rel string) (uploadTarget, error) {
 // inode, owner and hard links, and restores its mode, which the write may
 // have cleared setuid and setgid of; readers may see partial data. It
 // reports whether the file could be opened.
-func (t *Transfer) overwrite(rel string, data []byte, mode os.FileMode) (bool, error) {
-	f, err := t.root.FS().OpenFile(rel, os.O_WRONLY|os.O_TRUNC, 0)
+func (t *Transfer) overwrite(fs *os.Root, rel string, data []byte, mode os.FileMode) (bool, error) {
+	f, err := fs.OpenFile(rel, os.O_WRONLY|os.O_TRUNC, 0)
 	if err != nil {
 		return false, err
 	}
@@ -191,8 +214,9 @@ func keepChmodRefusal(err error) error {
 // openDownload opens a regular file for a download and returns its size. A
 // directory fails as Node's read of it does; a FIFO or device is refused
 // without blocking.
-func (t *Transfer) openDownload(rel string) (*os.File, int64, error) {
-	f, err := t.root.FS().OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+func (t *Transfer) openDownload(p *pathroot.Path) (*os.File, int64, error) {
+	rel := p.Rel
+	f, err := p.FS().OpenFile(p.Real, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, 0, t.wrap(err, rel)
 	}

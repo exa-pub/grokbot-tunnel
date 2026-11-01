@@ -34,18 +34,24 @@ type Executor struct {
 func New(root *pathroot.Root) *Executor { return &Executor{root: root} }
 
 // Execute reads args.Path and sends the read result. A path outside the root
-// fails the request instead of producing a result, as on the desktop.
+// fails the request instead of producing a result, as on the desktop; below
+// a root directory that cannot be opened, the path fails to open.
 func (rd *Executor) Execute(ctx context.Context, x *agentv1.ReadArgs, send execstream.Send) error {
 	if isBlank(x.Path) {
 		return send(readMessage(&agentv1.ReadResult{Result: &agentv1.ReadResult_Error{
 			Error: &agentv1.ReadError{Path: x.Path, Error: msgEmptyPath},
 		}}))
 	}
-	rel, err := rd.root.Check(x.Path)
+	p, err := rd.root.Check(x.Path)
+	var unavailable *pathroot.RootError
+	if errors.As(err, &unavailable) {
+		return send(readMessage(readError(unavailable.Path, unavailable.Err)))
+	}
 	if err != nil {
 		return err
 	}
-	result, err := rd.result(ctx, rel, x)
+	defer p.Close()
+	result, err := rd.result(ctx, p, x)
 	if err != nil {
 		return err
 	}
@@ -55,12 +61,12 @@ func (rd *Executor) Execute(ctx context.Context, x *agentv1.ReadArgs, send execs
 // result reads a file into a typed result, deciding like the desktop: image,
 // PDF, video, other binary data, text. Only failures that the desktop
 // reports as errors rather than results are returned as errors.
-func (rd *Executor) result(ctx context.Context, rel string, x *agentv1.ReadArgs) (*agentv1.ReadResult, error) {
-	path := rd.root.Abs(rel)
-	if refused, err := rd.check(rel, path); refused != nil || err != nil {
+func (rd *Executor) result(ctx context.Context, p *pathroot.Path, x *agentv1.ReadArgs) (*agentv1.ReadResult, error) {
+	path := rd.root.Abs(p.Rel)
+	if refused, err := rd.check(p, path); refused != nil || err != nil {
 		return refused, err
 	}
-	f, err := rd.root.OpenRegular(rel)
+	f, err := p.OpenRegular()
 	if pathroot.Escaped(err) {
 		return nil, err
 	}
@@ -107,8 +113,8 @@ func (rd *Executor) result(ctx context.Context, rel string, x *agentv1.ReadArgs)
 
 // check returns the result for a path that is not a readable file by its
 // stat: missing, a directory, neither file nor directory, or too large.
-func (rd *Executor) check(rel, path string) (*agentv1.ReadResult, error) {
-	st, err := rd.root.FS().Stat(rel)
+func (rd *Executor) check(p *pathroot.Path, path string) (*agentv1.ReadResult, error) {
+	st, err := p.FS().Stat(p.Real)
 	switch {
 	case pathroot.Escaped(err):
 		return nil, err

@@ -189,6 +189,9 @@ func TestUserScope(t *testing.T) {
 func testLifecycle(t *testing.T, s *scope, autoUpdate bool) {
 	cloud := fakesand.New(t)
 	env := append(cloud.Env(), "GROKBOT_TUNNEL_RELEASES_URL="+releases(t))
+	// The service keeps the proxy of install, a proxy with credentials in
+	// an environment file that systemd parses; the servers here are local.
+	proxy := []string{`HTTPS_PROXY=http://user:p$a"s\s w@proxy.invalid:3128`, "NO_PROXY=127.0.0.1,localhost"}
 	s.installBinary(t, "GROK_BIN")
 
 	assert.Contains(t, s.run(t, env, s.bin, "login", "--no-browser"), "Logged in as "+fakesand.Email)
@@ -196,7 +199,10 @@ func testLifecycle(t *testing.T, s *scope, autoUpdate bool) {
 	if !autoUpdate {
 		args = append(args, "--no-auto-update")
 	}
-	assert.Contains(t, s.run(t, env, s.bin, args...), "The service is connected")
+	out := s.run(t, append(env, proxy...), s.bin, args...)
+	assert.Contains(t, out, "The service is connected")
+	assert.Contains(t, out, "HTTPS_PROXY=http://user:***@proxy.invalid:3128")
+	assert.NotContains(t, out, "p$a")
 
 	state, _ := s.systemctl("is-active", unit)
 	assert.Equal(t, "active", state)
@@ -207,8 +213,13 @@ func testLifecycle(t *testing.T, s *scope, autoUpdate bool) {
 	}
 	shell(t, cloud, "before", "printf before", "before")
 	pid := s.property(t, "MainPID")
+	environ, err := os.ReadFile("/proc/" + pid + "/environ")
+	require.NoError(t, err)
+	for _, kv := range proxy {
+		assert.Contains(t, strings.Split(string(environ), "\x00"), kv)
+	}
 
-	out := s.run(t, env, s.bin, "update")
+	out = s.run(t, env, s.bin, "update")
 	assert.Contains(t, out, "Updated grokbot-tunnel v1.0.0 -> "+newVersion)
 	assert.Contains(t, out, "Restarting the service")
 	require.Eventually(t, func() bool {
@@ -225,6 +236,8 @@ func testLifecycle(t *testing.T, s *scope, autoUpdate bool) {
 	if s.user != nil {
 		dir = filepath.Join(s.home, ".config", "systemd", "user")
 	}
-	_, err := os.Stat(filepath.Join(dir, unit))
+	_, err = os.Stat(filepath.Join(dir, unit))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(filepath.Join(s.home, ".grok", "bot-tunnel", "service.env"))
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }

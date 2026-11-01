@@ -135,19 +135,23 @@ func (s *session) shutdown() {
 }
 
 // awaitWorkers collects results until all workers and the submit in flight
-// finish. It reports false if ctx expired first.
+// finish. It reports false if ctx expired first. A full batch goes out in
+// the background, like any submit: one cut short by ctx would leave frames
+// the server may have accepted pending, and the final submit would send them
+// again (C3-1). A batch still in flight when ctx expires is left to finish;
+// the final submit leaves out its frames.
 func (s *session) awaitWorkers(ctx context.Context) bool {
 	for s.admit.Active() > 0 || s.out.Submitting() {
 		select {
 		case f := <-s.replies:
-			if !s.out.Take(f, s.admit.Canceled(f.RequestId)) || s.out.Submitting() {
-				continue
-			}
-			if err := s.submit(ctx); err != nil {
-				log.Printf("submit: %v", err)
+			if s.out.Take(f, s.admit.Canceled(f.RequestId)) {
+				s.startSubmit()
 			}
 		case r := <-s.submitted:
 			s.out.Settle(r.frames, r.accepted)
+			if r.err == nil && len(s.out.Pending()) >= replies.SubmitBatch {
+				s.startSubmit()
+			}
 		case id := <-s.done:
 			s.admit.Finish(id)
 		case <-ctx.Done():

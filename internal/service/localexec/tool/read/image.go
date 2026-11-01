@@ -31,8 +31,13 @@ const (
 	// maxDecodeBytes bounds the memory of decoding an image, which a file
 	// of a few hundred KB can make hundreds of MiB.
 	maxDecodeBytes = 256 << 20
-	jpegQuality    = 100 // jimp's default
-	webpAsJPEG     = 90
+	// maxProgressiveJPEGBytes is maxDecodeBytes for a progressive JPEG, whose
+	// coefficients Go keeps as int32: enough for every JPEG the desktop's
+	// jpeg-js decodes within its maxMemoryUsageInMB of 512, up to 24.4 Mpx
+	// at 4:4:4 (15 bytes a pixel here). Images are decoded one at a time.
+	maxProgressiveJPEGBytes = 384 << 20
+	jpegQuality             = 100 // jimp's default
+	webpAsJPEG              = 90
 )
 
 // webpKeptSizes are WEBP sizes the desktop passes on without resizing (W3r).
@@ -317,14 +322,22 @@ func decode(data []byte, kind imageKind, hdr imageHeader) (image.Image, error) {
 }
 
 // checkDecodeBudget refuses an image whose decoding would take more than
-// maxDecodeBytes, in the words of the pixel limit for its pixel format.
+// its decodeBudget, in the words of the pixel limit for its pixel format.
 func checkDecodeBudget(data []byte, kind imageKind, hdr imageHeader) error {
-	n := decodeBytes(data, kind, hdr.w, hdr.h)
-	if n <= maxDecodeBytes {
+	n, budget := decodeBytes(data, kind, hdr.w, hdr.h), decodeBudget(data, kind)
+	if n <= budget {
 		return nil
 	}
 	px := int64(hdr.w) * int64(hdr.h)
-	return fmt.Errorf("image dimensions %dx%d exceed the %d pixel decode limit", hdr.w, hdr.h, maxDecodeBytes*px/n)
+	return fmt.Errorf("image dimensions %dx%d exceed the %d pixel decode limit", hdr.w, hdr.h, budget*px/n)
+}
+
+// decodeBudget is the memory decoding an image of kind may take.
+func decodeBudget(data []byte, kind imageKind) int64 {
+	if kind == kindJPEG && readJPEG(data).progressive {
+		return maxProgressiveJPEGBytes
+	}
+	return maxDecodeBytes
 }
 
 // decodeBytes estimates the memory Go's decoder takes for a w×h image: the

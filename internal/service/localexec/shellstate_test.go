@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -505,25 +506,21 @@ func TestShellStateFilesRemovedOnClose(t *testing.T) {
 	})
 }
 
-// S2-3: a new executor removes the shell files that executors of processes
-// no longer running left in $TMPDIR, and the fallback snapshots of older
-// versions, and keeps those of running processes.
+// S2-3, S3-1: a new executor removes the shell directories that no executor
+// holds locked in $TMPDIR, also those named after a running process, as one
+// in another pid namespace that shares /tmp would be, and the fallback
+// snapshots of older versions that no process has open; it keeps the
+// directories that executors hold locked.
 func TestShellStaleStateFilesRemoved(t *testing.T) {
 	tmp := shellTemp(t)
-	dead := exec.CommandContext(t.Context(), "true")
-	if err := dead.Run(); err != nil {
-		t.Fatal(err)
+	stale := []string{
+		"grok-shell-state-123",
+		"grok-shell-" + strconv.Itoa(os.Getpid()) + "-1", // left by an executor of this process
+		"grok-shell-1-1",                                 // named after init, which runs
 	}
-	live := exec.CommandContext(t.Context(), "sleep", "30") // killed at the end of the test
-	if err := live.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = live.Wait() })
-	stale := []string{"grok-shell-state-123", "grok-shell-" + strconv.Itoa(dead.Process.Pid) + "-1"}
 	kept := []string{
-		"grok-shell-state-456", // an older version's, open while its command runs
-		"grok-shell-" + strconv.Itoa(live.Process.Pid) + "-1",
-		"grok-shell-" + strconv.Itoa(os.Getpid()) + "-1", // another executor of this process
+		"grok-shell-state-456",   // an older version's, open while its command runs
+		"grok-shell-999999999-1", // locked by an executor in another pid namespace
 		"grok-shell-other",
 	}
 	for _, name := range []string{stale[0], kept[0]} {
@@ -543,9 +540,14 @@ func TestShellStaleStateFilesRemoved(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(tmp, dir, "fallback"), []byte("GROK_SECRET=hunter2"), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		old := time.Now().Add(-time.Hour) // a fresh one is kept for its session to lock
+		if err := os.Chtimes(filepath.Join(tmp, dir), old, old); err != nil {
+			t.Fatal(err)
+		}
 	}
-	e := setup(t)
-	expectStdout(t, e, "printf ran", "ran")
+	held := flockShared(t, filepath.Join(tmp, kept[1]))
+	defer held.Close()
+	other := setup(t) // another executor of this process, which holds its own
 	names := tempEntries(t, tmp)
 	for _, name := range stale {
 		if slices.Contains(names, name) {
@@ -557,13 +559,197 @@ func TestShellStaleStateFilesRemoved(t *testing.T) {
 			t.Fatal(name, "removed")
 		}
 	}
+	kept = names
+	e := setup(t)
+	expectStdout(t, e, "printf ran", "ran")
+	names = tempEntries(t, tmp)
+	for _, name := range kept {
+		if !slices.Contains(names, name) {
+			t.Fatal(name, "removed")
+		}
+	}
 	if len(names) != len(kept)+1 {
 		t.Fatal(names)
 	}
 	if err := e.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if names := tempEntries(t, tmp); len(names) != len(kept) {
+	if err := other.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if names := tempEntries(t, tmp); len(names) != len(kept)-1 {
 		t.Fatal(names)
 	}
+}
+
+// flockShared opens the directory at path and takes a shared flock on it,
+// as an executor holds its private directory.
+func flockShared(t *testing.T, path string) *os.File {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// privateDir returns the private directory of the only executor in tmp.
+func privateDir(t *testing.T, tmp string) string {
+	t.Helper()
+	names := tempEntries(t, tmp)
+	if len(names) != 1 || !strings.HasPrefix(names[0], "grok-shell-") {
+		t.Fatal(names)
+	}
+	return filepath.Join(tmp, names[0])
+}
+
+// S3-1: a private directory removed under a live executor, as
+// systemd-tmpfiles does with an idle one, is created again by the next
+// command, and foreground and background commands keep working with the
+// state kept. Commands do not inherit the descriptor of its lock.
+func TestShellPrivateDirRecreated(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		tmp := shellTemp(t)
+		e := setupHome(t, home)
+		expectStdout(t, e, "export KEPT=1; printf ran", "ran")
+		old := privateDir(t, tmp)
+		if err := os.RemoveAll(old); err != nil {
+			t.Fatal(err)
+		}
+		expectStdout(t, e, `printf 'ran|%s' "$KEPT"`, "ran|1")
+		dir := privateDir(t, tmp)
+		if dir == old {
+			t.Fatal("not recreated")
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+		frames := collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"printf 'bg|%s' \"$KEPT\""}}`))
+		if data := waitTerminal(t, e, frames); !strings.Contains(data, "---\nbg|1\n---\n") {
+			t.Fatalf("%q", data)
+		}
+		if _, err := os.Stat("/proc/self/fd"); err == nil {
+			r := runShell(t, e, `for f in /proc/self/fd/*; do readlink "$f"; done`)
+			if strings.Contains(r.stdout, "grok-shell-") {
+				t.Fatalf("%q", r.stdout)
+			}
+		}
+		if err := e.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if names := tempEntries(t, tmp); len(names) != 0 {
+			t.Fatal(names)
+		}
+	})
+}
+
+// S3-1: systemd-tmpfiles, which removes what is older than the age of /tmp
+// but skips a locked directory (tmpfiles.d(5)), keeps the private directory
+// of an idle executor.
+func TestShellPrivateDirSurvivesTmpfiles(t *testing.T) {
+	tmpfiles, err := exec.LookPath("systemd-tmpfiles")
+	if err != nil {
+		t.Skip("needs systemd-tmpfiles")
+	}
+	tmp := shellTemp(t)
+	conf := filepath.Join(t.TempDir(), "tmp.conf")
+	if err := os.WriteFile(conf, []byte("d "+tmp+" 1777 - - 1s\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e := setup(t)
+	expectStdout(t, e, "printf ran", "ran")
+	dir := privateDir(t, tmp)
+	stray := filepath.Join(tmp, "stray")
+	if err := os.Mkdir(stray, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2500 * time.Millisecond) // idle longer than the age
+	if out, err := exec.CommandContext(t.Context(), tmpfiles, "--clean", conf).CombinedOutput(); err != nil {
+		t.Skipf("systemd-tmpfiles: %v %s", err, out)
+	}
+	if _, err := os.Stat(stray); err == nil {
+		t.Skip("systemd-tmpfiles did not clean " + tmp)
+	}
+	if got := privateDir(t, tmp); got != dir {
+		t.Fatal(got, dir)
+	}
+	expectStdout(t, e, "printf ran", "ran")
+}
+
+// S3-2, like the desktop, whose shells start with the app's environment and
+// replay the saved one inside: the variables a shell reads at startup that a
+// command exported reach the next command and its children, not the shell
+// that runs it. An exported SHELLOPTS does not carry nounset and pipefail
+// into later shells.
+func TestShellStartupVariablesNotUsedByLaterShells(t *testing.T) {
+	unsetenv := func(t *testing.T, key string) {
+		t.Helper()
+		t.Setenv(key, "")
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("SHELLOPTS", func(t *testing.T) {
+		t.Setenv("SHELL", "/bin/bash")
+		e := setup(t)
+		expectStdout(t, e, "set -u -o pipefail; export SHELLOPTS BASHOPTS; echo ok", "ok\n")
+		expectStdout(t, e, `false | true; echo "pipe=$? x=$UNDEFINED_VAR"; case :$SHELLOPTS: in *:pipefail:*|*:nounset:*) echo kept;; esac`, "pipe=0 x=\n")
+	})
+	t.Run("BASH_ENV", func(t *testing.T) {
+		t.Setenv("SHELL", "/bin/bash")
+		unsetenv(t, "BASH_ENV")
+		home := t.TempDir()
+		rc := filepath.Join(home, "it's rc.sh")
+		if err := os.WriteFile(rc, []byte("echo sourced\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		e := setupHome(t, home)
+		expectStdout(t, e, `export BASH_ENV="$HOME/it's rc.sh"; echo set`, "set\n")
+		expectStdout(t, e, `printf '%s\n' "$BASH_ENV"; bash -c 'echo child'`, rc+"\nsourced\nchild\n")
+		expectStdout(t, e, "unset BASH_ENV; echo unset", "unset\n")
+		t.Setenv("BASH_ENV", rc) // the CLI's own runs in every shell
+		expectStdout(t, e, `printf '%s\n' "${BASH_ENV-none}"`, "sourced\nnone\n")
+	})
+	zsh, err := exec.LookPath("zsh")
+	if err != nil {
+		t.Log("no zsh")
+		return
+	}
+	fake := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, ".zshenv"), []byte("echo FAKE-ZSHENV\nexec 5<&-\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	t.Run("ZDOTDIR", func(t *testing.T) {
+		t.Setenv("SHELL", zsh)
+		e := setup(t)
+		dir := fake(t)
+		expectStdout(t, e, "export ZDOTDIR='"+dir+"'; echo set", "set\n")
+		expectStdout(t, e, `printf '%s\n' "$ZDOTDIR"`, dir+"\n")
+		expectStdout(t, e, `zsh -c 'echo child'`, "FAKE-ZSHENV\nchild\n")
+	})
+	t.Run("HOME", func(t *testing.T) {
+		t.Setenv("SHELL", zsh)
+		e := setup(t)
+		unsetenv(t, "ZDOTDIR")
+		dir := fake(t)
+		expectStdout(t, e, "export HOME='"+dir+"'; echo set", "set\n")
+		expectStdout(t, e, `printf '%s\n' "$HOME" ~`, dir+"\n"+dir+"\n")
+	})
+}
+
+// S3-2: an exported IFS is restored, as the desktop's replay of "export -p"
+// does; bash and zsh do not take it from the environment.
+func TestShellExportedIFSRestored(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		expectStdout(t, e, "export IFS=:; echo set", "set\n")
+		expectStdout(t, e, `printf '[%s]' "$IFS"; echo a:b | { read -r x y; printf '%s|%s' "$x" "$y"; }`, "[:]a|b")
+	})
 }

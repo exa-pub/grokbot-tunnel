@@ -79,14 +79,60 @@ func TestUserShell(t *testing.T) {
 func TestShellEnvironmentMarkersOnce(t *testing.T) {
 	t.Setenv("SHLVL", "2")
 	st := State{env: []string{"A=1", "CURSOR_AGENT=0", "SAND_AGENT=1", "CURSOR_AGENT_X=1"}}
-	got := strings.Join(st.environ(nil), " ")
+	got := strings.Join(st.environ(shell{}, nil), " ")
 	if got != "A=1 CURSOR_AGENT_X=1 SHLVL=2 CURSOR_AGENT=1 SAND_AGENT=1" {
 		t.Fatal(got)
 	}
 	st.env = append(st.env, "CURSOR_REQUEST_ID=old", "AGENT_TRANSCRIPTS=/old")
-	got = strings.Join(st.environ(RequestEnv("/r", "", "req")), " ")
+	got = strings.Join(st.environ(shell{}, RequestEnv("/r", "", "req")), " ")
 	if got != "A=1 CURSOR_AGENT_X=1 SHLVL=2 CURSOR_AGENT=1 SAND_AGENT=1 CURSOR_REQUEST_ID=req AGENT_TRANSCRIPTS=/r/agent-transcripts" {
 		t.Fatal(got)
+	}
+}
+
+// S3-2, like the desktop, whose shells start with the app's environment and
+// replay the saved one inside: a shell starts with the CLI's values of the
+// variables it reads at startup, and the replay exports the saved ones,
+// unsets those the state lacks and restores an exported IFS. SHELLOPTS and
+// BASHOPTS are not saved.
+func TestShellStartupEnvReplayed(t *testing.T) {
+	t.Setenv("SHLVL", "2")
+	t.Setenv("BASH_ENV", "/cli/rc")
+	t.Setenv("HOME", "/cli/home")
+	t.Setenv("ZDOTDIR", "/same")
+	if err := os.Unsetenv("ENV"); err != nil {
+		t.Fatal(err)
+	}
+	st := State{env: []string{"A=1", "BASH_ENV=/saved/it's rc", "ENV=/saved/env", "HOME=/saved/home", "ZDOTDIR=/same", "IFS=:"}}
+	bash, zsh := shell{path: "/bin/bash"}, shell{path: "/bin/zsh", zsh: true}
+	for _, tc := range []struct {
+		sh           shell
+		env, replay  string
+		withoutSaved string
+	}{
+		{bash, "A=1 HOME=/saved/home ZDOTDIR=/same IFS=: SHLVL=2 BASH_ENV=/cli/rc CURSOR_AGENT=1 SAND_AGENT=1",
+			"builtin export BASH_ENV='/saved/it'\\''s rc'\nbuiltin export ENV='/saved/env'\nbuiltin export IFS=':'\n",
+			"builtin unset BASH_ENV 2>/dev/null\n"},
+		{zsh, "A=1 BASH_ENV=/saved/it's rc IFS=: SHLVL=2 ZDOTDIR=/same HOME=/cli/home CURSOR_AGENT=1 SAND_AGENT=1",
+			"builtin export HOME='/saved/home'\nbuiltin export ENV='/saved/env'\nbuiltin export IFS=':'\n",
+			"builtin unset ZDOTDIR 2>/dev/null\nbuiltin unset HOME 2>/dev/null\n"},
+	} {
+		if got := strings.Join(st.environ(tc.sh, nil), " "); got != tc.env {
+			t.Errorf("zsh %v: environ %q, want %q", tc.sh.zsh, got, tc.env)
+		}
+		if got := st.replayEnv(tc.sh); got != tc.replay {
+			t.Errorf("zsh %v: replay %q, want %q", tc.sh.zsh, got, tc.replay)
+		}
+		if got := (State{env: []string{"A=1"}}).replayEnv(tc.sh); got != tc.withoutSaved {
+			t.Errorf("zsh %v: replay without saved values %q, want %q", tc.sh.zsh, got, tc.withoutSaved)
+		}
+	}
+	if got := (State{}).replayEnv(bash); got != "" {
+		t.Errorf("replay of the CLI's environment %q", got)
+	}
+	snap := "/w\x00A=1\x00SHELLOPTS=braceexpand:nounset\x00BASHOPTS=extglob\x00\x00" + sectionEnvSaved + "\x00\x00" + sectionEnd + "\x00"
+	if st, ok := parseSnapshot([]byte(snap)); !ok || strings.Join(st.env, " ") != "A=1" {
+		t.Fatal(ok, st.env)
 	}
 }
 

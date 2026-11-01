@@ -14,6 +14,9 @@
 // written. The user's profile is read once, by an interactive login shell
 // that only dumps its state; every command then runs in a fresh non-login
 // shell that replays the state, runs the command and dumps the state again.
+// Like the desktop's, that shell starts with the CLI's values of the
+// variables it reads at startup, such as $BASH_ENV and $ZDOTDIR, and the
+// replay exports the saved ones for the command (startupEnv).
 //
 // Descriptors of a foreground shell:
 //
@@ -78,7 +81,7 @@ const (
 type Session struct {
 	root *pathroot.Root
 	// dir is the private directory of the shells' temporary files.
-	dir   string
+	dir   *tempDir
 	mu    sync.Mutex // guards state
 	state State
 	// initOnce starts reading the user's profile into state; initDone is
@@ -92,20 +95,20 @@ type Session struct {
 }
 
 // New returns a Session whose commands run below root by default, with its
-// private directory for temporary files created; Close removes it. Private
-// directories and fallback files that processes no longer running left
-// behind are removed first.
+// private directory for temporary files created and locked; Close removes
+// it. Private directories that no session holds locked and fallback files
+// that no process has open are removed first.
 func New(root *pathroot.Root) (*Session, error) {
-	dir, err := tempDir()
+	dir, err := newTempDir()
 	if err != nil {
 		return nil, err
 	}
 	return &Session{root: root, dir: dir}, nil
 }
 
-// Close removes the session's private directory. Shells still running then
-// save no fallback state.
-func (s *Session) Close() error { return os.RemoveAll(s.dir) }
+// Close removes the session's private directory and releases its lock.
+// Shells still running then save no fallback state.
+func (s *Session) Close() error { return s.dir.close() }
 
 // Root is the root the commands run below by default.
 func (s *Session) Root() *pathroot.Root { return s.root }
@@ -216,10 +219,10 @@ func (s *Session) Commit(snapshot, fallback *os.File, started State) {
 // private directory until the command exits. Close them with
 // CloseStateFiles.
 func (s *Session) StateFiles() (snapshot, fallback *os.File, err error) {
-	if snapshot, err = proc.TempFile(s.dir, "state-", ""); err != nil {
+	if snapshot, err = s.tempFile("state-", ""); err != nil {
 		return nil, nil, err
 	}
-	if fallback, err = os.CreateTemp(s.dir, "fallback-"); err != nil {
+	if fallback, err = s.dir.file(func(dir string) (*os.File, error) { return os.CreateTemp(dir, "fallback-") }); err != nil {
 		proc.CloseLogged(snapshot)
 		return nil, nil, err
 	}
@@ -233,6 +236,12 @@ func CloseStateFiles(snapshot, fallback *os.File) {
 	proc.CloseLogged(fallback)
 }
 
+// tempFile returns an unlinked file holding content in the session's private
+// directory, like proc.TempFile.
+func (s *Session) tempFile(prefix, content string) (*os.File, error) {
+	return s.dir.file(func(dir string) (*os.File, error) { return proc.TempFile(dir, prefix, content) })
+}
+
 func (s *Session) cwd(st State) string {
 	if st.cwd == "" {
 		return s.root.Dir()
@@ -241,7 +250,7 @@ func (s *Session) cwd(st State) string {
 }
 
 func (s *Session) profileState() (State, error) {
-	snapshot, err := proc.TempFile(s.dir, "state-", "")
+	snapshot, err := s.tempFile("state-", "")
 	if err != nil {
 		return State{}, err
 	}

@@ -11,8 +11,13 @@ import (
 
 func testLister(t *testing.T) *lister {
 	t.Helper()
-	root := openRoot(t)
-	return &lister{root: root.Dir(), files: root.FS()}
+	dir := t.TempDir()
+	files, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { files.Close() })
+	return &lister{root: dir, files: files}
 }
 
 // fakeRG writes an executable that stands in for ripgrep.

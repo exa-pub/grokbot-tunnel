@@ -14,8 +14,16 @@ import (
 // volatileEnv is set by the shell itself and must not be carried over: bash
 // increments an inherited SHLVL, so a saved one would grow with every command.
 // environ passes the CLI's SHLVL instead; without one, bash -c ignores
-// $BASH_ENV.
-var volatileEnv = []string{"SHLVL", "_", "PWD"}
+// $BASH_ENV. bash keeps SHELLOPTS and BASHOPTS in step with its options and
+// takes exported ones as the options to start with, so a saved one would set
+// volatile options such as nounset and pipefail in every later shell; the
+// desktop's replay of these read-only variables fails.
+var volatileEnv = []string{"SHLVL", "_", "PWD", "SHELLOPTS", "BASHOPTS"}
+
+// replayedIFS is restored by the replay: bash and zsh do not take IFS from
+// the environment, and the desktop's replay of "export -p" sets an exported
+// one.
+const replayedIFS = "IFS"
 
 // scopedEnv are the patterns of the desktop's dump (anchor:
 // "CURSOR_AGENT_STORE'"), matched without case anywhere in a variable and its
@@ -53,11 +61,29 @@ type State struct {
 // Cwd returns the working directory the state was saved in.
 func (st State) Cwd() string { return st.cwd }
 
-// replayScript returns the shell code that restores st. Functions come first,
-// so that options such as posix cannot break their definitions; option lines
-// that cannot be changed in a non-interactive shell fail quietly.
-func (st State) replayScript() string {
+// startupEnv returns the variables that sh reads when it starts, before the
+// replay: bash runs $BASH_ENV, and $ENV in POSIX mode; zsh reads its startup
+// files from $ZDOTDIR, else $HOME, and runs $ENV when emulating sh. The
+// desktop starts every shell with the app's environment and replays the saved
+// one inside it (rVt; anchor: "builtin export -p"), so a command that exports
+// one of them changes its children, not the shells of later commands. Like
+// there, a shell starts with the CLI's values of these (environ), and the
+// replay exports the saved ones (replayEnv).
+func (s shell) startupEnv() []string {
+	if s.zsh {
+		return []string{"ZDOTDIR", "HOME", "ENV"}
+	}
+	return []string{"BASH_ENV", "ENV"}
+}
+
+// replayScript returns the shell code that restores st for sh. The saved
+// values of the variables the shell reads at startup come first, then
+// functions, so that options such as posix cannot break their definitions;
+// option lines that cannot be changed in a non-interactive shell fail
+// quietly.
+func (st State) replayScript(sh shell) string {
 	var b strings.Builder
+	b.WriteString(st.replayEnv(sh))
 	b.WriteString(st.functions)
 	b.WriteString("\n")
 	for _, option := range st.options {
@@ -66,23 +92,68 @@ func (st State) replayScript() string {
 	return b.String()
 }
 
-// environ returns the saved environment with the CLI's SHLVL, and the agent
-// markers and extra, the variables of a request, set once.
-func (st State) environ(extra []string) []string {
+// replayEnv returns the code that exports, or unsets, the saved values of
+// the variables of sh's startupEnv that differ from the CLI's, which environ
+// starts the shell with, and exports a saved IFS. Builtins are called as
+// such, ahead of the replayed functions.
+func (st State) replayEnv(sh shell) string {
+	if st.env == nil {
+		return "" // the CLI's environment, which the shell starts with
+	}
+	var b strings.Builder
+	export := func(key, value string) {
+		b.WriteString("builtin export " + key + "=" + shellQuote(value) + "\n")
+	}
+	for _, key := range sh.startupEnv() {
+		value, saved := lookupEnv(st.env, key)
+		cli, ok := os.LookupEnv(key)
+		switch {
+		case saved && (!ok || value != cli):
+			export(key, value)
+		case !saved && ok:
+			b.WriteString("builtin unset " + key + " 2>/dev/null\n")
+		}
+	}
+	if value, ok := lookupEnv(st.env, replayedIFS); ok {
+		export(replayedIFS, value)
+	}
+	return b.String()
+}
+
+// environ returns the environment that sh starts with: the saved one with
+// the CLI's SHLVL and the CLI's values of the variables of sh's startupEnv,
+// and the agent markers and extra, the variables of a request, set once.
+func (st State) environ(sh shell, extra []string) []string {
 	env := st.env
+	var set, startup []string
 	if env == nil {
 		env = append(os.Environ(), plainEnv...) // later entries win
-	} else if level, ok := os.LookupEnv("SHLVL"); ok {
-		env = append(env[:len(env):len(env)], "SHLVL="+level)
+	} else {
+		startup = sh.startupEnv()
+		for _, key := range append([]string{"SHLVL"}, startup...) {
+			if value, ok := os.LookupEnv(key); ok {
+				set = append(set, key+"="+value)
+			}
+		}
 	}
-	set := append(agentEnv[:len(agentEnv):len(agentEnv)], extra...)
+	set = append(append(set, agentEnv...), extra...)
 	out := make([]string, 0, len(env)+len(set))
 	for _, kv := range env {
-		if !hasKey(set, kv) {
+		if !hasKey(set, kv) && !hasKey(startup, kv) {
 			out = append(out, kv)
 		}
 	}
 	return append(out, set...)
+}
+
+// lookupEnv returns the value of key in env, the last one if set twice.
+func lookupEnv(env []string, key string) (string, bool) {
+	for i := len(env) - 1; i >= 0; i-- {
+		if name, value, ok := strings.Cut(env[i], "="); ok && name == key {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 // hasKey reports whether one of vars sets the variable of kv.

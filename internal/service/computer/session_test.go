@@ -645,6 +645,58 @@ func TestShutdownSubmitsRestWhileSubmitInFlight(t *testing.T) {
 	assert.Len(t, c.submitted, 3)
 }
 
+// A full batch that collects while shutdown waits for the workers goes out
+// in the background (C3-1). When the workers' budget runs out with its
+// answer still on the way, the server may have taken the frames: the final
+// submit does not send them again, and each frame reaches the server once.
+func TestShutdownDoesNotResendBatchCutShortByWorkersBudget(t *testing.T) {
+	var now time.Time
+	c := &stubCloud{holdFirst: make(chan struct{}), held: make(chan struct{})}
+	s := stubSession(t, c, &now)
+	withCredential(s, "c", false)
+	occupy(t, s, "stuck", 1) // the workers' budget runs out
+	for i := range replies.SubmitBatch - 1 {
+		s.out.Add(closeFrame(fmt.Sprint("r", i)))
+	}
+	s.replies <- closeFrame("last") // the 32nd: a full batch
+	s.withTimeout = func(parent context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+		if d < shutdownGrace {
+			return context.WithTimeout(parent, 300*time.Millisecond)
+		}
+		return context.WithTimeout(parent, 3*time.Second)
+	}
+	s.shutdown()
+	select {
+	case <-c.held:
+	default:
+		t.Fatal("the full batch was not submitted while waiting for workers")
+	}
+
+	close(c.holdFirst) // the late answer
+	select {
+	case r := <-s.submitted:
+		require.NoError(t, r.err)
+	case <-time.After(5 * time.Second):
+		// The batch was not submitted in the background: the server still
+		// takes the frames of the request the client gave up on.
+		assert.Eventually(t, func() bool {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			return c.submits >= 2
+		}, 5*time.Second, 10*time.Millisecond)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	seen := map[string]int{}
+	for _, f := range c.submitted {
+		seen[f.RequestId]++
+	}
+	assert.Len(t, seen, replies.SubmitBatch)
+	for id, n := range seen {
+		assert.Equal(t, 1, n, "frames of %s submitted %d times", id, n)
+	}
+}
+
 func TestPollFailureRetriesWithBackoff(t *testing.T) {
 	var now time.Time
 	c := &stubCloud{failPoll: true}

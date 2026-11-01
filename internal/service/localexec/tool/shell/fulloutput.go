@@ -89,11 +89,11 @@ func (f *fullOutput) create() {
 	name := newUUID() + ".txt"
 	f.path = filepath.Join(f.root.Dir(), fullOutputDir, name)
 	defer f.buffer.Reset()
-	if err := f.root.FS().MkdirAll(fullOutputDir, 0o700); err != nil {
+	if err := f.root.MkdirAll(fullOutputDir, 0o700); err != nil {
 		f.err, f.truncated = err, true
 		return
 	}
-	file, err := f.root.FS().OpenFile(fullOutputDir+"/"+name, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	file, err := f.root.OpenFile(fullOutputDir+"/"+name, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		f.err, f.truncated = err, true
 		return

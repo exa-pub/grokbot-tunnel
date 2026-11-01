@@ -25,6 +25,9 @@ func Login(ctx context.Context, opts cli.LoginOptions, out io.Writer) error {
 		Profile: func(ctx context.Context, identity entity.Identity) (entity.Identity, error) {
 			u := e.user(identity)
 			me, err := u.dashboard.GetMe(ctx, connect.NewRequest(&aiserverv1.GetMeRequest{}))
+			// A refresh GetMe started outlives it: wait, so that its answer
+			// is saved before login exits and is in the identity below.
+			awaitRefresh(ctx, u.tokens)
 			if err != nil {
 				return identity, err
 			}

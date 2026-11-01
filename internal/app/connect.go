@@ -58,6 +58,9 @@ func Connect(ctx context.Context, opts cli.ConnectOptions) error {
 	defer ex.Close()
 
 	u := e.user(identity)
+	// On every way out, e.g. Register timing out while its refresh is still
+	// waiting for the server's answer, or a stop in the middle of a refresh.
+	defer awaitRefresh(ctx, u.tokens)
 	// Known difference: the desktop registers only when the account's privacy
 	// mode allows storage (isSandMachineStorageAllowed: NO_TRAINING or a
 	// training-allowed mode); we register always, since without a check of

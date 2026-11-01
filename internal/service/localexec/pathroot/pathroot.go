@@ -1,8 +1,9 @@
 // Package pathroot confines the file tools of local-exec to a root directory,
 // like the desktop's local-exec root check (anchor: "Path is outside the
-// allowed local-exec root and was refused"). Lexical escapes are refused here;
-// symlink escapes are refused by os.Root. Like the desktop's root (ult), a
-// root given through a symlink is kept as it is.
+// allowed local-exec root and was refused"). Lexical escapes and paths whose
+// realpath leaves the root are refused here; os.Root guards the access
+// itself. Like the desktop's root (ult), a root given through a symlink is
+// kept as it is, and followed when it is retargeted.
 package pathroot
 
 import (
@@ -11,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 )
 
@@ -41,11 +44,104 @@ func (e *OutsideError) Is(target error) bool { return target == ErrOutside }
 // its frames are those of JavaScript and have no counterpart here.
 func (e *OutsideError) StackTrace() string { return "SandLocalExecPathError: " + e.Error() }
 
-// Root is an open root directory.
+// RootError fails a path below a root directory that cannot be opened, such
+// as one removed while the tunnel runs. The desktop's realpath of the root
+// then fails, the path is used as it is (q9) and opening it fails, so the
+// tools report it as a failure to open Path.
+type RootError struct {
+	Path string // absolute, as requested
+	Err  error
+}
+
+func (e *RootError) Error() string { return "open " + e.Path + ": " + e.Err.Error() }
+func (e *RootError) Unwrap() error { return e.Err }
+
+// Root is a root directory, opened again whenever its path names another
+// directory: the desktop's root (ult) is a path whose realpath its check
+// takes on every call (q9), so a symlink root that is retargeted, such as a
+// release directory switched with ln -sfn, and a root removed and created
+// again are followed. A request uses the snapshot of the root taken by its
+// check.
 type Root struct {
-	dir  string // absolute, with its symlinks kept
-	real string // dir with its symlinks resolved; "" if that failed
+	dir string // absolute, with its symlinks kept
+
+	mu  sync.Mutex
+	cur *snapshot // nil once closed
+}
+
+// snapshot is the root directory as opened at one time. It is closed when
+// it is no longer the current one and the last request using it is done.
+type snapshot struct {
 	fs   *os.Root
+	dir  string      // Root.dir
+	real string      // the realpath of fs's directory; "" if unknown
+	id   os.FileInfo // of fs's directory
+	refs atomic.Int32
+}
+
+// openAttempts bounds how often a snapshot is opened again because the root
+// changed while it was being opened.
+const openAttempts = 3
+
+// openSnapshot opens dir and resolves its realpath, which must name the
+// directory opened. If the realpath cannot be resolved, or the root keeps
+// changing, it is left unknown and the realpath check is skipped, like the
+// desktop's q9 when the realpath of the root fails, until a later request
+// resolves it and opens the root again.
+func openSnapshot(dir string) (*snapshot, error) {
+	var s *snapshot
+	for range openAttempts {
+		if s != nil {
+			s.fs.Close()
+		}
+		fs, err := os.OpenRoot(dir)
+		if err != nil {
+			return nil, err
+		}
+		id, err := fs.Stat(".")
+		if err != nil {
+			fs.Close()
+			return nil, err
+		}
+		s = &snapshot{fs: fs, dir: dir, id: id, real: realpath(dir, id)}
+		s.refs.Store(1) // held while it is the current snapshot
+		if s.real != "" {
+			break
+		}
+	}
+	return s, nil
+}
+
+// realpath returns the realpath of dir if it names the directory id, or "".
+func realpath(dir string, id os.FileInfo) string {
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return ""
+	}
+	if st, err := os.Stat(resolved); err != nil || !os.SameFile(st, id) {
+		return ""
+	}
+	return resolved
+}
+
+// current reports whether the root's path still names s's directory, by the
+// same realpath.
+func (s *snapshot) current() bool {
+	resolved, err := filepath.EvalSymlinks(s.dir)
+	switch {
+	case err != nil:
+		resolved = s.dir
+	case resolved != s.real:
+		return false
+	}
+	st, err := os.Stat(resolved)
+	return err == nil && os.SameFile(st, s.id)
+}
+
+func (s *snapshot) release() {
+	if s.refs.Add(-1) == 0 {
+		s.fs.Close()
+	}
 }
 
 // Open opens dir as the root. Like the desktop, symlinks in dir itself are
@@ -56,28 +152,59 @@ func Open(dir string) (*Root, error) {
 	if err != nil {
 		return nil, err
 	}
-	fs, err := os.OpenRoot(abs)
+	s, err := openSnapshot(abs)
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		resolved = "" // like the desktop's q9, the realpath check is skipped
-	}
-	return &Root{dir: abs, real: resolved, fs: fs}, nil
+	return &Root{dir: abs, cur: s}, nil
 }
 
 // Dir returns the absolute root directory, with its symlinks kept.
 func (r *Root) Dir() string { return r.dir }
 
-// FS returns the root for operations that must not leave it.
-func (r *Root) FS() *os.Root { return r.fs }
-
 // Abs returns the absolute path of rel.
 func (r *Root) Abs(rel string) string { return filepath.Join(r.dir, rel) }
 
-// Close releases the root directory handle.
-func (r *Root) Close() error { return r.fs.Close() }
+// Close releases the root directory handle once no request uses it.
+func (r *Root) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.cur != nil {
+		r.cur.release()
+		r.cur = nil
+	}
+	return nil
+}
+
+// MkdirAll creates the directory rel below the root, and its parents.
+func (r *Root) MkdirAll(rel string, perm os.FileMode) error {
+	s, err := r.acquire()
+	if err != nil {
+		return err
+	}
+	defer s.release()
+	return s.fs.MkdirAll(rel, perm)
+}
+
+// OpenFile opens the file rel below the root.
+func (r *Root) OpenFile(rel string, flag int, perm os.FileMode) (*os.File, error) {
+	s, err := r.acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer s.release()
+	return s.fs.OpenFile(rel, flag, perm)
+}
+
+// Remove removes the file rel below the root.
+func (r *Root) Remove(rel string) error {
+	s, err := r.acquire()
+	if err != nil {
+		return err
+	}
+	defer s.release()
+	return s.fs.Remove(rel)
+}
 
 // Relative converts path, absolute or relative to the root, to a path
 // relative to the root. It rejects lexical escapes; os.Root rejects symlink
@@ -90,22 +217,63 @@ func (r *Root) Relative(path string) (string, error) {
 	return rel, nil
 }
 
-// Check is Relative that also refuses a path whose existing part leads
-// outside the root through a symlink, like the desktop's check of file
-// paths (q9): the realpath of the path against the realpath of the root.
-// os.Root still guards the access itself.
-func (r *Root) Check(path string) (string, error) {
+// Path is a path checked against a snapshot of the root, which it holds
+// until Close.
+type Path struct {
+	// Rel is the path relative to Dir, as requested: for messages and
+	// results.
+	Rel string
+	// Real is the same path relative to the root's realpath, with the
+	// symlinks of its existing part resolved: the name to use with FS.
+	// os.Root refuses absolute symlinks and those that leave the root on
+	// the way, even if their target is inside it, which the desktop
+	// follows; Real has none left, while os.Root still guards the access
+	// against a symlink swapped in after the check.
+	Real string
+	snap *snapshot
+}
+
+// FS returns the root directory as opened when the path was checked, for
+// operations on Real that must not leave it.
+func (p *Path) FS() *os.Root { return p.snap.fs }
+
+// Close releases the snapshot of the root.
+func (p *Path) Close() { p.snap.release() }
+
+// Check converts path like Relative and also refuses a path whose existing
+// part leads outside the root through a symlink, like the desktop's check
+// of file paths (q9): the realpath of the path against the realpath of the
+// root, both taken now. A root directory that cannot be opened fails with a
+// *RootError. The caller closes the path.
+func (r *Root) Check(path string) (*Path, error) {
 	rel, err := r.Relative(path)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if r.real == "" {
-		return rel, nil
+	s, err := r.acquire()
+	switch {
+	case errors.Is(err, os.ErrClosed):
+		return nil, err
+	case err != nil:
+		var errno syscall.Errno
+		if errors.As(err, &errno) {
+			err = errno
+		}
+		return nil, &RootError{Path: r.Abs(rel), Err: err}
 	}
-	if _, ok := within(r.real, resolveExisting(filepath.Join(r.dir, rel))); !ok {
-		return "", &OutsideError{Path: path, Symlink: true}
+	p := &Path{Rel: rel, Real: rel, snap: s}
+	if s.real == "" {
+		return p, nil
 	}
-	return rel, nil
+	// s.real has no symlinks, so the path resolves from it as from the
+	// root's path, and in the directory that s.fs has open.
+	resolved, ok := within(s.real, resolveExisting(filepath.Join(s.real, rel)))
+	if !ok {
+		s.release()
+		return nil, &OutsideError{Path: path, Symlink: true}
+	}
+	p.Real = resolved
+	return p, nil
 }
 
 // resolveExisting resolves the symlinks of the longest existing prefix of
@@ -149,15 +317,11 @@ func FileTooLarge(size int64) error {
 		"Read a slice with offset/limit, or use a shell command (grep, head, tail) to extract just what you need.", mib(size), mib(MaxFile))
 }
 
-// OpenRegular opens a regular file of at most MaxFile bytes below the root.
-// O_NONBLOCK keeps a FIFO from blocking until a writer appears; it does not
-// affect regular files.
-func (r *Root) OpenRegular(path string) (*os.File, error) {
-	rel, err := r.Check(path)
-	if err != nil {
-		return nil, err
-	}
-	f, err := r.fs.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+// OpenRegular opens p, a regular file of at most MaxFile bytes. O_NONBLOCK
+// keeps a FIFO from blocking until a writer appears; it does not affect
+// regular files.
+func (p *Path) OpenRegular() (*os.File, error) {
+	f, err := p.FS().OpenFile(p.Real, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -176,30 +340,73 @@ func (r *Root) OpenRegular(path string) (*os.File, error) {
 	return f, nil
 }
 
-// UploadTarget resolves the symlinks in rel, so that an upload writes
-// through a symlink to its target instead of replacing it; the target must
-// stay inside the root. Like the desktop's atomic write (f0), a path that
-// does not resolve, such as a dangling symlink, is used as it is: the upload
-// replaces the dangling symlink with a regular file.
-func (r *Root) UploadTarget(rel string) (string, error) {
-	resolved, err := filepath.EvalSymlinks(filepath.Join(r.dir, rel))
+// UploadTarget resolves the symlinks in p, so that an upload writes through
+// a symlink to its target instead of replacing it; the target must stay
+// inside the root. The target is returned relative to the root's realpath,
+// for FS. Like the desktop's atomic write (f0), a path that does not
+// resolve, such as a dangling symlink, is used as it is: the upload replaces
+// the dangling symlink with a regular file.
+func (p *Path) UploadTarget() (string, error) {
+	base := p.snap.real
+	if base == "" {
+		base = p.snap.dir
+	}
+	resolved, err := filepath.EvalSymlinks(filepath.Join(base, p.Real))
 	if errors.Is(err, os.ErrNotExist) {
-		return rel, nil
+		return p.Real, nil
 	}
 	if err != nil {
 		return "", err
 	}
 	// The root's own symlinks are resolved too, so resolved is below the
 	// root's realpath.
-	base := r.real
-	if base == "" {
-		base = r.dir
-	}
 	target, ok := within(base, resolved)
 	if !ok {
 		return "", &OutsideError{Path: resolved}
 	}
 	return target, nil
+}
+
+// acquire returns the snapshot of the directory that the root's path names
+// now, opening it if that is another directory than before; the caller
+// releases it. Requests run in parallel: the check that the snapshot is
+// current runs outside the lock, opening one inside it.
+func (r *Root) acquire() (*snapshot, error) {
+	r.mu.Lock()
+	cur := r.cur
+	if cur == nil {
+		r.mu.Unlock()
+		return nil, os.ErrClosed
+	}
+	cur.refs.Add(1)
+	r.mu.Unlock()
+	if cur.current() {
+		return cur, nil
+	}
+	cur.release()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	switch {
+	case r.cur == nil:
+		return nil, os.ErrClosed
+	case r.cur != cur && r.cur.current(): // opened by another request
+		r.cur.refs.Add(1)
+		return r.cur, nil
+	}
+	if st, err := os.Stat(r.dir); err != nil {
+		return nil, err
+	} else if !st.IsDir() {
+		return nil, &os.PathError{Op: "open", Path: r.dir, Err: syscall.ENOTDIR}
+	}
+	s, err := openSnapshot(r.dir)
+	if err != nil {
+		return nil, err
+	}
+	r.cur.release()
+	r.cur = s
+	s.refs.Add(1)
+	return s, nil
 }
 
 func (r *Root) inside(path string) (string, bool) {

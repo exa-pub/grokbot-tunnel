@@ -3,6 +3,7 @@ package install
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -27,7 +28,8 @@ const ExitLogin = 78
 type Config struct {
 	Exe        string   // absolute path of the grokbot-tunnel binary
 	Args       []string // connect arguments
-	Env        []string // KEY=VALUE pairs for the tunnel
+	Env        []string // KEY=VALUE pairs for the tunnel; the update service gets those of networkEnv
+	EnvFile    string   // absolute path of an environment file for both services, empty if none
 	Version    string   // version of the binary generating the units
 	AutoUpdate bool     // install the daily update timer
 }
@@ -47,8 +49,13 @@ func Units(s systemd.Scope, c Config) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The update downloads through the same proxy as the tunnel.
+	env, err := environment(c, func(key string) bool { return slices.Contains(networkEnv, key) })
+	if err != nil {
+		return nil, err
+	}
 	units[UpdateUnit] = header(c.Version) + "[Unit]\nDescription=Update grokbot-tunnel\nDocumentation=" + documentation + "\n" +
-		"\n[Service]\nType=oneshot\n" + unitUser(s) + "ExecStart=" + update + "\n"
+		"\n[Service]\nType=oneshot\n" + unitUser(s) + "ExecStart=" + update + "\n" + env
 	units[UpdateTimer] = header(c.Version) + "[Unit]\nDescription=Daily grokbot-tunnel update check\n" +
 		"\n[Timer]\nOnCalendar=daily\nRandomizedDelaySec=1h\nPersistent=true\n" +
 		"\n[Install]\nWantedBy=timers.target\n"
@@ -78,16 +85,38 @@ func tunnelUnit(s systemd.Scope, c Config) (string, error) {
 	b.WriteString("\n[Service]\nType=notify\nTimeoutStartSec=60s\n")
 	b.WriteString(unitUser(s))
 	b.WriteString("ExecStart=" + execStart + "\n")
+	env, err := environment(c, func(string) bool { return true })
+	if err != nil {
+		return "", err
+	}
+	b.WriteString(env)
+	// Retrying cannot help a user who has to log in again.
+	fmt.Fprintf(&b, "Restart=on-failure\nRestartSec=10s\nRestartPreventExitStatus=%d\n", ExitLogin)
+	b.WriteString("\n[Install]\nWantedBy=" + wantedBy(s) + "\n")
+	return b.String(), nil
+}
+
+// environment renders an Environment= line for each pair of c.Env whose key
+// keep accepts, and EnvironmentFile= for c.EnvFile, if any.
+func environment(c Config, keep func(key string) bool) (string, error) {
+	var b strings.Builder
 	for _, kv := range c.Env {
+		if k, _, _ := strings.Cut(kv, "="); !keep(k) {
+			continue
+		}
 		v, err := quoteEnv(kv)
 		if err != nil {
 			return "", err
 		}
 		b.WriteString("Environment=" + v + "\n")
 	}
-	// Retrying cannot help a user who has to log in again.
-	fmt.Fprintf(&b, "Restart=on-failure\nRestartSec=10s\nRestartPreventExitStatus=%d\n", ExitLogin)
-	b.WriteString("\n[Install]\nWantedBy=" + wantedBy(s) + "\n")
+	if c.EnvFile != "" {
+		if err := checkValue(c.EnvFile); err != nil {
+			return "", err
+		}
+		// The path is taken verbatim, specifiers aside.
+		b.WriteString("EnvironmentFile=" + strings.ReplaceAll(c.EnvFile, "%", "%%") + "\n")
+	}
 	return b.String(), nil
 }
 
@@ -135,6 +164,30 @@ func quoteEnv(kv string) (string, error) {
 		return "", fmt.Errorf("invalid environment entry %q", kv)
 	}
 	return quote(strings.ReplaceAll(kv, "%", "%%")), nil
+}
+
+// envFileEscaper escapes the characters a backslash escapes in a
+// double-quoted value of an environment file.
+var envFileEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "`", "\\`", "$", `\$`)
+
+// envFile renders KEY=VALUE pairs as an EnvironmentFile=, which systemd reads
+// like double-quoted shell assignments: a backslash escapes ", \, ` and $,
+// and neither specifiers nor variables are expanded. The pairs are secret,
+// so errors name only their keys.
+func envFile(version string, env []string) (string, error) {
+	var b strings.Builder
+	b.WriteString(header(version))
+	for _, kv := range env {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k == "" {
+			return "", errors.New("invalid environment entry")
+		}
+		if err := checkValue(kv); err != nil {
+			return "", fmt.Errorf("%s: %w", k, errors.Unwrap(err))
+		}
+		b.WriteString(k + `="` + envFileEscaper.Replace(v) + "\"\n")
+	}
+	return b.String(), nil
 }
 
 func quote(s string) string {

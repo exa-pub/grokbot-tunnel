@@ -20,12 +20,11 @@ const commandPipeBroken = 126
 func (s *Session) Foreground(
 	st State, cwd, cmd string, env []string, snapshot, fallback *os.File,
 ) (c *exec.Cmd, release func(), err error) {
-	piped := s.pipeCommand()
-	replay, command, err := s.inputFiles(st, cmd, piped)
+	piped, sh := s.pipeCommand(), userShell()
+	replay, command, err := s.inputFiles(sh, st, cmd, piped)
 	if err != nil {
 		return nil, nil, err
 	}
-	sh := userShell()
 	c = newCmd(sh, st, cwd, env, sh.args("-c", sh.foregroundScript(piped), "grokbot-shell", commandArgs(fallback, cmd, piped)...)...)
 	c.ExtraFiles = []*os.File{replay, snapshot, command}
 	return detached(c), releaseInputs(replay, command), nil
@@ -38,12 +37,11 @@ func (s *Session) Foreground(
 func (s *Session) Background(
 	st State, cwd, cmd string, env []string, gate, snapshot, fallback *os.File,
 ) (c *exec.Cmd, release func(), err error) {
-	piped := s.pipeCommand()
-	replay, command, err := s.inputFiles(st, cmd, piped)
+	piped, sh := s.pipeCommand(), userShell()
+	replay, command, err := s.inputFiles(sh, st, cmd, piped)
 	if err != nil {
 		return nil, nil, err
 	}
-	sh := userShell()
 	c = newCmd(sh, st, cwd, env, sh.args("-c", sh.backgroundScript(piped), "grok-background", commandArgs(fallback, cmd, piped)...)...)
 	c.ExtraFiles = []*os.File{replay, snapshot, command, gate}
 	return detached(c), releaseInputs(replay, command), nil
@@ -102,9 +100,9 @@ func detached(c *exec.Cmd) *exec.Cmd {
 	return c
 }
 
-// newCmd runs the user's shell with st's environment and env. Running agent
-// commands is the purpose of this tool; their lifetime is managed by killing
-// the process group, not through a context.
+// newCmd runs shell sh with st's environment and env (State.environ).
+// Running agent commands is the purpose of this tool; their lifetime is
+// managed by killing the process group, not through a context.
 //
 // PWD names cwd as given, so that the shell's pwd keeps the symlinks of a root
 // given through one (L2-1): bash and zsh take an inherited PWD only if it is
@@ -114,7 +112,7 @@ func detached(c *exec.Cmd) *exec.Cmd {
 func newCmd(sh shell, st State, cwd string, env []string, args ...string) *exec.Cmd {
 	c := exec.Command(sh.path, args...) //nolint:gosec,noctx // see above
 	c.Dir = cwd
-	c.Env = st.environ(env)
+	c.Env = st.environ(sh, env)
 	if filepath.IsAbs(cwd) {
 		c.Env = append(c.Env, "PWD="+cwd) // exec keeps the last of duplicates
 	}
@@ -122,16 +120,16 @@ func newCmd(sh shell, st State, cwd string, env []string, args ...string) *exec.
 }
 
 // inputFiles returns the replay script for st and, if piped, the command
-// ended by a NUL, as the desktop writes it, for descriptors 3 and 5 of a
-// shell.
-func (s *Session) inputFiles(st State, cmd string, piped bool) (replay, command *os.File, err error) {
-	if replay, err = proc.TempFile(s.dir, "replay-", st.replayScript()); err != nil {
+// ended by a NUL, as the desktop writes it, for descriptors 3 and 5 of shell
+// sh.
+func (s *Session) inputFiles(sh shell, st State, cmd string, piped bool) (replay, command *os.File, err error) {
+	if replay, err = s.tempFile("replay-", st.replayScript(sh)); err != nil {
 		return nil, nil, err
 	}
 	if !piped {
 		return replay, nil, nil
 	}
-	if command, err = proc.TempFile(s.dir, "command-", cmd+"\x00"); err != nil {
+	if command, err = s.tempFile("command-", cmd+"\x00"); err != nil {
 		proc.CloseLogged(replay)
 		return nil, nil, err
 	}

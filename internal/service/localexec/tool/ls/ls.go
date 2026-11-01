@@ -33,28 +33,27 @@ func lsMessage(r *agentv1.LsResult) *agentv1.ExecClientMessage {
 }
 
 // Execute lists args.Path and sends the ls result. A path outside the root
-// fails the request instead of producing a result, as on the desktop.
+// fails the request instead of producing a result, as on the desktop; below
+// a root directory that cannot be opened, the path does not exist.
 func (ls *Executor) Execute(ctx context.Context, x *agentv1.LsArgs, send execstream.Send) error {
-	rel, err := ls.root.Check(x.Path)
+	p, err := ls.root.Check(x.Path)
+	var unavailable *pathroot.RootError
+	if errors.As(err, &unavailable) {
+		return send(statError(unavailable.Path, unavailable.Err))
+	}
 	if err != nil {
 		return err
 	}
-	path := ls.root.Abs(rel)
-	fail := func(msg string) error {
-		return send(lsMessage(&agentv1.LsResult{Result: &agentv1.LsResult_Error{
-			Error: &agentv1.LsError{Path: path, Error: msg},
-		}}))
-	}
-	st, err := ls.root.FS().Stat(rel)
+	defer p.Close()
+	path := ls.root.Abs(p.Rel)
+	st, err := p.FS().Stat(p.Real)
 	switch {
 	case pathroot.Escaped(err):
 		return err
-	case errors.Is(err, os.ErrNotExist):
-		return fail("Path does not exist: " + path)
 	case err != nil:
-		return fail(nodeerr.Wrap(err, path).Error())
+		return send(statError(path, err))
 	case !st.IsDir():
-		return fail("Path is not a directory: " + path)
+		return send(lsError(path, "Path is not a directory: "+path))
 	}
 	timeout := defaultTimeout
 	if x.TimeoutMs != nil {
@@ -62,8 +61,8 @@ func (ls *Executor) Execute(ctx context.Context, x *agentv1.LsArgs, send execstr
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	l := lister{root: ls.root.Dir(), files: ls.root.FS(), ignore: x.Ignore}
-	tree, err := l.list(ctx, rel)
+	l := lister{root: path, files: p.FS(), base: p.Real, ignore: x.Ignore}
+	tree, err := l.list(ctx, ".")
 	validUTF8(tree)
 	if errors.Is(err, context.DeadlineExceeded) {
 		return send(lsMessage(&agentv1.LsResult{Result: &agentv1.LsResult_Timeout{
@@ -71,9 +70,24 @@ func (ls *Executor) Execute(ctx context.Context, x *agentv1.LsArgs, send execstr
 		}}))
 	}
 	if err != nil {
-		return fail(nodeerr.Wrap(err, path).Error())
+		return send(lsError(path, nodeerr.Wrap(err, path).Error()))
 	}
 	return send(lsMessage(&agentv1.LsResult{Result: &agentv1.LsResult_Success{
 		Success: &agentv1.LsSuccess{DirectoryTreeRoot: tree},
 	}}))
+}
+
+func lsError(path, msg string) *agentv1.ExecClientMessage {
+	return lsMessage(&agentv1.LsResult{Result: &agentv1.LsResult_Error{
+		Error: &agentv1.LsError{Path: path, Error: msg},
+	}})
+}
+
+// statError is the result for a directory that cannot be listed by its
+// stat.
+func statError(path string, err error) *agentv1.ExecClientMessage {
+	if errors.Is(err, os.ErrNotExist) {
+		return lsError(path, "Path does not exist: "+path)
+	}
+	return lsError(path, nodeerr.Wrap(err, path).Error())
 }

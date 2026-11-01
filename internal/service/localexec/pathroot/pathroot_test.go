@@ -20,6 +20,31 @@ func open(t *testing.T) *pathroot.Root {
 	return r
 }
 
+// check checks path, which must pass, and closes it with the test.
+func check(t *testing.T, r *pathroot.Root, path string) *pathroot.Path {
+	t.Helper()
+	p, err := r.Check(path)
+	require.NoError(t, err, path)
+	t.Cleanup(p.Close)
+	return p
+}
+
+// openRegular opens the regular file path below r.
+func openRegular(r *pathroot.Root, path string) (*os.File, error) {
+	p, err := r.Check(path)
+	if err != nil {
+		return nil, err
+	}
+	defer p.Close()
+	return p.OpenRegular()
+}
+
+// uploadTarget returns the upload target of rel below r.
+func uploadTarget(t *testing.T, r *pathroot.Root, rel string) (string, error) {
+	t.Helper()
+	return check(t, r, rel).UploadTarget()
+}
+
 // L2-1: like the desktop (ult, q9), a root given through a symlink is kept
 // as it is: paths are checked lexically against it, and only their realpath
 // against its realpath. Its target is outside the root.
@@ -43,11 +68,9 @@ func TestOpenKeepsSymlinks(t *testing.T) {
 	assert.Equal(t, filepath.Join(link, "a"), r.Abs("a"))
 
 	for in, want := range map[string]string{"d/f": "d/f", link + "/d/f": "d/f", "d/new": "d/new", link: "."} {
-		rel, err := r.Check(in)
-		require.NoError(t, err, in)
-		assert.Equal(t, want, rel, in)
+		assert.Equal(t, want, check(t, r, in).Rel, in)
 	}
-	f, err := r.OpenRegular(link + "/d/f")
+	f, err := openRegular(r, link+"/d/f")
 	require.NoError(t, err)
 	f.Close()
 
@@ -60,11 +83,9 @@ func TestOpenKeepsSymlinks(t *testing.T) {
 		require.EqualError(t, err, "Path resolves through a symlink to outside the allowed local-exec root and was refused: "+in)
 	}
 
-	got, err := r.UploadTarget("live")
+	got, err := uploadTarget(t, r, "live")
 	require.NoError(t, err)
 	assert.Equal(t, "d/f", got)
-	_, err = r.UploadTarget("escape")
-	require.ErrorIs(t, err, pathroot.ErrOutside)
 
 	for in, want := range map[string]string{"": link, "d": filepath.Join(link, "d")} {
 		cwd, warning := r.Cwd(in)
@@ -92,9 +113,12 @@ func TestRelative(t *testing.T) {
 func TestEscaped(t *testing.T) {
 	r := open(t)
 	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(r.Dir(), "escape")))
-	_, err := r.FS().Stat("escape/x")
+	fs, err := os.OpenRoot(r.Dir())
+	require.NoError(t, err)
+	defer fs.Close()
+	_, err = fs.Stat("escape/x")
 	assert.True(t, pathroot.Escaped(err))
-	_, err = r.FS().Stat("missing")
+	_, err = fs.Stat("missing")
 	assert.False(t, pathroot.Escaped(err))
 	assert.False(t, pathroot.Escaped(nil))
 }
@@ -102,22 +126,22 @@ func TestEscaped(t *testing.T) {
 func TestOpenRegular(t *testing.T) {
 	r := open(t)
 	require.NoError(t, os.WriteFile(filepath.Join(r.Dir(), "f"), []byte("x"), 0o600))
-	f, err := r.OpenRegular("f")
+	f, err := openRegular(r, "f")
 	require.NoError(t, err)
 	f.Close()
 
 	require.NoError(t, syscall.Mkfifo(filepath.Join(r.Dir(), "fifo"), 0o600))
-	_, err = r.OpenRegular("fifo")
+	_, err = openRegular(r, "fifo")
 	require.EqualError(t, err, "expected regular file")
 
 	big, err := os.Create(filepath.Join(r.Dir(), "big"))
 	require.NoError(t, err)
 	require.NoError(t, big.Truncate(pathroot.MaxFile+1)) // sparse
 	big.Close()
-	_, err = r.OpenRegular("big")
+	_, err = openRegular(r, "big")
 	require.ErrorContains(t, err, "File is 100.0 MiB, which exceeds Grok Bot's 100.0 MiB limit")
 
-	_, err = r.OpenRegular("../x")
+	_, err = openRegular(r, "../x")
 	require.ErrorIs(t, err, pathroot.ErrOutside)
 }
 
@@ -130,18 +154,20 @@ func TestUploadTarget(t *testing.T) {
 	require.NoError(t, os.Symlink("d/file", filepath.Join(r.Dir(), "live")))
 	require.NoError(t, os.Symlink("d/target", filepath.Join(r.Dir(), "dangling")))
 	require.NoError(t, os.Symlink(filepath.Join(outside, "missing"), filepath.Join(r.Dir(), "dangling-out")))
-	require.NoError(t, os.Symlink(filepath.Join(outside, "x"), filepath.Join(r.Dir(), "out")))
 	require.NoError(t, os.Symlink("loop", filepath.Join(r.Dir(), "loop")))
 
 	// A dangling symlink is replaced, as on the desktop.
 	for in, want := range map[string]string{"new": "new", "live": "d/file", "dangling": "dangling", "dangling-out": "dangling-out", "d": "d"} {
-		got, err := r.UploadTarget(in)
+		got, err := uploadTarget(t, r, in)
 		require.NoError(t, err, in)
 		assert.Equal(t, want, got, in)
 	}
-	_, err := r.UploadTarget("out")
+	// A symlink out of the root swapped in after the check.
+	out := check(t, r, "out")
+	require.NoError(t, os.Symlink(filepath.Join(outside, "x"), filepath.Join(r.Dir(), "out")))
+	_, err := out.UploadTarget()
 	require.ErrorIs(t, err, pathroot.ErrOutside)
-	_, err = r.UploadTarget("loop")
+	_, err = uploadTarget(t, r, "loop")
 	require.Error(t, err)
 }
 
@@ -237,9 +263,8 @@ func TestResolveCwd(t *testing.T) {
 func TestRefuse(t *testing.T) {
 	r := open(t)
 	require.NoError(t, os.Symlink(filepath.Join(t.TempDir(), "gone"), filepath.Join(r.Dir(), "dangling")))
-	rel, err := r.Check("dangling")
-	require.NoError(t, err)
-	_, err = r.FS().Stat(rel)
+	p := check(t, r, "dangling")
+	_, err := p.FS().Stat(p.Real)
 	require.True(t, pathroot.Escaped(err))
 	err = pathroot.Refuse("dangling", err)
 	require.ErrorIs(t, err, pathroot.ErrOutside)
@@ -257,10 +282,13 @@ func TestCheck(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(r.Dir(), "d"), 0o700))
 	require.NoError(t, os.Symlink(outside, filepath.Join(r.Dir(), "escape")))
 	require.NoError(t, os.Symlink("d", filepath.Join(r.Dir(), "inside")))
-	for in, want := range map[string]string{"inside/new/file": "inside/new/file", "d/missing": "d/missing", "..foo": "..foo"} {
-		rel, err := r.Check(in)
-		require.NoError(t, err, in)
-		assert.Equal(t, want, rel, in)
+	for in, want := range map[string][2]string{
+		"inside/new/file": {"inside/new/file", "d/new/file"},
+		"d/missing":       {"d/missing", "d/missing"},
+		"..foo":           {"..foo", "..foo"},
+	} {
+		p := check(t, r, in)
+		assert.Equal(t, want, [2]string{p.Rel, p.Real}, in)
 	}
 	_, err := r.Check("../x")
 	require.ErrorIs(t, err, pathroot.ErrOutside)

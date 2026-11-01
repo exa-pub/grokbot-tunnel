@@ -157,6 +157,17 @@ func (e *env) user(identity entity.Identity) *user {
 	return u
 }
 
+// awaitRefresh waits, at most tokens.WaitTimeout, for a token refresh still
+// in flight before the process exits; see tokens.TokenSource.Wait. ctx has
+// often ended by then, so only its values are kept.
+func awaitRefresh(ctx context.Context, t *tokens.TokenSource) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), tokens.WaitTimeout)
+	defer cancel()
+	if err := t.Wait(ctx); err != nil {
+		log.Printf("token refresh still running at exit: %v", err)
+	}
+}
+
 // computerChannel returns the client for the credential-authenticated channel.
 func (e *env) computerChannel() rpc.GrokBotServiceClient {
 	return rpc.NewGrokBotServiceClient(e.computer, e.base, connect.WithReadMaxBytes(maxMessage), sandapi.Compression())

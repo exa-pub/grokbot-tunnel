@@ -95,6 +95,11 @@ tunnel (`grokbot-tunnel uninstall`, or stop `connect`).
   `systemctl` and `journalctl` commands.
 - The service keeps the `PATH` and `SHELL` of the shell you run `install` in,
   so the agent's commands find the same programs.
+- The service and the daily update also keep the proxy (`HTTPS_PROXY`,
+  `HTTP_PROXY`, `NO_PROXY`, in either case) and CA (`SSL_CERT_FILE`,
+  `SSL_CERT_DIR`) settings of that shell. A proxy URL with credentials is kept
+  in `~/.grok/bot-tunnel/service.env`, readable only by you, instead of the
+  unit file. Re-run `install` after changing them.
 - Stopping or restarting the service also stops background commands the agent
   started.
 - After the login is revoked the service stops; run `grokbot-tunnel login`

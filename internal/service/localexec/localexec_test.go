@@ -204,7 +204,7 @@ func TestFIFORejectedPromptly(t *testing.T) {
 // file.
 func TestTerminalReadLikeAnyFile(t *testing.T) {
 	e := setup(t)
-	if err := e.root.FS().MkdirAll(terminalfile.Dir, 0o700); err != nil {
+	if err := e.root.MkdirAll(terminalfile.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	cmd := terminalfile.Command{PID: 1, Cwd: "/w", Command: "x", Started: time.Unix(0, 0)}

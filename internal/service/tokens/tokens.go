@@ -2,7 +2,8 @@
 // they expire. Several processes share the saved tokens and the server rotates
 // the refresh token on every refresh, so refreshes are serialized across
 // processes by the store lock, and a refresh, once started, is not canceled
-// by its callers: the server may already have rotated the refresh token.
+// by its callers: the server may already have rotated the refresh token. For
+// the same reason a process waits for it before exiting.
 package tokens
 
 import (
@@ -27,6 +28,9 @@ const (
 	// refreshTimeout bounds waiting for the store lock and the refresh
 	// request, each, as the desktop's deadline (dAn) bounds its fetch.
 	refreshTimeout = 20 * time.Second
+	// WaitTimeout bounds Wait at exit: a refresh takes at most refreshTimeout
+	// for the lock and again for the request, plus time to save its answer.
+	WaitTimeout = 2*refreshTimeout + 5*time.Second
 )
 
 // TokenSource hands out access tokens, refreshing and persisting them as
@@ -81,7 +85,8 @@ func sameAccount(a, b entity.Identity) bool {
 // the server would answer with shouldLogout.
 //
 // A refresh in progress is joined. The caller waits for it or for ctx, but
-// the refresh does not end with ctx: its answer is saved anyway.
+// the refresh does not end with ctx: its answer is saved anyway, as long as
+// the process waits for it before exiting (see Wait).
 func (s *TokenSource) Token(ctx context.Context, force bool) (string, error) {
 	s.mu.Lock()
 	if s.flight == nil && !force && fresh(s.Identity) {
@@ -89,8 +94,11 @@ func (s *TokenSource) Token(ctx context.Context, force bool) (string, error) {
 		s.mu.Unlock()
 		return tok, nil
 	}
-	f := s.start(ctx)
+	f, err := s.start(ctx)
 	s.mu.Unlock()
+	if err != nil {
+		return "", err
+	}
 	return f.wait(ctx)
 }
 
@@ -107,12 +115,44 @@ func (s *TokenSource) Rejected(ctx context.Context, token string) error {
 			s.mu.Unlock()
 			return nil
 		}
+		// A caller that is gone starts no refresh, so it arms no cooldown.
+		if err := ctx.Err(); err != nil {
+			s.mu.Unlock()
+			return err
+		}
 		s.rejectedAt = time.Now()
 	}
-	f := s.start(ctx)
+	f, err := s.start(ctx)
 	s.mu.Unlock()
-	_, err := f.wait(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = f.wait(ctx)
 	return err
+}
+
+// Wait waits until no refresh is in progress, or for ctx. A refresh does not
+// end with its callers, so a process waits for it before exiting: cut off,
+// its answer would be lost after the server may already have rotated the
+// refresh token, and the next start would be logged out with shouldLogout.
+// The desktop's refresh likewise runs to its own deadline (dAn, A@1270062),
+// since a failed registration does not end the app. Callers bound ctx by
+// WaitTimeout.
+func (s *TokenSource) Wait(ctx context.Context) error {
+	for {
+		s.mu.Lock()
+		f := s.flight
+		s.mu.Unlock()
+		if f == nil {
+			return nil
+		}
+		select {
+		case <-f.done:
+			// A caller may have started another refresh meanwhile.
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 // Snapshot returns the identity without racing token rotation.
@@ -123,14 +163,20 @@ func (s *TokenSource) Snapshot() entity.Identity {
 }
 
 // start returns the refresh in progress, starting one if there is none. The
-// refresh keeps ctx's values but not its cancellation. The caller holds s.mu.
-func (s *TokenSource) start(ctx context.Context) *flight {
+// refresh keeps ctx's values but not its cancellation. A caller whose ctx has
+// already ended starts none and gets ctx's error: nobody would wait for the
+// refresh, and its process may be exiting, which would cut it off after the
+// server rotated the refresh token. The caller holds s.mu.
+func (s *TokenSource) start(ctx context.Context) (*flight, error) {
 	if s.flight == nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		f := &flight{done: make(chan struct{})}
 		s.flight = f
 		go s.run(context.WithoutCancel(ctx), f)
 	}
-	return s.flight
+	return s.flight, nil
 }
 
 // run performs the refresh f and hands its result to f's callers.

@@ -313,8 +313,9 @@ func TestRefreshOutlivesCaller(t *testing.T) {
 
 // A refresh whose caller is gone still saves the answer.
 func TestRefreshSavesAfterCallerLeft(t *testing.T) {
-	release := make(chan struct{})
+	started, release := make(chan struct{}), make(chan struct{})
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
 		<-release
 		json.NewEncoder(w).Encode(map[string]string{"access_token": "a2", "refresh_token": "r2"})
 	}))
@@ -322,8 +323,15 @@ func TestRefreshSavesAfterCallerLeft(t *testing.T) {
 	store := &staterepo.Store{Dir: t.TempDir()}
 	source := &TokenSource{Store: store, HTTP: s.Client(), Base: s.URL, Identity: entity.Identity{RefreshToken: "r"}}
 	ctx, cancel := context.WithCancel(context.Background())
+	errc := make(chan error, 1)
+	go func() {
+		_, err := source.Token(ctx, true)
+		errc <- err
+	}()
+	// The caller leaves once the refresh is under way.
+	<-started
 	cancel()
-	if _, err := source.Token(ctx, true); !errors.Is(err, context.Canceled) {
+	if err := <-errc; !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	close(release)
@@ -338,5 +346,71 @@ func TestRefreshSavesAfterCallerLeft(t *testing.T) {
 			t.Fatal(saved, source.Snapshot())
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// O3-1: Wait returns only once the refresh its callers left has saved its
+// late answer, so that a process exiting after Wait keeps the rotated
+// refresh token.
+func TestWaitSavesLateAnswer(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release
+		json.NewEncoder(w).Encode(map[string]string{"access_token": "a2", "refresh_token": "r2"})
+	}))
+	defer s.Close()
+	store := &staterepo.Store{Dir: t.TempDir()}
+	source := &TokenSource{Store: store, HTTP: s.Client(), Base: s.URL, Identity: entity.Identity{RefreshToken: "r"}}
+	if err := source.Wait(context.Background()); err != nil {
+		t.Fatal("no refresh to wait for:", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go source.Token(ctx, true)
+	<-started
+	cancel()
+	short, cancelShort := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancelShort()
+	if err := source.Wait(short); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("Wait returned before the refresh ended:", err)
+	}
+	waited := make(chan error, 1)
+	go func() { waited <- source.Wait(context.Background()) }()
+	select {
+	case err := <-waited:
+		t.Fatal("Wait returned before the refresh ended:", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	if err := <-waited; err != nil {
+		t.Fatal(err)
+	}
+	var saved entity.Identity
+	store.Load("auth", &saved)
+	if saved.RefreshToken != "r2" || source.Snapshot().AccessToken != "a2" {
+		t.Fatal(saved, source.Snapshot())
+	}
+}
+
+// O3-1: a caller that is already gone starts no refresh: nobody would wait
+// for it, and its process may be exiting.
+func TestCanceledCallerStartsNoRefresh(t *testing.T) {
+	s, calls := rotatingServer(t, nil)
+	store := &staterepo.Store{Dir: t.TempDir()}
+	source := &TokenSource{Store: store, HTTP: s.Client(), Base: s.URL, Identity: entity.Identity{AccessToken: "a", RefreshToken: "r"}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := source.Token(ctx, true); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if err := source.Rejected(ctx, "a"); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if err := source.Wait(context.Background()); err != nil || calls.Load() != 0 {
+		t.Fatal(err, calls.Load())
+	}
+	// The canceled Rejected armed no cooldown.
+	if err := source.Rejected(context.Background(), "a"); err != nil || calls.Load() != 1 || source.Snapshot().RefreshToken != "r'" {
+		t.Fatal(err, calls.Load(), source.Snapshot())
 	}
 }
