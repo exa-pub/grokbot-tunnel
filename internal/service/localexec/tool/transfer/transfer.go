@@ -169,7 +169,7 @@ func (t *Transfer) target(fs *os.Root, rel string) (uploadTarget, error) {
 	target := uploadTarget{mode: st.Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky), existed: true}
 	if sys, ok := st.Sys().(*syscall.Stat_t); ok {
 		if st.Mode().IsRegular() {
-			target.links = sys.Nlink
+			target.links = uint64(sys.Nlink) //nolint:unconvert // uint32 on arm64, uint64 on amd64
 		}
 		if os.Geteuid() == 0 {
 			target.owner = &atomicfile.Owner{UID: int(sys.Uid), GID: int(sys.Gid)}
