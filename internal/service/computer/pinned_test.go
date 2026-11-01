@@ -215,9 +215,9 @@ func TestPinnedCancelBeforeStart(t *testing.T) {
 	}
 }
 
-// Invariant 10 (closing-frames budget): the desktop gives closing frames a
-// budget of 30/120/180 s and replaces an interrupted download with HEr; we have
-// neither. Shutdown only has shutdownGrace, of which finalFlushGrace is kept
+// Invariant 10: closing frames keep their 30/120/180 s budget after a failed
+// round while the session runs (replies.TestClosingFramesRetryWithinBudget).
+// Shutdown only has shutdownGrace, of which finalFlushGrace is kept
 // for the final submit: workers get shutdownGrace-finalFlushGrace to report,
 // then everything already produced is flushed in one final submit bounded by
 // the rest of shutdownGrace. This pins the budgets and the fast path: frames

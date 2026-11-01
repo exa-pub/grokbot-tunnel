@@ -140,16 +140,19 @@ func (s *session) run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			s.stopWatch()
-			withdrawn := s.pv.withdrawPresence(s.cred.Current().Credential, s.presence)
+			credential := s.cred.Current().Credential
+			acked := s.pv.ackOnShutdown(credential, s.admit.Acks())
+			withdrawn := s.pv.withdrawPresence(credential, s.presence)
 			s.shutdown()
 			<-withdrawn
+			<-acked
 			return nil
 		case f := <-accepting:
 			if s.out.Take(f, s.admit.Canceled(f.RequestId)) {
 				s.startSubmit()
 			}
 		case r := <-s.submitted:
-			err = s.onSubmitted(r)
+			s.onSubmitted(r)
 		case r := <-s.polled:
 			s.onPolled(r)
 		case r := <-s.issued:

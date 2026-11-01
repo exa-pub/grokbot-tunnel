@@ -100,11 +100,14 @@ type stubCloud struct {
 	failIssue, failSubmit  bool
 	failPoll               bool
 	submitted              []*responseFrame
-	block                  chan struct{} // holds submits until closed
-	unauthenticated        bool          // submits are rejected
-	rejectWatch            bool          // watches are rejected
-	connect                bool          // watches report connected
-	blockIssue             chan struct{} // holds issues until closed
+	block                  chan struct{}                                  // holds submits until closed
+	unauthenticated        bool                                           // submits are rejected
+	rejectWatch            bool                                           // watches are rejected
+	connect                bool                                           // watches report connected
+	blockIssue             chan struct{}                                  // holds issues until closed
+	requests               []*aiserverv1.GrokBotUserComputerQueuedRequest // returned by the next poll
+	pollAcks               [][]string                                     // ack IDs of every poll
+	pollLimits             []uint32
 }
 
 func (c *stubCloud) IssueGrokBotUserComputerCredential(
@@ -148,15 +151,19 @@ func (c *stubCloud) SubmitGrokBotUserComputerResponses(
 }
 
 func (c *stubCloud) PollGrokBotUserComputerRequests(
-	context.Context, *connect.Request[aiserverv1.PollGrokBotUserComputerRequestsRequest],
+	_ context.Context, r *connect.Request[aiserverv1.PollGrokBotUserComputerRequestsRequest],
 ) (*connect.Response[aiserverv1.PollGrokBotUserComputerRequestsResponse], error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.polls++
+	c.pollAcks = append(c.pollAcks, r.Msg.AckIds)
+	c.pollLimits = append(c.pollLimits, r.Msg.Limit)
 	if c.failPoll {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("down"))
 	}
-	return connect.NewResponse(&aiserverv1.PollGrokBotUserComputerRequestsResponse{}), nil
+	out := &aiserverv1.PollGrokBotUserComputerRequestsResponse{Requests: c.requests}
+	c.requests = nil
+	return connect.NewResponse(out), nil
 }
 
 func (c *stubCloud) WatchGrokBotUserComputerRequests(
@@ -220,7 +227,7 @@ func settle(t *testing.T, s *session) error {
 		case r := <-s.issued:
 			keep(s.onIssued(r))
 		case r := <-s.submitted:
-			keep(s.onSubmitted(r))
+			s.onSubmitted(r)
 		case r := <-s.polled:
 			s.onPolled(r)
 		case <-time.After(5 * time.Second):
@@ -379,8 +386,9 @@ func TestEventsRequestPoll(t *testing.T) {
 	}
 }
 
-// A full round of failed submits leaves keep-alives pending without ending
-// the session.
+// Failed submit rounds never end the session (bug B3): keep-alives are
+// dropped, the closing frame is kept and retried with a growing delay
+// (bug B4).
 func TestFailedSubmitRoundKeepsSession(t *testing.T) {
 	var now time.Time
 	c := &stubCloud{failSubmit: true}
@@ -392,15 +400,18 @@ func TestFailedSubmitRoundKeepsSession(t *testing.T) {
 	}
 	s.out.Add(closeFrame("closed"))
 	s.out.KeepAlive(tasks, s.admit.Canceled)
-	for range 3 {
+	for range 2 * replies.SubmitAttempts {
 		now = now.Add(time.Second)
 		s.startSubmit()
-		if err := settle(t, s); errors.Is(err, replies.ErrBacklogFull) {
+		if err := settle(t, s); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, submits, _ := c.counts(); submits != 3 || len(s.out.Pending()) != 73 {
+	if _, submits, _ := c.counts(); submits != 2*replies.SubmitAttempts || len(s.out.Pending()) != 1 {
 		t.Fatal(submits, len(s.out.Pending()))
+	}
+	if s.out.Pending()[0].RequestId != "closed" {
+		t.Fatal("closing frame dropped")
 	}
 }
 
@@ -578,10 +589,51 @@ func TestStaleSubmitResultKeepsNewCredential(t *testing.T) {
 	s.startSubmit()
 	withCredential(s, "new", false)
 	close(c.block)
-	if err := s.onSubmitted(<-s.submitted); err != nil {
-		t.Fatal(err)
-	}
+	s.onSubmitted(<-s.submitted)
 	if s.cred.Current().Credential != "new" || len(s.out.Pending()) != 1 {
 		t.Fatal("rejection of the old credential dropped the new one")
+	}
+}
+
+// The acks of a poll that returned requests go out with the next poll right
+// away, not on the next tick, like the desktop's poll loop.
+func TestPolledRequestsAcknowledgedRightAway(t *testing.T) {
+	var now time.Time
+	c := &stubCloud{requests: []*aiserverv1.GrokBotUserComputerQueuedRequest{{Id: "q1", Frame: execFrame("r1")}}}
+	s := stubSession(t, c, &now)
+	withCredential(s, "c", false)
+	s.stream.Start(now, "always")
+	s.poll.Request()
+	if err := tick(t, s); err != nil {
+		t.Fatal(err)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.pollAcks) != 2 || len(c.pollAcks[1]) != 1 || c.pollAcks[1][0] != "q1" {
+		t.Fatal("acks not sent right away", c.pollAcks)
+	}
+	if _, ok := s.admit.Tasks()["r1"]; !ok {
+		t.Fatal("polled request not accepted")
+	}
+}
+
+// On shutdown the acks of the last poll are delivered, so that the requests
+// do not run again after a restart (bug B5); the poll fetches at most one
+// request, which is neither started nor acknowledged.
+func TestShutdownAcknowledgesPolledRequests(t *testing.T) {
+	var now time.Time
+	c := &stubCloud{}
+	s := stubSession(t, c, &now)
+	s.admit.Polled([]*aiserverv1.GrokBotUserComputerQueuedRequest{{Id: "q1", Frame: execFrame("r1")}})
+	<-s.pv.ackOnShutdown("c", s.admit.Acks())
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.pollAcks) != 1 || len(c.pollAcks[0]) != 1 || c.pollAcks[0][0] != "q1" || c.pollLimits[0] != 1 {
+		t.Fatal(c.pollAcks, c.pollLimits)
+	}
+	<-s.pv.ackOnShutdown("", []string{"q2"}) // no credential: nothing to send
+	<-s.pv.ackOnShutdown("c", nil)
+	if c.polls != 1 {
+		t.Fatal("polled without acks or credential")
 	}
 }

@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/githubrelease"
+
 	"connectrpc.com/connect"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/sandapi"
@@ -65,6 +67,9 @@ func (App) Uninstall(ctx context.Context, out io.Writer) error { return install.
 // Update replaces this binary; see selfupdate.Run.
 func (App) Update(ctx context.Context, opts selfupdate.Options, out io.Writer) error {
 	opts.Unit = install.TunnelUnit
+	if url := releasesURL(); url != "" {
+		opts.Client = &githubrelease.Client{Base: url}
+	}
 	return selfupdate.Run(ctx, opts, out)
 }
 

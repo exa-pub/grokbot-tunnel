@@ -2,7 +2,6 @@ package replies_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -138,55 +137,11 @@ func TestNextAndAccepting(t *testing.T) {
 	}
 	assert.Nil(t, q.Next(now), "second submit in flight")
 	assert.False(t, q.Accepting(), "replies not throttled while a full batch waits")
-	again, exhausted := q.Submitted(now, batch, 1, true)
+	again, failed := q.Submitted(now, batch, 1, false, never)
 	assert.True(t, again)
-	assert.False(t, exhausted)
+	assert.Nil(t, failed)
 	assert.True(t, q.Accepting())
 	assert.Len(t, q.Pending(), replies.SubmitBatch)
-}
-
-// Failed submits wait 200 ms, then 400 ms; the third ends the round, after
-// which the next submit may start at once.
-func TestSubmittedRetries(t *testing.T) {
-	var q replies.Queue
-	now := time.Unix(1000, 0)
-	q.Add(closeFrame("a"))
-	for i, wait := range []time.Duration{200 * time.Millisecond, 400 * time.Millisecond} {
-		batch := q.Next(now)
-		require.NotNil(t, batch, i)
-		again, exhausted := q.Submitted(now, batch, 0, true)
-		require.False(t, again)
-		require.False(t, exhausted)
-		assert.Nil(t, q.Next(now.Add(wait-time.Millisecond)), "retried before the delay")
-		now = now.Add(wait)
-	}
-	batch := q.Next(now)
-	_, exhausted := q.Submitted(now, batch, 0, true)
-	assert.True(t, exhausted)
-	assert.NotNil(t, q.Next(now), "round restarts at once")
-	// Without a credential a failure ends the round right away.
-	_, exhausted = q.Submitted(now, batch, 0, false)
-	assert.True(t, exhausted)
-}
-
-// Keep-alives alone never fill the backlog; other frames do.
-func TestOverflow(t *testing.T) {
-	var q replies.Queue
-	fail := errors.New("down")
-	for i := range replies.MaxPending {
-		q.Add(keepAlive(fmt.Sprint(i)))
-	}
-	q.Add(closeFrame("x"))
-	assert.Equal(t, 1, q.Stuck())
-	require.NoError(t, q.Overflow(fail))
-	assert.True(t, q.Accepting())
-	for i := range replies.MaxPending - 1 {
-		q.Add(client(fmt.Sprint(i)))
-	}
-	err := q.Overflow(fail)
-	require.ErrorIs(t, err, replies.ErrBacklogFull)
-	require.ErrorIs(t, err, fail)
-	assert.False(t, q.Accepting())
 }
 
 // Invariant 11, ≠ desktop: keep-alives go to started tasks and to requests
@@ -246,4 +201,145 @@ func TestKeepAliveIsBounded(t *testing.T) {
 		assert.Equal(t, 1, n, id)
 	}
 	assert.Equal(t, 1, q.Stuck())
+}
+
+func exit(id string) *replies.Frame {
+	return &replies.Frame{RequestId: id, Frame: &aiserverv1.GrokBotUserComputerResponseFrame_Client{
+		Client: &aiserverv1.GrokBotUserComputerClientMessage{MessageJson: `{"shellStream":{"exit":{"code":0}}}`},
+	}}
+}
+
+func stdout(id string) *replies.Frame {
+	return &replies.Frame{RequestId: id, Frame: &aiserverv1.GrokBotUserComputerResponseFrame_Client{
+		Client: &aiserverv1.GrokBotUserComputerClientMessage{MessageJson: `{"shellStream":{"stdout":{"data":"x"}}}`},
+	}}
+}
+
+// failRound submits batch and fails it SubmitAttempts times, as the session
+// would, and returns the Failure of the round.
+func failRound(t *testing.T, q *replies.Queue, now *time.Time, canceled func(string) bool) *replies.Failure {
+	t.Helper()
+	for i := range replies.SubmitAttempts {
+		batch := q.Next(*now)
+		require.NotNil(t, batch, "attempt %d", i)
+		_, failed := q.Submitted(*now, batch, 0, false, canceled)
+		if i < replies.SubmitAttempts-1 {
+			require.Nil(t, failed)
+			assert.Nil(t, q.Next(*now), "retried before the delay")
+			*now = now.Add(time.Duration(i+1) * 200 * time.Millisecond)
+			continue
+		}
+		require.NotNil(t, failed)
+		return failed
+	}
+	return nil
+}
+
+// After a failed round only frames that close their requests stay, like the
+// desktop's KEr: results, shell exits, throw and streamClose, whole files,
+// file errors, messages and local tool results; output, keep-alives, file
+// chunks and frames of canceled requests are dropped. A download that lost a
+// chunk ends with ErrPartialFile, and its later chunks are dropped too.
+func TestFailedRoundKeepsClosingFrames(t *testing.T) {
+	var q replies.Queue
+	now := time.Unix(1000, 0)
+	heartbeat := &replies.Frame{RequestId: "hb", Frame: &aiserverv1.GrokBotUserComputerResponseFrame_Control{
+		Control: &aiserverv1.GrokBotUserComputerControlMessage{MessageJson: `{"heartbeat":{"id":1}}`},
+	}}
+	tool := &replies.Frame{RequestId: "tool", Frame: &aiserverv1.GrokBotUserComputerResponseFrame_LocalToolResult{
+		LocalToolResult: &aiserverv1.GrokBotUserComputerLocalToolResult{Status: "ok"},
+	}}
+	read := &replies.Frame{RequestId: "read", Frame: &aiserverv1.GrokBotUserComputerResponseFrame_Client{
+		Client: &aiserverv1.GrokBotUserComputerClientMessage{MessageJson: `{"readResult":{}}`},
+	}}
+	for _, f := range []*replies.Frame{
+		stdout("sh"), exit("sh"), closeFrame("sh"), heartbeat, keepAlive("ka"), read, tool,
+		file("whole", 0, 1, true), file("dl", 0, 1, false), exit("gone"),
+	} {
+		q.Add(f)
+	}
+	failed := failRound(t, &q, &now, func(id string) bool { return id == "gone" })
+	assert.Equal(t, replies.Failure{Kept: 5, Dropped: 5}, *failed)
+	kept := make([]string, 0, len(q.Pending()))
+	for _, f := range q.Pending() {
+		kept = append(kept, f.RequestId)
+	}
+	assert.Equal(t, []string{"sh", "sh", "read", "tool", "whole", "dl"}, kept)
+	last := q.Pending()[5]
+	assert.Equal(t, replies.ErrPartialFile, last.GetFileError().GetError())
+	assert.False(t, q.Take(file("dl", 1, 1, true), false), "chunk after the partial-file error queued")
+	assert.Len(t, q.Pending(), 6)
+}
+
+// Kept closing frames wait 0.5 s, 1 s, 2 s, 4 s, 4 s between rounds and are
+// dropped once their budget, counted from their first failed round, is spent.
+func TestClosingFramesRetryWithinBudget(t *testing.T) {
+	var q replies.Queue
+	now := time.Unix(1000, 0)
+	q.Add(exit("sh"))
+	start := now
+	for _, ms := range []int{500, 1000, 2000, 4000, 4000} {
+		failed := failRound(t, &q, &now, never)
+		require.Equal(t, replies.Failure{Kept: 1}, *failed)
+		wait := time.Duration(ms) * time.Millisecond
+		assert.Nil(t, q.Next(now.Add(wait-time.Millisecond)), wait)
+		now = now.Add(wait)
+	}
+	now = start.Add(30 * time.Second)
+	failed := failRound(t, &q, &now, never)
+	assert.Equal(t, replies.Failure{Dropped: 1, Expired: 1}, *failed)
+	assert.Empty(t, q.Pending())
+	// Only a successful submit resets the closing retry delay.
+	q.Add(exit("next"))
+	failRound(t, &q, &now, never)
+	now = now.Add(4 * time.Second)
+	batch := q.Next(now)
+	require.NotNil(t, batch)
+	again, failed := q.Submitted(now, batch, 1, false, never)
+	assert.True(t, again)
+	assert.Nil(t, failed)
+}
+
+// While other frames wait behind the kept ones, the next round starts at once.
+func TestFailedRoundWithMoreFramesSubmitsAgain(t *testing.T) {
+	var q replies.Queue
+	now := time.Unix(1000, 0)
+	q.Add(exit("a"))
+	for range 300 {
+		q.Add(stdout("b"))
+	}
+	failed := failRound(t, &q, &now, never) // a batch holds 256 frames
+	assert.Equal(t, replies.Failure{Kept: 1, Dropped: 255}, *failed)
+	assert.Len(t, q.Pending(), 1+45)
+	assert.NotNil(t, q.Next(now), "remaining frames held back")
+}
+
+// A rejected credential drops nothing: the frames wait for a new one.
+func TestRejectedSubmitKeepsFrames(t *testing.T) {
+	var q replies.Queue
+	now := time.Unix(1000, 0)
+	q.Add(stdout("a"))
+	for range replies.SubmitAttempts + 1 {
+		batch := q.Next(now)
+		require.NotNil(t, batch)
+		again, failed := q.Submitted(now, batch, 0, true, never)
+		assert.False(t, again)
+		assert.Nil(t, failed)
+	}
+	assert.Len(t, q.Pending(), 1)
+}
+
+// Workers wait while MaxPending frames other than keep-alives are pending.
+func TestAcceptingBackpressure(t *testing.T) {
+	var q replies.Queue
+	for i := range replies.MaxPending {
+		q.Add(keepAlive(fmt.Sprint(i)))
+	}
+	q.Add(closeFrame("x"))
+	assert.Equal(t, 1, q.Stuck())
+	assert.True(t, q.Accepting())
+	for i := range replies.MaxPending - 1 {
+		q.Add(client(fmt.Sprint(i)))
+	}
+	assert.False(t, q.Accepting())
 }

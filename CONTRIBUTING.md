@@ -63,6 +63,9 @@ Further rules:
   behavior means changing its test in the same change.
 - `tests/e2e` runs the built binary against `tests/e2e/fakesand`, a fake
   backend that `internal/app`'s integration test uses too.
+- `make systemd-test` (needs docker) boots systemd in a container and runs
+  login, install, update from a fake GitHub (`GROKBOT_TUNNEL_RELEASES_URL`),
+  the restart and uninstall, as root and as a user with lingering.
 
 ## Releases
 

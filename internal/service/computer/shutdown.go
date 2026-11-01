@@ -47,6 +47,35 @@ func (pv *Provider) withdrawPresence(credential, presence string) <-chan struct{
 	return done
 }
 
+// ackOnShutdown acknowledges the last polled requests in the background, so
+// that the server does not deliver them again after a restart and they do
+// not run twice (bug B5). There is no ack RPC, so it polls with the acks;
+// requests that poll returns are neither started nor acknowledged and come
+// back later. Go+: the desktop does not poll while closing. The channel is
+// closed once the call is done.
+func (pv *Provider) ackOnShutdown(credential string, acks []string) <-chan struct{} {
+	done := make(chan struct{})
+	if credential == "" || len(acks) == 0 {
+		close(done)
+		return done
+	}
+	req := &aiserverv1.PollGrokBotUserComputerRequestsRequest{
+		MachineId:  pv.Machine.MachineID,
+		Credential: credential,
+		AckIds:     acks,
+		Limit:      1, // 0 could mean the server's default
+	}
+	go func() {
+		defer close(done)
+		ctx, cancel := context.WithTimeout(context.Background(), withdrawTimeout)
+		defer cancel()
+		if _, err := pv.Channel.PollGrokBotUserComputerRequests(ctx, connect.NewRequest(req)); err != nil {
+			log.Printf("acknowledge requests: %v", err)
+		}
+	}()
+	return done
+}
+
 // shutdown cancels all work and flushes results within shutdownGrace, keeping
 // finalFlushGrace of it for the final submit even if workers are slow.
 func (s *session) shutdown() {

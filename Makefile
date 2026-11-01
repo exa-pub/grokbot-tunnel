@@ -5,7 +5,7 @@ LDFLAGS   := -s -w -X $(PKG)/internal/api/cli.version=$(VERSION)
 PLATFORMS := linux/amd64 linux/arm64
 GOLANGCI_LINT ?= golangci-lint
 
-.PHONY: all build test test-race e2e lint proto proto-check dist clean
+.PHONY: all build test test-race e2e systemd-test lint proto proto-check dist clean
 
 all: lint test build
 
@@ -37,6 +37,11 @@ test-race:
 # Runs the built binary against the fake backend in tests/e2e/fakesand.
 e2e:
 	go test -tags e2e -count=1 ./tests/e2e/...
+
+# Installs, updates and uninstalls the service under systemd in a container;
+# needs docker.
+systemd-test:
+	./tests/systemd/run.sh
 
 lint:
 	$(GOLANGCI_LINT) run ./...

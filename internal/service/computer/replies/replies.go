@@ -6,8 +6,6 @@
 package replies
 
 import (
-	"errors"
-	"fmt"
 	"slices"
 	"time"
 
@@ -18,16 +16,12 @@ import (
 const (
 	// SubmitBatch pending frames trigger an immediate submit.
 	SubmitBatch = 32
-	// MaxPending frames other than keep-alives that stay unsent after a full
-	// round of failed submits end the session.
+	// MaxPending frames other than keep-alives make workers wait.
 	MaxPending = 256
 	// SubmitAttempts is a round of submits without progress.
 	SubmitAttempts = 3
 	retryStep      = 200 * time.Millisecond
 )
-
-// ErrBacklogFull ends the session when the server stops accepting frames.
-var ErrBacklogFull = errors.New("response backlog full")
 
 // Frame is a response frame.
 type Frame = aiserverv1.GrokBotUserComputerResponseFrame
@@ -38,12 +32,23 @@ type Queue struct {
 	// previousFile alternates file chunks with metadata between batches.
 	previousFile bool
 	submitting   bool
-	failures     int // consecutive submits without progress
+	failures     int       // consecutive submits without progress in this round
+	roundStart   time.Time // when the first submit of this round started
 	nextSubmit   time.Time
+	// closingSince is when the round started in which a kept closing frame
+	// first failed; its budget counts from there.
+	closingSince   map[*Frame]time.Time
+	closingRetries int             // failed rounds with only closing frames left
+	partial        map[string]bool // downloads replaced by ErrPartialFile; later chunks are dropped
 }
 
 // Add queues f.
-func (q *Queue) Add(f *Frame) { q.pending = append(q.pending, f) }
+func (q *Queue) Add(f *Frame) {
+	if q.closingSince == nil {
+		q.closingSince, q.partial = map[*Frame]time.Time{}, map[string]bool{}
+	}
+	q.pending = append(q.pending, f)
+}
 
 // Sink is Add as a frames.Sink, for answers built on the caller's goroutine.
 func (q *Queue) Sink(f *Frame) error {
@@ -56,6 +61,9 @@ func (q *Queue) Sink(f *Frame) error {
 // canceled transfer becomes an error. It reports whether a full batch is
 // pending.
 func (q *Queue) Take(f *Frame, canceled bool) bool {
+	if q.partial[f.RequestId] && (f.GetFile() != nil || f.GetFileError() != nil) {
+		return false // the download already ended with ErrPartialFile
+	}
 	if canceled {
 		if f.GetControl() == nil && !frames.Final(f) {
 			return false
@@ -108,6 +116,9 @@ func (q *Queue) Next(now time.Time) []*Frame {
 		return nil
 	}
 	q.submitting = true
+	if q.failures == 0 {
+		q.roundStart = now
+	}
 	return q.Batch()
 }
 
@@ -116,8 +127,9 @@ func (q *Queue) Accepted(batch []*Frame, n int) {
 	done := map[*Frame]bool{}
 	for _, f := range batch[:n] {
 		done[f] = true
+		delete(q.closingSince, f)
 	}
-	q.pending = slices.DeleteFunc(q.pending, func(f *Frame) bool { return done[f] })
+	q.remove(done)
 }
 
 // Settle ends the submit in flight with n of batch accepted, without retry
@@ -128,32 +140,34 @@ func (q *Queue) Settle(batch []*Frame, n int) {
 }
 
 // Submitted applies the result of the submit in flight. again is true after
-// progress: the caller submits the rest right away. Otherwise the next submit
-// waits a growing delay, if retry allows; after SubmitAttempts failures, or
-// without retry, exhausted is true and the round starts over on the caller's
-// next tick.
-func (q *Queue) Submitted(now time.Time, batch []*Frame, n int, retry bool) (again, exhausted bool) {
+// progress: the caller submits the rest right away. A failure is retried
+// after 200 ms and 400 ms; the third ends the round, which keeps only the
+// frames that close their requests (see fail) and returns a non-nil Failure.
+// rejected means the server rejected the credential: nothing is dropped, and
+// the frames wait for a new credential.
+func (q *Queue) Submitted(now time.Time, batch []*Frame, n int, rejected bool, canceled func(string) bool) (again bool, failed *Failure) {
 	q.Settle(batch, n)
 	if n > 0 {
+		q.failures, q.closingRetries = 0, 0
+		q.nextSubmit = time.Time{}
+		return true, nil
+	}
+	if rejected {
 		q.failures = 0
 		q.nextSubmit = time.Time{}
-		return true, false
+		return false, nil
 	}
 	q.failures++
-	if q.failures < SubmitAttempts && retry {
+	if q.failures < SubmitAttempts {
 		q.nextSubmit = now.Add(time.Duration(q.failures) * retryStep)
-		return false, false
+		return false, nil
 	}
 	q.failures = 0
 	q.nextSubmit = time.Time{}
-	return false, true
+	out := q.fail(now, batch, canceled)
+	return out.Kept < len(q.pending), &out
 }
 
-// Overflow returns ErrBacklogFull wrapping err once a failed round leaves too
-// many frames stuck.
-func (q *Queue) Overflow(err error) error {
-	if q.Stuck() < MaxPending {
-		return nil
-	}
-	return fmt.Errorf("%w: %w", ErrBacklogFull, err)
+func (q *Queue) remove(frames map[*Frame]bool) {
+	q.pending = slices.DeleteFunc(q.pending, func(f *Frame) bool { return frames[f] })
 }

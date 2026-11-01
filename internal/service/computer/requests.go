@@ -11,6 +11,7 @@ import (
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/replies"
 )
 
 func (s *session) accept(f *requestFrame, server bool) {
@@ -96,20 +97,21 @@ func (s *session) startSubmit() {
 }
 
 // onSubmitted applies a submit result and keeps draining the replies.
-func (s *session) onSubmitted(r submitted) error {
+// A failed round never ends the session: like the desktop, it keeps only the
+// frames that close their requests, for a limited time.
+func (s *session) onSubmitted(r submitted) {
+	rejected := connect.CodeOf(r.err) == connect.CodeUnauthenticated
 	if r.err != nil {
 		s.invalidate(r.credential, r.err)
 	}
-	again, exhausted := s.out.Submitted(s.pv.now(), r.frames, r.accepted, s.cred.Current().Credential != "")
-	switch {
-	case again:
-		s.startSubmit()
-	case exhausted:
-		// A full round failed; the next tick starts another one.
-		log.Printf("submit: %v", r.err)
-		return s.out.Overflow(r.err)
+	again, failed := s.out.Submitted(s.pv.now(), r.frames, r.accepted, rejected, s.admit.Canceled)
+	if failed != nil {
+		log.Printf("submit failed %d times: kept %d of %d response frames that close requests, dropped %d "+
+			"(%d past their retry budget): %v", replies.SubmitAttempts, failed.Kept, len(r.frames), failed.Dropped, failed.Expired, r.err)
 	}
-	return nil
+	if again {
+		s.startSubmit()
+	}
 }
 
 // startPoll fetches queued requests in the background and acknowledges the
@@ -149,6 +151,8 @@ func (s *session) onPolled(r polled) {
 	for _, f := range s.admit.Polled(r.requests) {
 		s.accept(f, r.server)
 	}
-	// Poll again right away to deliver the acks and drain the queue.
+	// Poll again right away, like the desktop's poll loop, to deliver the acks
+	// and drain the queue.
 	s.poll.Done(s.pv.now(), nil, len(s.admit.Acks()) > 0)
+	s.startPoll()
 }
