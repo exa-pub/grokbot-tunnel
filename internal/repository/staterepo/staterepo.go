@@ -31,10 +31,6 @@ func Default() (*Store, error) {
 	return &Store{Dir: filepath.Join(home, ".grok", "bot-tunnel")}, nil
 }
 
-func (s *Store) path(name string) string {
-	return filepath.Join(s.Dir, name+".json")
-}
-
 // Load decodes the named document into v.
 func (s *Store) Load(name string, v any) error {
 	b, err := os.ReadFile(s.path(name))
@@ -143,4 +139,8 @@ func (s *Store) Identity() (entity.Identity, error) {
 		return identity, fmt.Errorf("load authentication (run grokbot-tunnel login): %w", err)
 	}
 	return identity, nil
+}
+
+func (s *Store) path(name string) string {
+	return filepath.Join(s.Dir, name+".json")
 }

@@ -128,7 +128,8 @@ tunnel runs per user at a time, so stop the service first
 ## What the agent gets
 
 - A persistent shell: each command continues from the working directory,
-  variables, aliases and functions the previous one left. Background commands
+  variables, shell options and functions the previous one left (aliases are
+  not kept). Background commands
   write their output to `<root>/terminals/<number>.txt`.
 - File reads, directory listings, and uploads and downloads up to 100 MiB.
 - Names of Codex and Claude Code skills, MCP servers, plugins and commands, with
@@ -143,7 +144,7 @@ tunnel runs per user at a time, so stop the service first
 - `--debug` logs requests in full, including commands and file contents; for
   the service they go to the journal.
 
-To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md).
+To build from source or work on the code, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 grokbot-tunnel is an independent project, not affiliated with or endorsed by
 xAI. Grok Bot is a trademark of its owner.

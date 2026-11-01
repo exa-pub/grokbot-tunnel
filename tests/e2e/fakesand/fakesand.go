@@ -135,12 +135,6 @@ func (s *Server) WaitWatching(timeout time.Duration) {
 	}
 }
 
-// signal wakes Wait; s.mu must be held.
-func (s *Server) signal() {
-	close(s.changed)
-	s.changed = make(chan struct{})
-}
-
 // Exec returns an exec request frame carrying an agent.v1.ExecServerMessage
 // in protojson.
 func Exec(requestID, serverMessageJSON string) *aiserverv1.GrokBotUserComputerRequestFrame {
@@ -185,21 +179,6 @@ func Control(f *aiserverv1.GrokBotUserComputerResponseFrame) *agentv1.ExecClient
 		return nil
 	}
 	return msg
-}
-
-// authPoll completes every login at once, with the header profile of the
-// desktop's fetch.
-func (s *Server) authPoll(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("User-Agent") != "undici" || r.Header.Get("Content-Type") != "application/json" {
-		s.t.Errorf("fakesand: auth header profile %v", r.Header)
-	}
-	claims := fmt.Sprintf(`{"exp":%d,"sub":%q}`, time.Now().Add(time.Hour).Unix(), AccountID)
-	token := "fixture." + base64.RawURLEncoding.EncodeToString([]byte(claims)) + ".signature"
-	if err := json.NewEncoder(w).Encode(map[string]string{
-		"accessToken": token, "refreshToken": "fixture-refresh", "authId": AccountID,
-	}); err != nil {
-		s.t.Error(err)
-	}
 }
 
 func (s *Server) GetMe(
@@ -309,4 +288,25 @@ func (s *Server) SubmitGrokBotUserComputerResponses(
 	return connect.NewResponse(&aiserverv1.SubmitGrokBotUserComputerResponsesResponse{
 		AcceptedCount: uint32(len(r.Msg.Frames)), //nolint:gosec // bounded by the request size
 	}), nil
+}
+
+// signal wakes Wait; s.mu must be held.
+func (s *Server) signal() {
+	close(s.changed)
+	s.changed = make(chan struct{})
+}
+
+// authPoll completes every login at once, with the header profile of the
+// desktop's fetch.
+func (s *Server) authPoll(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("User-Agent") != "undici" || r.Header.Get("Content-Type") != "application/json" {
+		s.t.Errorf("fakesand: auth header profile %v", r.Header)
+	}
+	claims := fmt.Sprintf(`{"exp":%d,"sub":%q}`, time.Now().Add(time.Hour).Unix(), AccountID)
+	token := "fixture." + base64.RawURLEncoding.EncodeToString([]byte(claims)) + ".signature"
+	if err := json.NewEncoder(w).Encode(map[string]string{
+		"accessToken": token, "refreshToken": "fixture-refresh", "authId": AccountID,
+	}); err != nil {
+		s.t.Error(err)
+	}
 }

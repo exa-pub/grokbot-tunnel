@@ -151,6 +151,36 @@ func (s *Session) Init(ctx context.Context) error {
 	}
 }
 
+// Adopt returns the state a foreground command left in its snapshot or,
+// if it ended the shell itself, in the fallback snapshot of its EXIT trap,
+// together with a notice for the agent, if any. A command that left no state
+// returns nil. A cwd outside Root is not kept; the next command starts where
+// this one did.
+func (s *Session) Adopt(snapshot, fallback *os.File, cwd string) (*State, string) {
+	st, ok := readState(snapshot)
+	if !ok {
+		st, ok = readState(fallback)
+	}
+	if !ok {
+		return nil, "The shell exited before its state could be saved (exec, a signal or a replaced EXIT trap); " +
+			"changes to the working directory, environment, options and functions were not kept.\n"
+	}
+	notice := ""
+	if st.env == nil {
+		// /usr/bin/env failed, for example on a variable above the kernel's
+		// 128 KiB limit. Keep the environment the command started with.
+		st.env = s.State().env
+		notice = "The environment could not be saved after this command; the next command starts with the " +
+			"environment this one started with.\n"
+	}
+	if !s.root.IsDir(st.cwd) {
+		notice += fmt.Sprintf("Working directory %s is outside %s or no longer exists; the next command starts in %s.\n",
+			st.cwd, s.root.Dir(), cwd)
+		st.cwd = cwd
+	}
+	return &st, notice
+}
+
 func (s *Session) profileState() (State, error) {
 	snapshot, err := proc.TempFile("grok-shell-state-", "")
 	if err != nil {
@@ -189,34 +219,4 @@ func (s *Session) profileState() (State, error) {
 		return State{}, errors.New("profile left no state")
 	}
 	return st, nil
-}
-
-// Adopt returns the state a foreground command left in its snapshot or,
-// if it ended the shell itself, in the fallback snapshot of its EXIT trap,
-// together with a notice for the agent, if any. A command that left no state
-// returns nil. A cwd outside Root is not kept; the next command starts where
-// this one did.
-func (s *Session) Adopt(snapshot, fallback *os.File, cwd string) (*State, string) {
-	st, ok := readState(snapshot)
-	if !ok {
-		st, ok = readState(fallback)
-	}
-	if !ok {
-		return nil, "The shell exited before its state could be saved (exec, a signal or a replaced EXIT trap); " +
-			"changes to the working directory, environment, options and functions were not kept.\n"
-	}
-	notice := ""
-	if st.env == nil {
-		// /usr/bin/env failed, for example on a variable above the kernel's
-		// 128 KiB limit. Keep the environment the command started with.
-		st.env = s.State().env
-		notice = "The environment could not be saved after this command; the next command starts with the " +
-			"environment this one started with.\n"
-	}
-	if !s.root.IsDir(st.cwd) {
-		notice += fmt.Sprintf("Working directory %s is outside %s or no longer exists; the next command starts in %s.\n",
-			st.cwd, s.root.Dir(), cwd)
-		st.cwd = cwd
-	}
-	return &st, notice
 }

@@ -27,6 +27,8 @@ linters:
     - lll
     - gosec
     - testifylint
+    - depguard
+    - funcorder
 
   settings:
     errcheck:
@@ -66,6 +68,368 @@ linters:
     prealloc:
       simple: true
       for-loops: true
+
+    depguard:
+      # Layers of ai.tmp/refactor-plan/LAYOUT.md: entity < pkg < adapter, repository < service < api < app.
+      # Tests may cross layers.
+      rules:
+        entity:
+          files:
+            - "**/internal/entity/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/"
+              desc: entity depends on nothing inside internal (LAYOUT.md, Dependencies)
+        pkg:
+          files:
+            - "**/internal/pkg/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/adapter"
+              desc: pkg depends only on entity and gen
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/repository"
+              desc: pkg depends only on entity and gen
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service"
+              desc: pkg depends only on entity and gen
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/api"
+              desc: pkg depends only on entity and gen
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/app"
+              desc: pkg depends only on entity and gen
+        adapter-repository:
+          files:
+            - "**/internal/adapter/**"
+            - "**/internal/repository/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service"
+              desc: adapters and repositories depend only on lower layers
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/api"
+              desc: adapters and repositories depend only on lower layers
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/app"
+              desc: adapters and repositories depend only on lower layers
+        service:
+          files:
+            - "**/internal/service/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/api"
+              desc: services depend only on lower layers
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/app"
+              desc: services depend only on lower layers
+        service-computer:
+          files:
+            - "**/internal/service/computer/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/permission"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/login"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/install"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/selfupdate"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/tokens"
+              desc: a service does not import another service; declare an interface at the consumer
+        service-localexec:
+          files:
+            - "**/internal/service/localexec/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/permission"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/login"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/install"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/selfupdate"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/tokens"
+              desc: a service does not import another service; declare an interface at the consumer
+        service-permission:
+          files:
+            - "**/internal/service/permission/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/login"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/install"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/selfupdate"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/tokens"
+              desc: a service does not import another service; declare an interface at the consumer
+        service-login:
+          files:
+            - "**/internal/service/login/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/permission"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/install"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/selfupdate"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/tokens"
+              desc: a service does not import another service; declare an interface at the consumer
+        service-install:
+          files:
+            - "**/internal/service/install/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/permission"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/login"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/selfupdate"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/tokens"
+              desc: a service does not import another service; declare an interface at the consumer
+        service-selfupdate:
+          files:
+            - "**/internal/service/selfupdate/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/permission"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/login"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/install"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/tokens"
+              desc: a service does not import another service; declare an interface at the consumer
+        service-tokens:
+          files:
+            - "**/internal/service/tokens/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/permission"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/login"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/install"
+              desc: a service does not import another service; declare an interface at the consumer
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/selfupdate"
+              desc: a service does not import another service; declare an interface at the consumer
+        computer-admission:
+          files:
+            - "**/internal/service/computer/admission/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer$"
+              desc: state machines do not know the session
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/credential"
+              desc: state machines do not know each other
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/replies"
+              desc: state machines do not know each other
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/watch"
+              desc: state machines do not know each other
+        computer-credential:
+          files:
+            - "**/internal/service/computer/credential/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer$"
+              desc: state machines do not know the session
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
+              desc: state machines do not know each other
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/replies"
+              desc: state machines do not know each other
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/watch"
+              desc: state machines do not know each other
+        computer-replies:
+          files:
+            - "**/internal/service/computer/replies/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer$"
+              desc: state machines do not know the session
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
+              desc: state machines do not know each other
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/credential"
+              desc: state machines do not know each other
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/watch"
+              desc: state machines do not know each other
+        computer-watch:
+          files:
+            - "**/internal/service/computer/watch/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer$"
+              desc: state machines do not know the session
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
+              desc: state machines do not know each other
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/credential"
+              desc: state machines do not know each other
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/computer/replies"
+              desc: state machines do not know each other
+        localexec-execstream:
+          files:
+            - "**/internal/service/localexec/execstream/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec$"
+              desc: localexec modules do not know the dispatcher
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool"
+              desc: localexec modules do not know the tools
+        localexec-pathroot:
+          files:
+            - "**/internal/service/localexec/pathroot/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec$"
+              desc: localexec modules do not know the dispatcher
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool"
+              desc: localexec modules do not know the tools
+        localexec-shellsession:
+          files:
+            - "**/internal/service/localexec/shellsession/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec$"
+              desc: localexec modules do not know the dispatcher
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool"
+              desc: localexec modules do not know the tools
+        localexec-terminalfile:
+          files:
+            - "**/internal/service/localexec/terminalfile/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec$"
+              desc: localexec modules do not know the dispatcher
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool"
+              desc: localexec modules do not know the tools
+        tool-shell:
+          files:
+            - "**/internal/service/localexec/tool/shell/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec$"
+              desc: tools do not know the dispatcher
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/read"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/ls"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/transfer"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/discovery"
+              desc: tools do not import each other, except shell -> background
+        tool-background:
+          files:
+            - "**/internal/service/localexec/tool/background/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec$"
+              desc: tools do not know the dispatcher
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/shell"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/read"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/ls"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/transfer"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/discovery"
+              desc: tools do not import each other, except shell -> background
+        tool-read:
+          files:
+            - "**/internal/service/localexec/tool/read/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec$"
+              desc: tools do not know the dispatcher
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/shell"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/background"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/ls"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/transfer"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/discovery"
+              desc: tools do not import each other, except shell -> background
+        tool-ls:
+          files:
+            - "**/internal/service/localexec/tool/ls/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec$"
+              desc: tools do not know the dispatcher
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/shell"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/background"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/read"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/transfer"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/discovery"
+              desc: tools do not import each other, except shell -> background
+        tool-transfer:
+          files:
+            - "**/internal/service/localexec/tool/transfer/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec$"
+              desc: tools do not know the dispatcher
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/shell"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/background"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/read"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/ls"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/discovery"
+              desc: tools do not import each other, except shell -> background
+        tool-discovery:
+          files:
+            - "**/internal/service/localexec/tool/discovery/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec$"
+              desc: tools do not know the dispatcher
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/shell"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/background"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/read"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/ls"
+              desc: tools do not import each other, except shell -> background
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/transfer"
+              desc: tools do not import each other, except shell -> background
+        api:
+          files:
+            - "**/internal/api/**"
+            - "!$test"
+          deny:
+            - pkg: "github.com/exa-pub/grokbot-tunnel/internal/app"
+              desc: the command line knows the services, not the assembly
 
     testifylint:
       enable-all: true

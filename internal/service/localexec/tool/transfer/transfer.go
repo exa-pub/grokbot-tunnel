@@ -50,21 +50,6 @@ func (t *Transfer) Upload(path string, data []byte) error {
 	return atomicfile.WriteIn(t.root.FS(), rel, data, atomicfile.Options{Mode: mode, Umask: !existed, Prefix: ".grok-upload-"})
 }
 
-// mode returns the permissions of an existing target, or the default.
-func (t *Transfer) mode(rel string) (os.FileMode, bool, error) {
-	st, err := t.root.FS().Stat(rel)
-	if errors.Is(err, os.ErrNotExist) {
-		return 0o644, false, nil
-	}
-	if err != nil {
-		return 0, false, err
-	}
-	if !st.Mode().IsRegular() {
-		return 0, false, errors.New("target is not a regular file")
-	}
-	return st.Mode().Perm(), true, nil
-}
-
 // Download streams the file in chunks. The size is fixed when the download
 // starts, so a growing file is cut and a shrinking one ends early.
 func (t *Transfer) Download(ctx context.Context, requestID, path string, sink frames.Sink) error {
@@ -97,4 +82,19 @@ func (t *Transfer) Download(ctx context.Context, requestID, path string, sink fr
 			return nil
 		}
 	}
+}
+
+// mode returns the permissions of an existing target, or the default.
+func (t *Transfer) mode(rel string) (os.FileMode, bool, error) {
+	st, err := t.root.FS().Stat(rel)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0o644, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if !st.Mode().IsRegular() {
+		return 0, false, errors.New("target is not a regular file")
+	}
+	return st.Mode().Perm(), true, nil
 }

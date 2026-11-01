@@ -73,39 +73,6 @@ type discoveryLayout struct {
 	sessionDepth int
 }
 
-func (dd *Discoverer) discoveryLayout(source string) (discoveryLayout, error) {
-	home := dd.cfg.Home
-	if home == "" {
-		var err error
-		if home, err = os.UserHomeDir(); err != nil {
-			return discoveryLayout{}, err
-		}
-	}
-	switch source {
-	case frames.SourceCodex:
-		l := discoveryLayout{root: filepath.Join(home, ".codex"), promptDir: "prompts", sessionDir: "sessions", sessionDepth: 4}
-		if dir := envOverride(dd.cfg.CodexHome, "CODEX_HOME"); dir != "" {
-			l.root = dir
-		}
-		return l, nil
-	case frames.SourceClaudeCode:
-		l := discoveryLayout{
-			root:         filepath.Join(home, ".claude"),
-			global:       filepath.Join(home, ".claude.json"),
-			promptDir:    "commands",
-			promptDepth:  2,
-			sessionDir:   "projects",
-			sessionDepth: 2,
-		}
-		if dir := envOverride(dd.cfg.ClaudeConfigDir, "CLAUDE_CONFIG_DIR"); dir != "" {
-			l.root = dir
-			l.global = filepath.Join(dir, ".claude.json")
-		}
-		return l, nil
-	}
-	return discoveryLayout{}, errUnsupportedSource
-}
-
 func envOverride(value, key string) string {
 	if value == "" {
 		value = os.Getenv(key)
@@ -162,4 +129,37 @@ func (dd *Discoverer) Discover(ctx context.Context, source string) ([]byte, erro
 		result.LastActiveAtMS = max(result.LastActiveAtMS, sessions[0].OccurredAtMS)
 	}
 	return json.Marshal(result)
+}
+
+func (dd *Discoverer) discoveryLayout(source string) (discoveryLayout, error) {
+	home := dd.cfg.Home
+	if home == "" {
+		var err error
+		if home, err = os.UserHomeDir(); err != nil {
+			return discoveryLayout{}, err
+		}
+	}
+	switch source {
+	case frames.SourceCodex:
+		l := discoveryLayout{root: filepath.Join(home, ".codex"), promptDir: "prompts", sessionDir: "sessions", sessionDepth: 4}
+		if dir := envOverride(dd.cfg.CodexHome, "CODEX_HOME"); dir != "" {
+			l.root = dir
+		}
+		return l, nil
+	case frames.SourceClaudeCode:
+		l := discoveryLayout{
+			root:         filepath.Join(home, ".claude"),
+			global:       filepath.Join(home, ".claude.json"),
+			promptDir:    "commands",
+			promptDepth:  2,
+			sessionDir:   "projects",
+			sessionDepth: 2,
+		}
+		if dir := envOverride(dd.cfg.ClaudeConfigDir, "CLAUDE_CONFIG_DIR"); dir != "" {
+			l.root = dir
+			l.global = filepath.Join(dir, ".claude.json")
+		}
+		return l, nil
+	}
+	return discoveryLayout{}, errUnsupportedSource
 }

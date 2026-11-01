@@ -45,27 +45,6 @@ type Client struct {
 	UserAgent string
 }
 
-func (c *Client) base() string {
-	if c.Base != "" {
-		return strings.TrimRight(c.Base, "/")
-	}
-	return Repo
-}
-
-func (c *Client) arch() string {
-	if c.Arch != "" {
-		return c.Arch
-	}
-	return runtime.GOARCH
-}
-
-func (c *Client) httpClient() *http.Client {
-	if c.HTTP != nil {
-		return c.HTTP
-	}
-	return http.DefaultClient
-}
-
 // Latest returns the tag of the latest release. GitHub redirects
 // /releases/latest to the release page, which avoids the rate-limited API.
 func (c *Client) Latest(ctx context.Context) (string, error) {
@@ -181,4 +160,25 @@ func extract(archive []byte, name string) ([]byte, error) {
 		}
 		return io.ReadAll(tr)
 	}
+}
+
+func (c *Client) base() string {
+	if c.Base != "" {
+		return strings.TrimRight(c.Base, "/")
+	}
+	return Repo
+}
+
+func (c *Client) arch() string {
+	if c.Arch != "" {
+		return c.Arch
+	}
+	return runtime.GOARCH
+}
+
+func (c *Client) httpClient() *http.Client {
+	if c.HTTP != nil {
+		return c.HTTP
+	}
+	return http.DefaultClient
 }

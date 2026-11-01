@@ -108,6 +108,13 @@ func (s *TokenSource) Token(ctx context.Context, force bool) (string, error) {
 	return id.AccessToken, nil
 }
 
+// Snapshot returns the identity without racing token rotation.
+func (s *TokenSource) Snapshot() entity.Identity {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Identity
+}
+
 // lock takes the store lock, failing only if ctx ends. An unwritable store
 // must not stop the refresh itself, so other errors leave it unlocked.
 func (s *TokenSource) lock(ctx context.Context) (func(), error) {
@@ -140,11 +147,4 @@ func (s *TokenSource) reload() (onDisk string, persist bool) {
 		s.Identity = disk
 	}
 	return disk.RefreshToken, true
-}
-
-// Snapshot returns the identity without racing token rotation.
-func (s *TokenSource) Snapshot() entity.Identity {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.Identity
 }

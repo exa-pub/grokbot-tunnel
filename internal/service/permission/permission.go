@@ -52,28 +52,6 @@ func (p *Policy) Standing() entity.Mode {
 	return p.Mode
 }
 
-func (p *Policy) setStanding(mode entity.Mode) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.Mode = mode
-}
-
-// decide resolves the request without asking the user. ok is false when the
-// user has to be prompted.
-func (p *Policy) decide(server, approved bool) (ok bool, err error) {
-	switch {
-	case p.Standing() == entity.ModeNever:
-		return true, ErrDisabled
-	case server && approved:
-		return true, nil
-	case server:
-		return true, ErrRefused
-	case p.Standing() == entity.ModeAlways:
-		return true, nil
-	}
-	return false, nil
-}
-
 // Allow returns nil if action may run. When server is set, the server's
 // approval flag is authoritative and the user is never prompted.
 func (p *Policy) Allow(ctx context.Context, action string, server, approved bool) error {
@@ -126,3 +104,25 @@ func (p *Policy) promptSlot() chan struct{} {
 }
 
 func (p *Policy) interactive() bool { return p.Prompter != nil && p.Prompter.Interactive() }
+
+func (p *Policy) setStanding(mode entity.Mode) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Mode = mode
+}
+
+// decide resolves the request without asking the user. ok is false when the
+// user has to be prompted.
+func (p *Policy) decide(server, approved bool) (ok bool, err error) {
+	switch {
+	case p.Standing() == entity.ModeNever:
+		return true, ErrDisabled
+	case server && approved:
+		return true, nil
+	case server:
+		return true, ErrRefused
+	case p.Standing() == entity.ModeAlways:
+		return true, nil
+	}
+	return false, nil
+}

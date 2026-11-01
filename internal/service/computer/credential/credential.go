@@ -62,17 +62,6 @@ func (m *Manager) Current() entity.Credential { return m.c }
 // Issuing reports whether an issue is in flight.
 func (m *Manager) Issuing() bool { return m.issuing }
 
-// renewAt returns when the credential should be renewed: Margin before it
-// expires, or halfway through its lifetime if that is shorter.
-func (m *Manager) renewAt() time.Time {
-	expiresAt := time.UnixMilli(m.c.ExpiresAtMS)
-	margin := Margin
-	if !m.issuedAt.IsZero() {
-		margin = min(margin, expiresAt.Sub(m.issuedAt)/2)
-	}
-	return expiresAt.Add(-margin)
-}
-
 // Ensure reports whether a usable credential is available, and whether the
 // caller should issue a new one now, which it then marks in flight. While an
 // issue is in flight or backing off, the old credential keeps serving until
@@ -168,4 +157,15 @@ func Removed(err error) bool {
 		}
 	}
 	return false
+}
+
+// renewAt returns when the credential should be renewed: Margin before it
+// expires, or halfway through its lifetime if that is shorter.
+func (m *Manager) renewAt() time.Time {
+	expiresAt := time.UnixMilli(m.c.ExpiresAtMS)
+	margin := Margin
+	if !m.issuedAt.IsZero() {
+		margin = min(margin, expiresAt.Sub(m.issuedAt)/2)
+	}
+	return expiresAt.Add(-margin)
 }
