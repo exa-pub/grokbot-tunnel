@@ -28,7 +28,7 @@ func New(root *pathroot.Root) *Executor { return &Executor{root: root} }
 // Execute reads args.Path and sends the read result. A path outside the root
 // fails the request instead of producing a result, as on the desktop.
 func (rd *Executor) Execute(ctx context.Context, x *agentv1.ReadArgs, send execstream.Send) error {
-	rel, err := rd.root.Relative(x.Path)
+	rel, err := rd.root.Check(x.Path)
 	if err != nil {
 		return err
 	}

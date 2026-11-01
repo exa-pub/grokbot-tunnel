@@ -1,6 +1,7 @@
 package localexec
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -30,10 +31,9 @@ func TestBackgroundReplaysForegroundState(t *testing.T) {
 		if !strings.Contains(string(data), "bg-fn-ok") || strings.Count(string(data), "exit_code:") != 1 {
 			t.Fatalf("%q", data)
 		}
-		// Background commands do not change the foreground state. ≠: on the
-		// desktop a background command that ends without abort writes its
-		// state back to the shared session (rnd-v2/q4-background-state.md).
-		expectStdout(t, e, `printf %s "$BG_VAR"`, "1")
+		// D3: like the desktop, a background command that ends on its own
+		// writes its state back to the session (rnd-v2/q4-background-state.md).
+		expectStdout(t, e, `printf %s "$BG_VAR"`, "2")
 	})
 }
 
@@ -73,8 +73,10 @@ func TestTerminalFooterAndStatus(t *testing.T) {
 			e := setup(t)
 			args := map[string]any{"command": tc.command}
 			if kind == "shellStreamArgs" {
+				// The terminal file exists once the command goes to the background.
+				args["command"] = "sleep 0.3; " + tc.command
 				args["timeoutBehavior"] = "TIMEOUT_BEHAVIOR_BACKGROUND"
-				args["timeout"] = 5000
+				args["timeout"] = 50
 			}
 			b, _ := json.Marshal(map[string]any{kind: args})
 			collect(t, e, execFrame(string(b)))
@@ -95,7 +97,9 @@ func waitTerminal(t *testing.T, e *Executor, name string) string {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		data, _ := os.ReadFile(filepath.Join(e.Root, "terminals", name))
-		if terminalfile.Ended(data) {
+		// A command may print a footer of its own; the real one also ends the
+		// running status.
+		if terminalfile.Ended(data) && !bytes.Contains(data, []byte(terminalfile.StatusField("running"))) {
 			return string(data)
 		}
 		if time.Now().After(deadline) {
@@ -135,4 +139,30 @@ func TestShellPlainOutputEnv(t *testing.T) {
 		expectStdout(t, e, `printf '%s %s %s %s' "$TERM" "$NO_COLOR" "$FORCE_COLOR" "$_ZO_DOCTOR"; export TERM=vt100`, "dumb 1 0 0")
 		expectStdout(t, e, `printf %s "$TERM"`, "vt100")
 	})
+}
+
+// D3: the command that ends last wins: a background command that started
+// before a foreground cd and ends after it overwrites the session's cwd.
+func TestBackgroundStateLastWriterWins(t *testing.T) {
+	e := setup(t)
+	other := t.TempDir()
+	collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"sleep 0.3; cd /"}}`))
+	runShell(t, e, "cd "+other)
+	waitTerminal(t, e, "1.txt")
+	expectStdout(t, e, "pwd", "/\n")
+}
+
+// D3: a command moved to the background by its timeout writes its state when
+// it ends on its own; one killed by the hard timeout does not.
+func TestDetachedCommandState(t *testing.T) {
+	e := setup(t)
+	runShell(t, e, "export KEEP=0")
+	collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 0.2; export KEEP=1",`+
+		`"timeout":50,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`))
+	waitTerminal(t, e, "1.txt")
+	expectStdout(t, e, `printf %s "$KEEP"`, "1")
+	collect(t, e, execFrame(`{"shellStreamArgs":{"command":"sleep 5; export KEEP=2",`+
+		`"timeout":50,"hardTimeout":300,"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`))
+	waitTerminal(t, e, "2.txt")
+	expectStdout(t, e, `printf %s "$KEEP"`, "1")
 }

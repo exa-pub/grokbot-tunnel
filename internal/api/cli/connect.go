@@ -26,7 +26,7 @@ func newConnectCommand(a App, clientVersion *string) *cobra.Command {
 // connectFlags defines the flags that configure connect, shared by connect
 // and install.
 func connectFlags(f *pflag.FlagSet, root, permission, label *string, debug *bool, defaultPermission string) {
-	f.StringVar(root, "root", "", "root for file tools and shell working directories (default: home directory)")
+	f.StringVar(root, "root", "", "root for file tools and default directory of commands (default: home directory)")
 	f.StringVar(permission, "permission", defaultPermission, "ask, always, or never")
 	f.StringVar(label, "label", "", "computer label")
 	f.BoolVar(debug, "debug", false, "log raw request JSON (may contain sensitive data)")

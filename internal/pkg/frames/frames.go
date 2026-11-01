@@ -5,6 +5,7 @@ package frames
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -37,7 +38,22 @@ func Reject(f *aiserverv1.GrokBotUserComputerRequestFrame, err error, sink Sink)
 	return sink(resp)
 }
 
-// Canceled closes work canceled before an exec ID was assigned.
+// ErrCanceledBeforeStart answers a request canceled while it waited to run,
+// in the desktop's words (yae).
+//
+//nolint:revive,staticcheck // user-facing sentence
+var ErrCanceledBeforeStart = errors.New("Cancelled before it started on the user's computer.") //nolint:misspell // desktop text
+
+// CanceledBeforeStart answers a request that the server canceled before it
+// started, like the desktop: an exec throws, other requests get their error
+// frame.
+func CanceledBeforeStart(f *aiserverv1.GrokBotUserComputerRequestFrame, sink Sink) error {
+	return Reject(f, ErrCanceledBeforeStart, sink)
+}
+
+// Canceled closes work canceled after it was admitted but before an exec ID
+// was assigned, like the desktop inside withInflight: an exec gets
+// streamClose{0}.
 func Canceled(f *aiserverv1.GrokBotUserComputerRequestFrame, sink Sink) error {
 	if f.GetExec() == nil {
 		return Reject(f, context.Canceled, sink)
@@ -56,11 +72,16 @@ func File(requestID string, data []byte, seq uint32, last bool) *aiserverv1.Grok
 	}
 }
 
-// Throw ends exec execID with err.
+// Throw ends exec execID with err. An err with a StackTrace() string method
+// in its chain also fills the throw's stack trace.
 func Throw(execID uint32, err error) *agentv1.ExecClientControlMessage {
-	return &agentv1.ExecClientControlMessage{Message: &agentv1.ExecClientControlMessage_Throw{
-		Throw: &agentv1.ExecClientThrow{Id: execID, Error: err.Error()},
-	}}
+	throw := &agentv1.ExecClientThrow{Id: execID, Error: err.Error()}
+	var traced interface{ StackTrace() string }
+	if errors.As(err, &traced) {
+		trace := traced.StackTrace()
+		throw.StackTrace = &trace
+	}
+	return &agentv1.ExecClientControlMessage{Message: &agentv1.ExecClientControlMessage_Throw{Throw: throw}}
 }
 
 // Close ends exec execID successfully.

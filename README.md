@@ -48,7 +48,8 @@ on failure and keeps itself up to date.
 
    `--permission` decides what the agent may do, since the service has no
    terminal to ask you in: `always` runs every action the agent requests,
-   `ask` runs only the actions you approve in Grok Bot, `never` refuses all.
+   `ask` runs only the actions you approve in Grok Bot, `never` refuses all
+   unless Grok Bot manages permissions itself (see below).
 
 The service starts at boot, restarts on failure and updates grokbot-tunnel
 daily. Check on it with:
@@ -78,8 +79,9 @@ run `install` again with the new ones.
 With `ask`, the service runs only actions approved in Grok Bot, and `connect`
 in a terminal asks there: `y` allows the action, `a` allows all actions until
 the end of the session, anything else refuses it. If Grok Bot manages
-permissions itself, the tunnel never asks and runs only the actions Grok Bot
-approved.
+permissions itself, the tunnel never asks and runs exactly the actions Grok Bot
+approved, whatever `--permission` says. To refuse all actions then, stop the
+tunnel (`grokbot-tunnel uninstall`, or stop `connect`).
 
 ## Managing the service
 
@@ -137,8 +139,9 @@ tunnel runs per user at a time, so stop the service first
 
 ## Security
 
-- Commands run with your privileges. `--root` limits only file operations and
-  the starting directory, not what commands can access. Codex and Claude Code
+- Commands run with your privileges. `--root` limits only file operations;
+  commands start in it unless the agent asks for another directory, and can
+  access anything you can. Codex and Claude Code
   settings are read from the home directory even if it is outside `--root`.
 - Tokens are stored unencrypted in `~/.grok/bot-tunnel/`, readable only by you.
 - `--debug` logs requests in full, including commands and file contents; for

@@ -5,6 +5,9 @@ import (
 	"log"
 	"time"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
+
 	"connectrpc.com/connect"
 
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
@@ -83,8 +86,12 @@ func (s *session) shutdown() {
 	if s.watchCancel != nil {
 		s.watchCancel()
 	}
+	// Like the desktop, requests that never started learn that the computer
+	// stopped serving.
 	for _, t := range s.admit.Drop() {
-		closeCanceled(t.Frame, s.out.Sink)
+		if err := frames.Reject(t.Frame, admission.ErrStopped, s.out.Sink); err != nil {
+			log.Printf("reject %s: %v", t.ID, err)
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()

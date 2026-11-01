@@ -103,7 +103,7 @@ func (s *Session) Release() { <-s.foreground }
 
 // Cwd resolves the working directory of a command: path, or the state's cwd
 // if path is empty.
-func (s *Session) Cwd(path string, st State) (dir, warning string, err error) {
+func (s *Session) Cwd(path string, st State) (dir, warning string) {
 	if path == "" && st.cwd != "" {
 		path = st.cwd
 	}
@@ -154,8 +154,8 @@ func (s *Session) Init(ctx context.Context) error {
 // Adopt returns the state a foreground command left in its snapshot or,
 // if it ended the shell itself, in the fallback snapshot of its EXIT trap,
 // together with a notice for the agent, if any. A command that left no state
-// returns nil. A cwd outside Root is not kept; the next command starts where
-// this one did.
+// returns nil. A cwd that no longer exists is not kept; the next command
+// starts where this one did.
 func (s *Session) Adopt(snapshot, fallback *os.File, cwd string) (*State, string) {
 	st, ok := readState(snapshot)
 	if !ok {
@@ -174,11 +174,41 @@ func (s *Session) Adopt(snapshot, fallback *os.File, cwd string) (*State, string
 			"environment this one started with.\n"
 	}
 	if !s.root.IsDir(st.cwd) {
-		notice += fmt.Sprintf("Working directory %s is outside %s or no longer exists; the next command starts in %s.\n",
-			st.cwd, s.root.Dir(), cwd)
+		notice += fmt.Sprintf("Working directory %s no longer exists; the next command starts in %s.\n", st.cwd, cwd)
 		st.cwd = cwd
 	}
 	return &st, notice
+}
+
+// Commit writes the state that a command which ended on its own, started in
+// cwd, left in its snapshot files to the session, like the desktop's shell
+// state after every command that was not aborted. Nothing happens if the
+// command left no state.
+func (s *Session) Commit(snapshot, fallback *os.File, cwd string) {
+	if st, _ := s.Adopt(snapshot, fallback, cwd); st != nil {
+		s.SetState(*st)
+	}
+}
+
+// StateFiles returns the files a command saves its state to: the snapshot,
+// unlinked, and the fallback of its EXIT trap, linked until the command
+// exits. Close them with CloseStateFiles.
+func StateFiles() (snapshot, fallback *os.File, err error) {
+	if snapshot, err = proc.TempFile("grok-shell-state-", ""); err != nil {
+		return nil, nil, err
+	}
+	if fallback, err = os.CreateTemp("", "grok-shell-state-"); err != nil {
+		proc.CloseLogged(snapshot)
+		return nil, nil, err
+	}
+	return snapshot, fallback, nil
+}
+
+// CloseStateFiles closes and removes the files of StateFiles.
+func CloseStateFiles(snapshot, fallback *os.File) {
+	proc.CloseLogged(snapshot)
+	proc.RemoveLogged(fallback.Name())
+	proc.CloseLogged(fallback)
 }
 
 func (s *Session) profileState() (State, error) {

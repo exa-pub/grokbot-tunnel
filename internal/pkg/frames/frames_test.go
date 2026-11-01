@@ -139,3 +139,14 @@ func TestUnrecognized(t *testing.T) {
 	assert.False(t, frames.Unrecognized(discover(frames.SourceClaudeCode)))
 	assert.False(t, frames.Unrecognized(&request{Frame: &aiserverv1.GrokBotUserComputerRequestFrame_Exec{}}))
 }
+
+// D7: a request canceled while it waited throws in the desktop's words.
+func TestCanceledBeforeStart(t *testing.T) {
+	exec := &request{RequestId: "e", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_Exec{Exec: &aiserverv1.GrokBotUserComputerExec{}}}
+	f := collect(t, func(s frames.Sink) error { return frames.CanceledBeforeStart(exec, s) })
+	throw := control(t, f).GetThrow()
+	require.NotNil(t, throw)
+	assert.Zero(t, throw.GetId())
+	assert.Equal(t, frames.ErrCanceledBeforeStart.Error(), throw.GetError())
+	assert.Nil(t, throw.StackTrace)
+}

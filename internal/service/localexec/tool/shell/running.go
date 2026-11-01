@@ -4,9 +4,12 @@ import (
 	"context"
 	"io"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
@@ -31,19 +34,16 @@ type runningShell struct {
 	out      *shellOutput
 	stdout   *streamWriter
 	stderr   *streamWriter
-	drained  sync.WaitGroup      // the drainers have hit EOF
-	done     chan struct{}       // closed once the process has exited and its output is finished
-	shellID  uint32              // terminal file number, if the command may be backgrounded
-	file     *os.File            // terminal file, if the command may be backgrounded
-	statusAt int64               // offset of the status in the terminal file
+	drained  sync.WaitGroup // the drainers have hit EOF
+	done     chan struct{}  // closed once the process has exited and its output is finished
+	started  time.Time
 	snapshot *os.File            // receives the state on exit
 	fallback *os.File            // receives the state from the EXIT trap; linked until the shell exits
 	final    *shellsession.State // the state the command left, once it has exited
+	killed   atomic.Bool         // a detached command was killed by the hard timeout
 }
 
-// start launches the command with its output pipes and their drainers. The
-// output lock is held until the terminal header is written so that the header
-// precedes any output.
+// start launches the command with its output pipes and their drainers.
 func (sh *runningShell) start() error {
 	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
@@ -56,20 +56,11 @@ func (sh *runningShell) start() error {
 		return err
 	}
 	sh.cmd.Stdout, sh.cmd.Stderr = stdoutW, stderrW
-	sh.out.mu.Lock()
 	err = sh.cmd.Start()
 	// Only the command keeps the write ends, so the drainers see EOF once it
 	// and its children are gone.
 	proc.CloseLogged(stdoutW)
 	proc.CloseLogged(stderrW)
-	if err == nil && sh.file != nil {
-		sh.statusAt, err = terminalfile.WriteHeader(sh.file, sh.cwd, sh.args.Command, sh.cmd.Process.Pid, "")
-	}
-	sh.out.mu.Unlock()
-	if err != nil && sh.cmd.Process != nil {
-		proc.Kill(sh.cmd)
-		proc.Wait(sh.cmd)
-	}
 	if err != nil {
 		proc.CloseLogged(stdout)
 		proc.CloseLogged(stderr)
@@ -91,19 +82,6 @@ func (sh *runningShell) drain(r *os.File, w *streamWriter) {
 	}
 }
 
-func (sh *runningShell) closeFiles() {
-	if sh.file != nil {
-		proc.CloseLogged(sh.file)
-	}
-	if sh.snapshot != nil {
-		proc.CloseLogged(sh.snapshot)
-	}
-	if sh.fallback != nil {
-		proc.RemoveLogged(sh.fallback.Name())
-		proc.CloseLogged(sh.fallback)
-	}
-}
-
 // reap waits for the process and its output and finalizes the output.
 func (sh *runningShell) reap() {
 	proc.Wait(sh.cmd)
@@ -119,12 +97,16 @@ func (sh *runningShell) reap() {
 	}
 	sh.stdout.flush()
 	sh.stderr.flush()
-	sh.out.finish()
-	if sh.file != nil {
-		if err := terminalfile.AppendExit(sh.file, proc.ExitCode(sh.cmd.ProcessState), sh.statusAt); err != nil {
-			log.Printf("terminal %d: %v", sh.shellID, err)
+	if f, shellID, statusAt := sh.out.finish(); f != nil {
+		// A detached command writes its state once it ends on its own, like
+		// the desktop, before the footer: the command that ends last wins.
+		if !sh.killed.Load() {
+			sh.ex.session.Commit(sh.snapshot, sh.fallback, sh.cwd)
 		}
-		proc.CloseLogged(sh.file)
+		if err := terminalfile.AppendExit(f, proc.ExitCode(sh.cmd.ProcessState), statusAt); err != nil {
+			log.Printf("terminal %d: %v", shellID, err)
+		}
+		proc.CloseLogged(f)
 	}
 	close(sh.done)
 }
@@ -140,8 +122,9 @@ func (sh *runningShell) exited() bool {
 }
 
 func (sh *runningShell) wait(ctx context.Context) error {
-	soft, stopSoft := proc.Timer(sh.args.Timeout)
-	defer stopSoft()
+	timeout := softTimeout(sh.args)
+	soft := time.NewTimer(time.Duration(max(timeout, 0)) * time.Millisecond) // 0 fires at once
+	defer soft.Stop()
 	hard, stopHard := proc.Timer(sh.args.GetHardTimeout())
 	defer stopHard()
 	reason := agentv1.ShellAbortReason_SHELL_ABORT_REASON_UNSPECIFIED
@@ -150,11 +133,17 @@ func (sh *runningShell) wait(ctx context.Context) error {
 	case <-ctx.Done():
 		reason = agentv1.ShellAbortReason_SHELL_ABORT_REASON_USER_ABORT
 	case <-hard:
+		if sh.canBackground() && !sh.exited() {
+			// Like the desktop, the stream ends without an exit.
+			proc.Kill(sh.cmd)
+			<-sh.done
+			return sh.out.sendErr()
+		}
 		reason = agentv1.ShellAbortReason_SHELL_ABORT_REASON_TIMEOUT
-	case <-soft:
+	case <-soft.C:
 		if sh.canBackground() && !sh.exited() {
 			stopHard()
-			return sh.detach()
+			return sh.detach(timeout)
 		}
 		reason = agentv1.ShellAbortReason_SHELL_ABORT_REASON_TIMEOUT
 	}
@@ -166,28 +155,44 @@ func (sh *runningShell) wait(ctx context.Context) error {
 	return sh.finish(reason)
 }
 
-// detach leaves the command running in the background, still enforcing the
-// hard timeout, and tells the agent where its output goes.
-func (sh *runningShell) detach() error {
-	sh.out.mu.Lock()
-	sh.out.detached = true
-	sh.out.mu.Unlock()
+// detach leaves the command running in the background, like the desktop's
+// adopt: its terminal file is created now, with the output so far, and the
+// agent learns the shell ID and how long the command ran in the foreground.
+// The hard timeout, counted from the start, still applies. A command that
+// exits meanwhile is reported as exited instead.
+func (sh *runningShell) detach(waited int32) error {
+	shellID, f, err := sh.ex.background.Terminal()
+	if err != nil {
+		return err
+	}
+	if !sh.out.detach(f, shellID, func(w io.Writer) (int64, error) {
+		return terminalfile.WriteHeaderAt(w, sh.cwd, sh.args.Command, sh.cmd.Process.Pid, sh.started, time.Now(), "")
+	}) {
+		proc.CloseLogged(f)
+		if err := sh.ex.background.Remove(shellID); err != nil {
+			log.Printf("terminal %d: %v", shellID, err)
+		}
+		<-sh.done
+		return sh.finish(agentv1.ShellAbortReason_SHELL_ABORT_REASON_UNSPECIFIED)
+	}
 	if hard := sh.args.GetHardTimeout(); hard > 0 {
-		remaining := time.Duration(hard-sh.args.Timeout) * time.Millisecond
+		remaining := time.Duration(hard)*time.Millisecond - time.Since(sh.started)
 		go func() {
 			select {
 			case <-sh.done:
 			case <-time.After(max(remaining, time.Millisecond)):
+				sh.killed.Store(true)
 				proc.Kill(sh.cmd)
 			}
 		}()
 	}
 	return sh.out.send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_Backgrounded{
 		Backgrounded: &agentv1.ShellStreamBackgrounded{
-			ShellId:          sh.shellID,
+			ShellId:          shellID,
 			Command:          sh.args.Command,
 			WorkingDirectory: sh.cwd,
 			Pid:              proc.PID(sh.cmd),
+			MsToWait:         &waited,
 			Reason:           agentv1.ShellBackgroundReason_SHELL_BACKGROUND_REASON_TIMEOUT.Enum(),
 		},
 	}}))
@@ -217,9 +222,8 @@ func (sh *runningShell) finish(reason agentv1.ShellAbortReason) error {
 			}
 		}
 	}
-	code := max(0, proc.ExitCode(sh.cmd.ProcessState))
 	return sh.out.send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_Exit{Exit: &agentv1.ShellStreamExit{
-		Code:        uint32(code), //nolint:gosec // non-negative
+		Code:        exitCode(sh.cmd.ProcessState),
 		Cwd:         cwd,
 		Aborted:     aborted,
 		AbortReason: &reason,
@@ -228,4 +232,16 @@ func (sh *runningShell) finish(reason agentv1.ShellAbortReason) error {
 
 func (sh *runningShell) canBackground() bool {
 	return sh.args.TimeoutBehavior == agentv1.TimeoutBehavior_TIMEOUT_BEHAVIOR_BACKGROUND
+}
+
+// exitCode is the exit code the desktop reports: Node's code, which is null
+// for a process killed by a signal, as an unsigned (code ?? -1) >>> 0.
+func exitCode(state *os.ProcessState) uint32 {
+	if state == nil {
+		return math.MaxUint32
+	}
+	if ws, ok := state.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		return math.MaxUint32
+	}
+	return uint32(state.ExitCode()) //nolint:gosec // -1 only for unfinished processes, as above
 }

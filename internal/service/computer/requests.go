@@ -48,7 +48,7 @@ func (s *session) cancel(id string) {
 
 // closeCanceled answers a request canceled before it started.
 func closeCanceled(f *requestFrame, sink frames.Sink) {
-	if err := frames.Canceled(f, sink); err != nil {
+	if err := frames.CanceledBeforeStart(f, sink); err != nil {
 		log.Printf("cancel %s: %v", f.RequestId, err)
 	}
 }

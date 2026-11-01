@@ -115,12 +115,14 @@ func (p *Policy) setStanding(mode entity.Mode) {
 // user has to be prompted.
 func (p *Policy) decide(server, approved bool) (ok bool, err error) {
 	switch {
-	case p.Standing() == entity.ModeNever:
-		return true, ErrDisabled
+	// As on the desktop, a server-authoritative request is decided by the
+	// server alone, even under a local "never".
 	case server && approved:
 		return true, nil
 	case server:
 		return true, ErrRefused
+	case p.Standing() == entity.ModeNever:
+		return true, ErrDisabled
 	case p.Standing() == entity.ModeAlways:
 		return true, nil
 	}

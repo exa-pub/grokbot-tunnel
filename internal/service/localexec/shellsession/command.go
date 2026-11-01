@@ -23,16 +23,17 @@ func Foreground(st State, cwd, cmd string, snapshot, fallback *os.File) (c *exec
 }
 
 // Background returns the shell that runs cmd in cwd with st replayed once a
-// line is written to the other end of gate. It does not save the state.
-// release closes the input files once the shell has started or failed to.
-func Background(st State, cwd, cmd string, gate *os.File) (c *exec.Cmd, release func(), err error) {
+// line is written to the other end of gate, and saves its state like
+// Foreground. release closes the input files once the shell has started or
+// failed to.
+func Background(st State, cwd, cmd string, gate, snapshot, fallback *os.File) (c *exec.Cmd, release func(), err error) {
 	replay, command, err := inputFiles(st, cmd)
 	if err != nil {
 		return nil, nil, err
 	}
 	sh := userShell()
-	c = newCmd(sh, st, cwd, sh.args("-c", sh.backgroundScript(), "grok-background")...)
-	c.ExtraFiles = []*os.File{replay, gate, command}
+	c = newCmd(sh, st, cwd, sh.args("-c", sh.backgroundScript(), "grok-background", fallback.Name())...)
+	c.ExtraFiles = []*os.File{replay, snapshot, command, gate}
 	return detached(c), func() { proc.CloseLogged(replay); proc.CloseLogged(command) }, nil
 }
 

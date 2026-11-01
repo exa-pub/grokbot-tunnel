@@ -1,17 +1,16 @@
 // Package shell runs foreground commands for the agent and streams their
-// output, like the desktop's local-exec shell stream executor: one command at
-// a time in the shared shell session, soft and hard timeouts, cancellation,
-// and on a soft timeout with TIMEOUT_BEHAVIOR_BACKGROUND a move to the
-// background with the output going to a terminal file.
+// output, like the desktop's local-exec shell stream executor
+// (LocalShellStreamExecutor): one command at a time in the shared shell
+// session, soft and hard timeouts, cancellation, and on a soft timeout with
+// TIMEOUT_BEHAVIOR_BACKGROUND a move to the background with the output going
+// to a terminal file.
 package shell
 
 import (
 	"context"
-	"os"
 	"time"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
-	"github.com/exa-pub/grokbot-tunnel/internal/pkg/proc"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/shellsession"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/background"
@@ -19,6 +18,8 @@ import (
 
 const (
 	streamChunk = 16 << 10
+	// defaultTimeout is the desktop's soft timeout when none is given (W_r).
+	defaultTimeout = 30_000 // ms
 	// waitDelay bounds how long a finished command's output is still
 	// forwarded while background jobs it started hold its pipes open.
 	waitDelay = time.Second
@@ -38,21 +39,11 @@ func New(session *shellsession.Session, background *background.Executor) *Execut
 
 // Execute runs a foreground command in its own process group and streams its
 // output. Foreground commands run one at a time and share cwd, environment,
-// options and functions. On soft timeout the command is either killed or, with
-// TIMEOUT_BEHAVIOR_BACKGROUND, left running with output going to a terminal
-// file.
+// options and functions. On the soft timeout (softTimeout) the command is
+// either killed or, with TIMEOUT_BEHAVIOR_BACKGROUND, left running with its
+// output going to a terminal file. isBackground only changes the soft
+// timeout, as on the desktop.
 func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send execstream.Send) error {
-	if x.IsBackground {
-		v, err := ex.background.Spawn(ctx, x.Command, x.WorkingDirectory)
-		if err != nil {
-			return err
-		}
-		return send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_Backgrounded{
-			Backgrounded: &agentv1.ShellStreamBackgrounded{
-				ShellId: v.ShellId, Command: v.Command, WorkingDirectory: v.WorkingDirectory, Pid: v.Pid,
-			},
-		}}))
-	}
 	if err := ex.session.Acquire(ctx); err != nil {
 		return err
 	}
@@ -61,17 +52,14 @@ func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send exec
 		return err
 	}
 	st := ex.session.State()
-	cwd, warning, err := ex.session.Cwd(x.WorkingDirectory, st)
-	if err != nil {
-		return err
-	}
+	cwd, warning := ex.session.Cwd(x.WorkingDirectory, st)
 	if warning != "" {
-		if err = send(shellMessage(stderrEvent(warning))); err != nil {
+		if err := send(shellMessage(stderrEvent(warning))); err != nil {
 			return err
 		}
 	}
 	start := &agentv1.ShellStream_Start{Start: &agentv1.ShellStreamStart{Command: &x.Command}}
-	if err = send(shellMessage(&agentv1.ShellStream{Event: start})); err != nil {
+	if err := send(shellMessage(&agentv1.ShellStream{Event: start})); err != nil {
 		return err
 	}
 	sh, err := ex.startShell(x, cwd, st, send)
@@ -82,35 +70,38 @@ func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send exec
 	if sh.final != nil {
 		ex.session.SetState(*sh.final)
 	}
-	// A backgrounded command's state is discarded: the next command starts
-	// from the current state.
 	go func() {
 		<-sh.done
-		proc.CloseLogged(sh.snapshot)
-		proc.CloseLogged(sh.fallback)
+		shellsession.CloseStateFiles(sh.snapshot, sh.fallback)
 	}()
 	return err
 }
 
+// softTimeout returns the soft timeout in milliseconds, like the desktop's
+// Nye: the given one, else 0 for background commands, BACKGROUND and commands
+// with a hard timeout, else 30 s. Without BACKGROUND a timeout of 0 aborts the
+// command at once, as on the desktop.
+func softTimeout(x *agentv1.ShellArgs) int32 {
+	switch {
+	case x.Timeout != 0:
+		return x.Timeout
+	case x.IsBackground || x.TimeoutBehavior == agentv1.TimeoutBehavior_TIMEOUT_BEHAVIOR_BACKGROUND || x.GetHardTimeout() > 0:
+		return 0
+	}
+	return defaultTimeout
+}
+
 func (ex *Executor) startShell(x *agentv1.ShellArgs, cwd string, st shellsession.State, send execstream.Send) (_ *runningShell, err error) {
-	sh := &runningShell{ex: ex, args: x, cwd: cwd, out: &shellOutput{send: send}, done: make(chan struct{})}
+	sh := &runningShell{ex: ex, args: x, cwd: cwd, out: &shellOutput{send: send}, done: make(chan struct{}), started: time.Now()}
+	sh.out.hold = sh.canBackground()
+	if sh.snapshot, sh.fallback, err = shellsession.StateFiles(); err != nil {
+		return nil, err
+	}
 	defer func() {
 		if err != nil {
-			sh.closeFiles()
+			shellsession.CloseStateFiles(sh.snapshot, sh.fallback)
 		}
 	}()
-	if sh.canBackground() {
-		if sh.shellID, sh.file, err = ex.background.Terminal(); err != nil {
-			return nil, err
-		}
-		sh.out.file = sh.file
-	}
-	if sh.snapshot, err = proc.TempFile("grok-shell-state-", ""); err != nil {
-		return nil, err
-	}
-	if sh.fallback, err = os.CreateTemp("", "grok-shell-state-"); err != nil {
-		return nil, err
-	}
 	var release func()
 	if sh.cmd, release, err = shellsession.Foreground(st, cwd, x.Command, sh.snapshot, sh.fallback); err != nil {
 		return nil, err

@@ -32,7 +32,7 @@ type Options struct {
 var errPermissionRequired = errors.New("--permission is required: " +
 	"\"always\" runs every action the agent requests; " +
 	"\"ask\" runs only actions approved in Grok Bot, since a service has no terminal to ask in; " +
-	"\"never\" refuses all actions")
+	"\"never\" refuses all actions, unless Grok Bot manages permissions itself")
 
 // serviceEnv lists the variables the service keeps from the environment of
 // install: the user manager starts services with a minimal PATH, and the

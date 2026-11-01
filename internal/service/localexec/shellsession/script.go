@@ -100,12 +100,11 @@ func (s shell) foregroundScript() string {
 		`builtin exit "$__grok_exit"`
 }
 
-// backgroundScript waits for a line on descriptor 4 before running the
-// command, so the terminal header is written before any output. It replays the
-// state but does not save it.
+// backgroundScript waits for a line on descriptor 6 before running the
+// command, so the terminal header is written before any output, and then runs
+// it like foregroundScript, which saves the state it leaves.
 func (s shell) backgroundScript() string {
-	return `IFS= builtin read -r __grok_start <&4; exec 4<&-; builtin unset __grok_start; ` +
-		s.prepare() + `builtin eval -- "$__grok_cmd"`
+	return `IFS= builtin read -r __grok_start <&6; exec 6<&-; builtin unset __grok_start; ` + s.foregroundScript()
 }
 
 // shellQuote quotes s as a single word for bash and zsh.

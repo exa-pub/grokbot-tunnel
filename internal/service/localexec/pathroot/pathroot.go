@@ -19,8 +19,29 @@ const MaxFile = 100 << 20
 // maxSymlinks bounds a chain of symlinks, like Linux's MAXSYMLINKS.
 const maxSymlinks = 40
 
-// ErrOutside refuses a path that leads outside the root lexically.
+// ErrOutside matches every *OutsideError.
 var ErrOutside = errors.New("path is outside the allowed local-exec root")
+
+// OutsideError refuses a path outside the root, in the desktop's words
+// (SandLocalExecPathError).
+type OutsideError struct {
+	Path    string // as requested
+	Symlink bool   // the path leads outside only through a symlink
+}
+
+func (e *OutsideError) Error() string {
+	if e.Symlink {
+		return "Path resolves through a symlink to outside the allowed local-exec root and was refused: " + e.Path
+	}
+	return "Path is outside the allowed local-exec root and was refused: " + e.Path
+}
+
+// Is makes errors.Is(err, ErrOutside) match.
+func (e *OutsideError) Is(target error) bool { return target == ErrOutside }
+
+// StackTrace is the first line of the desktop's stack trace for the error;
+// its frames are those of JavaScript and have no counterpart here.
+func (e *OutsideError) StackTrace() string { return "SandLocalExecPathError: " + e.Error() }
 
 // Root is an open root directory.
 type Root struct {
@@ -61,17 +82,42 @@ func (r *Root) Close() error { return r.fs.Close() }
 // relative to the root. It rejects lexical escapes; os.Root rejects symlink
 // escapes.
 func (r *Root) Relative(path string) (string, error) {
-	if path == "" {
-		path = "."
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(r.dir, path)
-	}
-	rel, err := filepath.Rel(r.dir, filepath.Clean(path))
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", ErrOutside
+	rel, ok := r.inside(path)
+	if !ok {
+		return "", &OutsideError{Path: path}
 	}
 	return rel, nil
+}
+
+// Check is Relative that also refuses a path whose existing part leads
+// outside the root through a symlink, like the desktop's check of file
+// paths. os.Root still guards the access itself.
+func (r *Root) Check(path string) (string, error) {
+	rel, err := r.Relative(path)
+	if err != nil {
+		return "", err
+	}
+	if _, ok := r.inside(resolveExisting(filepath.Join(r.dir, rel))); !ok {
+		return "", &OutsideError{Path: path, Symlink: true}
+	}
+	return rel, nil
+}
+
+// resolveExisting resolves the symlinks of the longest existing prefix of
+// path and appends the rest.
+func resolveExisting(path string) string {
+	rest := ""
+	for {
+		if resolved, err := filepath.EvalSymlinks(path); err == nil {
+			return filepath.Join(resolved, rest)
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return filepath.Join(path, rest)
+		}
+		rest = filepath.Join(filepath.Base(path), rest)
+		path = parent
+	}
 }
 
 // Escaped reports whether os.Root refused a path leading outside the root.
@@ -90,7 +136,7 @@ func FileTooLarge(size int64) error {
 // O_NONBLOCK keeps a FIFO from blocking until a writer appears; it does not
 // affect regular files.
 func (r *Root) OpenRegular(path string) (*os.File, error) {
-	rel, err := r.Relative(path)
+	rel, err := r.Check(path)
 	if err != nil {
 		return nil, err
 	}
@@ -144,4 +190,18 @@ func (r *Root) UploadTarget(rel string) (string, error) {
 		}
 	}
 	return "", syscall.ELOOP
+}
+
+func (r *Root) inside(path string) (string, bool) {
+	if path == "" {
+		path = "."
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(r.dir, path)
+	}
+	rel, err := filepath.Rel(r.dir, filepath.Clean(path))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return rel, true
 }

@@ -36,7 +36,7 @@ func lsMessage(r *agentv1.LsResult) *agentv1.ExecClientMessage {
 // Execute lists args.Path and sends the ls result. A path outside the root
 // fails the request instead of producing a result, as on the desktop.
 func (ls *Executor) Execute(ctx context.Context, x *agentv1.LsArgs, send execstream.Send) error {
-	rel, err := ls.root.Relative(x.Path)
+	rel, err := ls.root.Check(x.Path)
 	if err != nil {
 		return err
 	}

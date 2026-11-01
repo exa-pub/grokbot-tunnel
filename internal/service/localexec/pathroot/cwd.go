@@ -3,64 +3,76 @@ package pathroot
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 )
 
-// Cwd resolves a shell working directory. A missing directory falls back to
-// the root with a warning for the agent instead of failing the command.
-// ≠ desktop: a directory outside the root is refused; the desktop accepts any
-// existing directory (rnd-v2 Q2).
-func (r *Root) Cwd(path string) (dir, warning string, err error) {
-	rel, err := r.Relative(path)
-	if err != nil {
-		return "", "", err
+// Cwd resolves a shell working directory like the desktop: "~" and file://
+// URLs are expanded, a relative path is taken from the root, and any
+// existing directory is accepted, inside the root or not; the shell is not
+// confined. Otherwise the command runs in the root, with a warning for the
+// agent. An empty path is the root.
+func (r *Root) Cwd(path string) (dir, warning string) {
+	p := r.expand(path)
+	if p == "" {
+		return r.dir, ""
 	}
-	resolved, err := filepath.EvalSymlinks(filepath.Join(r.dir, rel))
-	if errors.Is(err, os.ErrNotExist) {
-		return r.dir, fmt.Sprintf("working directory %s does not exist on this machine; running in %s instead\n", path, r.dir), nil
+	if isDir(p) {
+		return p, ""
 	}
-	if err != nil {
-		return "", "", err
-	}
-	if _, err = r.Relative(resolved); err != nil {
-		return "", "", err
-	}
-	st, err := os.Stat(resolved)
-	if err != nil {
-		return "", "", err
-	}
-	if !st.IsDir() {
-		return "", "", errors.New("working directory is not a directory")
-	}
-	return resolved, "", nil
+	return r.dir, fmt.Sprintf("working directory %s does not exist on this machine; running in %s instead\n", path, r.dir)
 }
 
-// IsDir reports whether dir is a directory below the root.
+// IsDir reports whether dir, expanded like Cwd, is an existing directory.
 func (r *Root) IsDir(dir string) bool {
-	rel, err := r.Relative(dir)
-	if err != nil {
-		return false
-	}
-	info, err := r.fs.Stat(rel)
-	return err == nil && info.IsDir()
+	p := r.expand(dir)
+	return p != "" && isDir(p)
 }
 
-// CwdState describes a shell working directory for a failed request:
-// "exists" or "missing"; nil if it cannot be determined.
+// CwdState describes a shell working directory for a failed request, like
+// the desktop: "exists" or "missing"; nil if it cannot be determined.
 func (r *Root) CwdState(path string) *string {
-	rel, err := r.Relative(path)
-	if err != nil {
-		return nil
+	p := r.expand(path)
+	if p == "" {
+		p = r.dir
 	}
-	st, err := r.fs.Stat(rel)
+	st, err := os.Stat(p)
 	switch {
 	case err == nil && st.IsDir():
 		return proto.String("exists")
-	case errors.Is(err, os.ErrNotExist):
+	case err == nil, errors.Is(err, os.ErrNotExist), errors.Is(err, os.ErrInvalid):
 		return proto.String("missing")
 	}
 	return nil
+}
+
+// expand trims path, expands "~" and file:// URLs and makes a relative path
+// absolute below the root; empty stays empty.
+func (r *Root) expand(path string) string {
+	p := strings.TrimSpace(path)
+	switch {
+	case p == "":
+		return ""
+	case p == "~" || strings.HasPrefix(p, "~/"):
+		if home, err := os.UserHomeDir(); err == nil {
+			p = filepath.Join(home, strings.TrimPrefix(p, "~"))
+		}
+	case strings.HasPrefix(p, "file://"):
+		if u, err := url.Parse(p); err == nil {
+			p = u.Path
+		}
+	}
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(r.dir, p)
+	}
+	return filepath.Clean(p)
+}
+
+func isDir(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && st.IsDir()
 }

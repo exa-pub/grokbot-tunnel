@@ -30,14 +30,16 @@ func New(root *pathroot.Root) *Transfer { return &Transfer{root: root} }
 // file keeps its permissions; a new one gets 0644 less the umask. Readers
 // never see partial data.
 func (t *Transfer) Upload(path string, data []byte) error {
-	rel, err := t.root.Relative(path)
-	if err != nil {
-		return err
-	}
 	if len(data) > pathroot.MaxFile {
 		return pathroot.FileTooLarge(int64(len(data)))
 	}
-	if rel, err = t.root.UploadTarget(rel); err != nil {
+	rel, err := t.root.Check(path)
+	if err != nil {
+		return err
+	}
+	if rel, err = t.root.UploadTarget(rel); errors.Is(err, pathroot.ErrOutside) {
+		return &pathroot.OutsideError{Path: path, Symlink: true}
+	} else if err != nil {
 		return err
 	}
 	if err = t.root.FS().MkdirAll(filepath.Dir(rel), 0o755); err != nil {

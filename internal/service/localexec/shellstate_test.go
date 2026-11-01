@@ -165,16 +165,28 @@ func TestShellStartupFileClosingCommandDescriptor(t *testing.T) {
 	})
 }
 
-// Leaving Root with cd keeps the rest of the state; the next command starts
-// where the previous one did.
+// D4: leaving Root with cd is kept, like on the desktop; the next command
+// starts there with the rest of the state.
 func TestShellCwdOutsideRootKeepsState(t *testing.T) {
 	eachShell(t, func(t *testing.T, home string) {
 		e := setupHome(t, home)
 		r := runShell(t, e, "export KEPT=1; cd /")
-		if r.exit.Cwd != e.Root || !strings.Contains(r.stderr, "Working directory / is outside") {
-			t.Fatal(r.exit)
+		if r.exit.Cwd != "/" || r.stderr != "" {
+			t.Fatal(r.exit, r.stderr)
 		}
-		expectStdout(t, e, `printf '%s|' "$KEPT"; pwd`, "1|"+e.Root+"\n")
+		expectStdout(t, e, `printf '%s|' "$KEPT"; pwd`, "1|/\n")
+	})
+}
+
+// A working directory removed by the command is not kept; the next command
+// starts where this one did.
+func TestShellRemovedCwdNotKept(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		r := runShell(t, e, "mkdir gone && cd gone && rmdir ../gone")
+		if r.exit.Cwd != e.Root || !strings.Contains(r.stderr, "no longer exists") {
+			t.Fatal(r.exit, r.stderr)
+		}
 	})
 }
 

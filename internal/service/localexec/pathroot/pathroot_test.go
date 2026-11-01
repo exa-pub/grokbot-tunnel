@@ -56,43 +56,6 @@ func TestEscaped(t *testing.T) {
 	assert.False(t, pathroot.Escaped(nil))
 }
 
-func TestCwd(t *testing.T) {
-	r := open(t)
-	require.NoError(t, os.Mkdir(filepath.Join(r.Dir(), "d"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(r.Dir(), "f"), nil, 0o600))
-	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(r.Dir(), "escape")))
-
-	dir, warning, err := r.Cwd("d")
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(r.Dir(), "d"), dir)
-	assert.Empty(t, warning)
-
-	dir, warning, err = r.Cwd("missing")
-	require.NoError(t, err)
-	assert.Equal(t, r.Dir(), dir)
-	assert.Equal(t, "working directory missing does not exist on this machine; running in "+r.Dir()+" instead\n", warning)
-
-	_, _, err = r.Cwd("f")
-	require.EqualError(t, err, "working directory is not a directory")
-	_, _, err = r.Cwd("/")
-	require.ErrorIs(t, err, pathroot.ErrOutside)
-	_, _, err = r.Cwd("escape")
-	require.ErrorIs(t, err, pathroot.ErrOutside)
-
-	assert.True(t, r.IsDir("d"))
-	assert.False(t, r.IsDir("f"))
-	assert.False(t, r.IsDir("/"))
-}
-
-func TestCwdState(t *testing.T) {
-	r := open(t)
-	require.NoError(t, os.WriteFile(filepath.Join(r.Dir(), "f"), nil, 0o600))
-	assert.Equal(t, "exists", *r.CwdState(""))
-	assert.Equal(t, "missing", *r.CwdState("nope"))
-	assert.Nil(t, r.CwdState("f"))
-	assert.Nil(t, r.CwdState("/"))
-}
-
 func TestOpenRegular(t *testing.T) {
 	r := open(t)
 	require.NoError(t, os.WriteFile(filepath.Join(r.Dir(), "f"), []byte("x"), 0o600))
@@ -132,4 +95,77 @@ func TestUploadTarget(t *testing.T) {
 	require.ErrorIs(t, err, pathroot.ErrOutside)
 	_, err = r.UploadTarget("loop")
 	require.Error(t, err)
+}
+
+// D4: like the desktop, any existing directory is a working directory, also
+// outside the root; "~", file:// URLs and paths relative to the root are
+// expanded. A missing directory or a file runs in the root with a warning.
+func TestCwd(t *testing.T) {
+	r := open(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	outside := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(r.Dir(), "d"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(r.Dir(), "f"), nil, 0o600))
+	require.NoError(t, os.Symlink(outside, filepath.Join(r.Dir(), "escape")))
+	for in, want := range map[string]string{
+		"":                  r.Dir(),
+		"d":                 filepath.Join(r.Dir(), "d"),
+		" d ":               filepath.Join(r.Dir(), "d"),
+		"/":                 "/",
+		outside:             outside,
+		"escape":            filepath.Join(r.Dir(), "escape"),
+		"..":                filepath.Dir(r.Dir()),
+		"~":                 home,
+		"file://" + outside: outside,
+	} {
+		dir, warning := r.Cwd(in)
+		assert.Equal(t, want, dir, in)
+		assert.Empty(t, warning, in)
+	}
+	for _, in := range []string{"missing", "f", "/nonexistent"} {
+		dir, warning := r.Cwd(in)
+		assert.Equal(t, r.Dir(), dir, in)
+		assert.Equal(t, "working directory "+in+" does not exist on this machine; running in "+r.Dir()+" instead\n", warning)
+	}
+	assert.True(t, r.IsDir("d"))
+	assert.True(t, r.IsDir("/"))
+	assert.False(t, r.IsDir("f"))
+	assert.False(t, r.IsDir(""))
+}
+
+func TestCwdState(t *testing.T) {
+	r := open(t)
+	require.NoError(t, os.WriteFile(filepath.Join(r.Dir(), "f"), nil, 0o600))
+	for in, want := range map[string]string{"": "exists", "/": "exists", "nope": "missing", "f": "missing"} {
+		got := r.CwdState(in)
+		require.NotNil(t, got, in)
+		assert.Equal(t, want, *got, in)
+	}
+}
+
+// D5: paths outside the root are refused in the desktop's words, lexically
+// and through a symlink, with the first line of its stack trace.
+func TestCheck(t *testing.T) {
+	r := open(t)
+	outside := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(r.Dir(), "d"), 0o700))
+	require.NoError(t, os.Symlink(outside, filepath.Join(r.Dir(), "escape")))
+	require.NoError(t, os.Symlink("d", filepath.Join(r.Dir(), "inside")))
+	for in, want := range map[string]string{"inside/new/file": "inside/new/file", "d/missing": "d/missing", "..foo": "..foo"} {
+		rel, err := r.Check(in)
+		require.NoError(t, err, in)
+		assert.Equal(t, want, rel, in)
+	}
+	_, err := r.Check("../x")
+	require.ErrorIs(t, err, pathroot.ErrOutside)
+	require.EqualError(t, err, "Path is outside the allowed local-exec root and was refused: ../x")
+	for _, in := range []string{"escape", "escape/missing/deeper"} {
+		_, err = r.Check(in)
+		require.ErrorIs(t, err, pathroot.ErrOutside, in)
+		require.EqualError(t, err, "Path resolves through a symlink to outside the allowed local-exec root and was refused: "+in)
+		var traced interface{ StackTrace() string }
+		require.ErrorAs(t, err, &traced)
+		assert.Equal(t, "SandLocalExecPathError: "+err.Error(), traced.StackTrace())
+	}
 }

@@ -8,11 +8,9 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 )
 
-// Invariant 17 of ai.tmp/refactor-plan/grok-bot-map.md §4, ≠ (decided: align
-// with the desktop). Pins how a request is decided without a prompt today: a
-// local "never" wins even over a server-authorized request. On the desktop a
-// server-authoritative request is decided by the server alone, so the first
-// row becomes (true, nil) in the alignment PR.
+// Invariant 17: how a request is decided without a prompt. Under
+// server-authoritative mode the server decides alone, as on the desktop, so a
+// local "never" does not refuse what the server approved (PLAN.md §9).
 func TestPinnedDecide(t *testing.T) {
 	for _, tc := range []struct {
 		mode             entity.Mode
@@ -20,8 +18,8 @@ func TestPinnedDecide(t *testing.T) {
 		ok               bool
 		err              error
 	}{
-		{entity.ModeNever, true, true, true, ErrDisabled},
-		{entity.ModeNever, true, false, true, ErrDisabled},
+		{entity.ModeNever, true, true, true, nil},
+		{entity.ModeNever, true, false, true, ErrRefused},
 		{entity.ModeNever, false, false, true, ErrDisabled},
 		{entity.ModeAsk, true, true, true, nil},
 		{entity.ModeAsk, true, false, true, ErrRefused},

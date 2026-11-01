@@ -10,11 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
+
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
@@ -131,68 +134,65 @@ func TestPinnedBusyResponse(t *testing.T) {
 	}
 }
 
-// Invariant 6 (≠ "canceled before it started"): a request canceled while it
-// waits in the backlog, by a cancel frame or by shutdown, is closed with
-// frames.Canceled: exec gets streamClose{id:0} with no text, other kinds get
-// their error frame with "context canceled". This pins current behavior that
-// differs from the desktop, whose od(req, yae) sends exec throw{id:0, yae}
-// and file requests a fileError{yae}, where yae is "Cancel(l)ed before it
-// started on the user's computer." (British spelling, mangled here for the
-// spell checker); it sends streamClose{0} only when the cancel lands inside
-// withInflight.
+// Invariants 6 and 7 (D7, aligned with the desktop): a request that waits in
+// the backlog and is canceled by the server gets "Cancel(l)ed before it
+// started on the user's computer." (yae), on shutdown "…stopped serving
+// requests…" (o7): an exec as throw{id:0}, other kinds in their error frame.
+// The desktop sends streamClose{0} only when the cancel lands inside
+// withInflight (localexec.Handle).
 func TestPinnedCancelBeforeStart(t *testing.T) {
-	const canceled = "context canceled"
 	cases := []struct {
 		name  string
 		frame func(id string) *requestFrame
-		check func(t *testing.T, f *responseFrame)
+		check func(t *testing.T, f *responseFrame, text string)
 	}{
-		{"exec", pinnedExec, func(t *testing.T, f *responseFrame) {
+		{"exec", pinnedExec, func(t *testing.T, f *responseFrame, text string) {
 			t.Helper()
 			msg := pinnedControl(t, f)
-			require.NotNil(t, msg.GetStreamClose(), "want streamClose, got %v", msg)
-			assert.Zero(t, msg.GetStreamClose().GetId())
-			assert.Nil(t, msg.GetThrow())
+			require.NotNil(t, msg.GetThrow(), "want throw, got %v", msg)
+			assert.Zero(t, msg.GetThrow().GetId())
+			assert.Equal(t, text, msg.GetThrow().GetError())
 		}},
-		{"upload", pinnedUpload, func(t *testing.T, f *responseFrame) {
+		{"upload", pinnedUpload, func(t *testing.T, f *responseFrame, text string) {
 			t.Helper()
 			require.NotNil(t, f.GetFileError(), "want fileError, got %v", f)
-			assert.Equal(t, canceled, f.GetFileError().GetError())
+			assert.Equal(t, text, f.GetFileError().GetError())
 		}},
-		{"download", pinnedDownload, func(t *testing.T, f *responseFrame) {
+		{"download", pinnedDownload, func(t *testing.T, f *responseFrame, text string) {
 			t.Helper()
 			require.NotNil(t, f.GetFileError(), "want fileError, got %v", f)
-			assert.Equal(t, canceled, f.GetFileError().GetError())
+			assert.Equal(t, text, f.GetFileError().GetError())
 		}},
-		{"messagesOp", pinnedMessagesOp, func(t *testing.T, f *responseFrame) {
+		{"messagesOp", pinnedMessagesOp, func(t *testing.T, f *responseFrame, text string) {
 			t.Helper()
 			require.NotNil(t, f.GetMessagesError(), "want messagesError, got %v", f)
-			assert.Equal(t, canceled, f.GetMessagesError().GetError())
+			assert.Equal(t, text, f.GetMessagesError().GetError())
 		}},
-		{"localTool", pinnedLocalTool, func(t *testing.T, f *responseFrame) {
+		{"localTool", pinnedLocalTool, func(t *testing.T, f *responseFrame, text string) {
 			t.Helper()
 			require.NotNil(t, f.GetLocalToolResult(), "want localToolResult, got %v", f)
 			assert.Equal(t, "failed", f.GetLocalToolResult().GetStatus())
-			assert.Equal(t, canceled, f.GetLocalToolResult().GetError())
+			assert.Equal(t, text, f.GetLocalToolResult().GetError())
 		}},
 	}
 	triggers := []struct {
 		name    string
 		cancel  func(s *session)
+		text    string
 		backlog int // IDs left in the backlog afterwards
 	}{
 		{"cancel frame", func(s *session) {
 			s.accept(&requestFrame{RequestId: "r", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_Cancel{
 				Cancel: &aiserverv1.GrokBotUserComputerCancel{},
 			}}, false)
-		}, 0},
+		}, frames.ErrCanceledBeforeStart.Error(), 0},
 		// Without a credential shutdown queues the frames but has nothing to
 		// submit them with, so they stay pending for inspection. It drops the
 		// task but leaves its id in the backlog, where startJobs would skip it.
 		{"shutdown", func(s *session) {
 			s.cred.Restore(entity.Credential{})
 			s.shutdown()
-		}, 1},
+		}, admission.ErrStopped.Error(), 1},
 	}
 	for _, tr := range triggers {
 		for _, tc := range cases {
@@ -209,7 +209,7 @@ func TestPinnedCancelBeforeStart(t *testing.T) {
 				assert.NotContains(t, s.admit.Tasks(), "r")
 				require.Len(t, s.out.Pending(), 1)
 				assert.Equal(t, "r", s.out.Pending()[0].RequestId)
-				tc.check(t, s.out.Pending()[0])
+				tc.check(t, s.out.Pending()[0], tr.text)
 			})
 		}
 	}
@@ -221,8 +221,7 @@ func TestPinnedCancelBeforeStart(t *testing.T) {
 // for the final submit: workers get shutdownGrace-finalFlushGrace to report,
 // then everything already produced is flushed in one final submit bounded by
 // the rest of shutdownGrace. This pins the budgets and the fast path: frames
-// already pending, replies buffered but not yet taken, the streamClose{0} of
-// a backlogged request and the closing frame a canceled worker produces
+// already pending, replies buffered but not yet taken, the throw of a backlogged request and the closing frame a canceled worker produces
 // during shutdown are all submitted, and shutdown returns without waiting
 // out any grace. The budgets are constants with no injectable clock, so the
 // slow path (a worker that never finishes is abandoned after 6 s and the
@@ -267,6 +266,6 @@ func TestPinnedShutdownFinalFlush(t *testing.T) {
 	got = pinnedFrames(submitted, "queued")
 	require.Len(t, got, 1)
 	msg := pinnedControl(t, got[0])
-	require.NotNil(t, msg.GetStreamClose())
-	assert.Zero(t, msg.GetStreamClose().GetId())
+	require.NotNil(t, msg.GetThrow())
+	assert.Equal(t, admission.ErrStopped.Error(), msg.GetThrow().GetError())
 }

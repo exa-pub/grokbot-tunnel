@@ -72,3 +72,24 @@ func TestStreamWriterKeepsUTF8Whole(t *testing.T) {
 		t.Fatalf("broken utf8: %q", got.String())
 	}
 }
+
+// The soft timeout is chosen like the desktop's Nye.
+func TestSoftTimeout(t *testing.T) {
+	hard := int32(1000)
+	for _, tc := range []struct {
+		args *agentv1.ShellArgs
+		want int32
+	}{
+		{&agentv1.ShellArgs{}, 30_000},
+		{&agentv1.ShellArgs{Timeout: 500}, 500},
+		{&agentv1.ShellArgs{Timeout: 500, IsBackground: true}, 500},
+		{&agentv1.ShellArgs{IsBackground: true}, 0},
+		{&agentv1.ShellArgs{TimeoutBehavior: agentv1.TimeoutBehavior_TIMEOUT_BEHAVIOR_BACKGROUND}, 0},
+		{&agentv1.ShellArgs{HardTimeout: &hard}, 0},
+		{&agentv1.ShellArgs{TimeoutBehavior: agentv1.TimeoutBehavior_TIMEOUT_BEHAVIOR_CANCEL}, 30_000},
+	} {
+		if got := softTimeout(tc.args); got != tc.want {
+			t.Errorf("softTimeout(%v) = %d, want %d", tc.args, got, tc.want)
+		}
+	}
+}
