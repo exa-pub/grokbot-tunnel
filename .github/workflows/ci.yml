@@ -94,9 +94,12 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # The latest Go, not the minimum of go.mod: older toolchains can fail a
+      # fuzz run with "context deadline exceeded" when -fuzztime runs out
+      # (go.dev/issue/75804), without any failing input.
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version-file: go.mod
+          go-version: stable
 
       - name: Fuzz parsers for 10 s each
         run: make fuzz FUZZTIME=10s
