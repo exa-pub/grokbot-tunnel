@@ -43,8 +43,11 @@ type LoginOptions struct {
 
 // ConnectOptions configure App.Connect.
 type ConnectOptions struct {
-	Root          string // root for file tools and shell cwd; empty means home
-	Permission    string // one of the entity.Mode* values
+	Root       string // root for file tools and shell cwd; empty means home
+	Permission string // one of the entity.Mode* values
+	// PermissionSet is whether --permission was given; only then is it
+	// also set in Grok Bot, so a plain connect does not reset that to ask.
+	PermissionSet bool
 	Label         string // new computer label; empty keeps the saved one
 	Debug         bool   // log raw requests
 	ClientVersion string

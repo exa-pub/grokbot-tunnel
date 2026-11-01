@@ -40,6 +40,23 @@ message RegisterSandMachineRequest {
   optional bool messages_enabled = 3;
   string kind = 4;
 }
+message UpdateSandMachineLocalToolPermissionRequest {
+  string machine_id = 1;
+  string local_tool_permission = 2;
+}
+message UpdateSandMachineLocalToolPermissionResponse {
+  .aiserver.v1.SandMachine machine = 1;
+}
+message SandMachine {
+  string machine_id = 1;
+  string label = 2;
+  optional string local_tool_permission = 3;
+  bool messages_enabled = 4;
+  string kind = 5;
+  bool connected = 6;
+  optional int64 last_heartbeat_at_ms = 7;
+  int64 last_registered_at_ms = 8;
+}
 message SubmitGrokBotUserComputerResponsesResponse {
   uint32 accepted_count = 1;
 }
@@ -290,6 +307,7 @@ service DashboardService {
  rpc GetUserPrivacyMode(GetUserPrivacyModeRequest) returns (GetUserPrivacyModeResponse);
 rpc GetMe(GetMeRequest) returns (GetMeResponse);
 rpc RegisterSandMachine(RegisterSandMachineRequest) returns (RegisterSandMachineResponse);
+rpc UpdateSandMachineLocalToolPermission(UpdateSandMachineLocalToolPermissionRequest) returns (UpdateSandMachineLocalToolPermissionResponse);
 }
 
 message GetUserPrivacyModeRequest {

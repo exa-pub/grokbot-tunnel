@@ -81,12 +81,15 @@ in a terminal asks there: `y` allows the action, `a` allows all actions until
 `connect` exits (and from then on reports `always` to Grok Bot), anything else
 refuses it. The question says when a command can keep running after the
 request ends; requests the tunnel does not support are refused without asking.
-If Grok Bot manages
-permissions itself, the tunnel never asks and runs exactly the actions Grok Bot
-approved, whatever `--permission` says; its log then says so, and Grok Bot
-shows its own permission setting for the computer, not the flag. To refuse all
-actions then, change the setting in Grok Bot or stop the tunnel
-(`grokbot-tunnel uninstall`, or stop `connect`).
+A `--permission` given explicitly (always the case for the service) is also
+set as the computer's permission in Grok Bot at every start; a team policy may
+keep a lower one, which the log then says. A plain `connect` without the flag
+leaves the setting in Grok Bot as it is. If Grok Bot manages permissions
+itself, the tunnel never asks and runs exactly the actions Grok Bot approved,
+by that setting; its log then says so. A change made in Grok Bot lasts until
+the tunnel starts again with `--permission`. To refuse all actions, start it
+with `--permission never` or stop it (`grokbot-tunnel uninstall`, or stop
+`connect`).
 
 ## Managing the service
 

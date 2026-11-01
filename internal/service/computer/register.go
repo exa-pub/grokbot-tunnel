@@ -28,3 +28,25 @@ func Register(ctx context.Context, dashboard rpc.DashboardServiceClient, label s
 	}
 	return nil
 }
+
+// SetPermission sets the permission mode that Grok Bot keeps for this
+// computer, machineID, and shows in its settings, like the desktop when the
+// mode of a machine is changed there (updateSandMachineLocalToolPermission).
+// Where Grok Bot manages permissions itself, that mode decides instead of
+// the tunnel's, and RegisterSandMachine, which carries the mode too, does not
+// change it for a computer registered before. It returns the mode Grok Bot
+// keeps, which a team's ceiling can lower.
+func SetPermission(ctx context.Context, dashboard rpc.DashboardServiceClient, machineID string, mode entity.Mode) (entity.Mode, error) {
+	ctx, cancel := context.WithTimeout(ctx, registerTimeout)
+	defer cancel()
+	req := &aiserverv1.UpdateSandMachineLocalToolPermissionRequest{MachineId: machineID, LocalToolPermission: string(mode)}
+	r, err := dashboard.UpdateSandMachineLocalToolPermission(ctx, connect.NewRequest(req))
+	if err != nil {
+		return "", fmt.Errorf("set the computer's permission in Grok Bot: %w", err)
+	}
+	kept := entity.Mode(r.Msg.GetMachine().GetLocalToolPermission())
+	if _, err := entity.ParseMode(string(kept)); err != nil {
+		return "", fmt.Errorf("set the computer's permission in Grok Bot: unexpected mode %q", kept)
+	}
+	return kept, nil
+}

@@ -17,6 +17,7 @@ func newConnectCommand(a App, clientVersion *string) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			opts.ClientVersion = *clientVersion
+			opts.PermissionSet = cmd.Flags().Changed("permission")
 			opts.Version = version
 			var err error
 			if opts.Label, err = normalizeLabel(opts.Label); err != nil {

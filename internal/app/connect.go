@@ -71,21 +71,26 @@ func Connect(ctx context.Context, opts cli.ConnectOptions) error {
 		}
 		return err
 	}
+	var serverPermission entity.Mode
+	if opts.PermissionSet {
+		serverPermission = setServerPermission(ctx, u, e.machine.MachineID, entity.Mode(opts.Permission))
+	}
 	log.Printf("root=%s permission=%s", ex.Root, opts.Permission)
 	stopNotify := context.AfterFunc(ctx, func() { notify(notifier, "STOPPING=1") })
 	defer stopNotify()
 	pv := computer.Provider{
-		User:            u.grokbot,
-		Channel:         e.computerChannel(),
-		Store:           e.store,
-		Machine:         e.machine,
-		Handler:         ex,
-		LocalRoot:       ex.Root,
-		TerminalsFolder: ex.TerminalsFolder(),
-		Standing:        policy.Standing,
-		Debug:           opts.Debug,
-		Backend:         e.base,
-		AccountScope:    u.tokens.Snapshot().AccountScope(),
+		User:             u.grokbot,
+		Channel:          e.computerChannel(),
+		Store:            e.store,
+		Machine:          e.machine,
+		Handler:          ex,
+		LocalRoot:        ex.Root,
+		ServerPermission: serverPermission,
+		TerminalsFolder:  ex.TerminalsFolder(),
+		Standing:         policy.Standing,
+		Debug:            opts.Debug,
+		Backend:          e.base,
+		AccountScope:     u.tokens.Snapshot().AccountScope(),
 		// The service is up once the server accepts the computer, so that
 		// install does not report a connection that fails afterwards.
 		OnConnected: func() { notify(notifier, "READY=1") },
@@ -191,4 +196,22 @@ func notify(n *systemd.Notifier, state string) {
 	if err := n.Notify(state); err != nil {
 		log.Printf("notify systemd: %v", err)
 	}
+}
+
+// setServerPermission sets mode, given with --permission, as the permission
+// of this computer in Grok Bot, which decides by it where it manages
+// permissions itself, and returns the mode Grok Bot keeps; "" if that failed,
+// which does not stop the tunnel: the mode then stays what Grok Bot had.
+func setServerPermission(ctx context.Context, u *user, machineID string, mode entity.Mode) entity.Mode {
+	kept, err := computer.SetPermission(ctx, u.dashboard, machineID, mode)
+	switch {
+	case err != nil:
+		if ctx.Err() == nil {
+			log.Printf("%v; Grok Bot keeps the permission set there", err)
+		}
+		return ""
+	case kept != mode:
+		log.Printf("Grok Bot keeps permission %s for this computer instead of %s, e.g. by a team policy", kept, mode)
+	}
+	return kept
 }

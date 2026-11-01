@@ -917,12 +917,15 @@ func TestAuthorityNotice(t *testing.T) {
 	}
 	assert.Empty(t, s.authorityNotice(entity.Credential{}), "no credential yet")
 	assert.Empty(t, s.authorityNotice(cred(false)), "local permissions, as expected")
-	assert.Equal(t, "Grok Bot manages permissions for this computer: --permission always has no effect; "+
-		"actions run as Grok Bot approves them, and its settings show its own mode", s.authorityNotice(cred(true)))
+	assert.Equal(t, "Grok Bot manages permissions for this computer: it decides each action by its setting, "+
+		"and --permission always has no effect; change the setting in Grok Bot, or give --permission to set it at start",
+		s.authorityNotice(cred(true)))
 	assert.Empty(t, s.authorityNotice(cred(true)), "said once")
 	assert.Equal(t, "Grok Bot no longer manages permissions for this computer: --permission always applies",
 		s.authorityNotice(cred(false)))
 
 	s = testSession(t)
-	assert.NotEmpty(t, s.authorityNotice(cred(true)), "server-authoritative from the start")
+	s.pv.ServerPermission = entity.ModeAsk // set from --permission, lowered by the team
+	assert.Equal(t, "Grok Bot manages permissions for this computer: it decides each action by its setting, "+
+		"set to ask from --permission at start", s.authorityNotice(cred(true)))
 }

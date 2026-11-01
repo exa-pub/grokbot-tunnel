@@ -125,6 +125,8 @@ func TestLoginConnectShellSigterm(t *testing.T) {
 	require.NotNil(t, hello)
 	assert.Equal(t, root, hello.GetLocalRoot())
 	assert.Equal(t, filepath.Join(root, "terminals"), hello.GetTerminalsFolder())
+	// --permission is also set as the computer's permission in Grok Bot.
+	assert.Equal(t, []string{"always"}, cloud.Permissions())
 	cloud.Enqueue(fakesand.Exec("shell", `{"id":1,"shellStreamArgs":{"command":"printf shell-ok; pwd >&2"}}`))
 	frames := cloud.Wait(10*time.Second, func(frames []*aiserverv1.GrokBotUserComputerResponseFrame) bool {
 		for _, f := range frames {
@@ -142,6 +144,38 @@ func TestLoginConnectShellSigterm(t *testing.T) {
 	}
 	assert.Equal(t, "shell-ok", stdout.String())
 	assert.Equal(t, root+"\n", stderr.String())
+
+	require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
+	select {
+	case err := <-exited:
+		require.NoError(t, err, log.String())
+	case <-time.After(10 * time.Second):
+		t.Fatalf("no exit after SIGTERM:\n%s", log.String())
+	}
+}
+
+// Without --permission, connect runs with ask but leaves the computer's
+// permission in Grok Bot as it is, so a plain connect does not reset it.
+func TestConnectKeepsServerPermissionWithoutFlag(t *testing.T) {
+	cloud := fakesand.New(t)
+	c := newCLI(t, cloud)
+	out, code := c.run(t, "login", "--no-browser")
+	require.Equal(t, 0, code, out)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd, log := c.command(ctx, "connect", "--root", t.TempDir())
+	require.NoError(t, cmd.Start())
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil {
+			_ = cmd.Process.Kill()
+			<-exited
+		}
+	})
+	cloud.WaitWatching(10 * time.Second)
+	assert.Empty(t, cloud.Permissions())
 
 	require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
 	select {

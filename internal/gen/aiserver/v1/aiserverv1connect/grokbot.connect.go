@@ -58,6 +58,9 @@ const (
 	// DashboardServiceRegisterSandMachineProcedure is the fully-qualified name of the
 	// DashboardService's RegisterSandMachine RPC.
 	DashboardServiceRegisterSandMachineProcedure = "/aiserver.v1.DashboardService/RegisterSandMachine"
+	// DashboardServiceUpdateSandMachineLocalToolPermissionProcedure is the fully-qualified name of the
+	// DashboardService's UpdateSandMachineLocalToolPermission RPC.
+	DashboardServiceUpdateSandMachineLocalToolPermissionProcedure = "/aiserver.v1.DashboardService/UpdateSandMachineLocalToolPermission"
 )
 
 // GrokBotServiceClient is a client for the aiserver.v1.GrokBotService service.
@@ -243,6 +246,7 @@ type DashboardServiceClient interface {
 	GetUserPrivacyMode(context.Context, *connect.Request[v1.GetUserPrivacyModeRequest]) (*connect.Response[v1.GetUserPrivacyModeResponse], error)
 	GetMe(context.Context, *connect.Request[v1.GetMeRequest]) (*connect.Response[v1.GetMeResponse], error)
 	RegisterSandMachine(context.Context, *connect.Request[v1.RegisterSandMachineRequest]) (*connect.Response[v1.RegisterSandMachineResponse], error)
+	UpdateSandMachineLocalToolPermission(context.Context, *connect.Request[v1.UpdateSandMachineLocalToolPermissionRequest]) (*connect.Response[v1.UpdateSandMachineLocalToolPermissionResponse], error)
 }
 
 // NewDashboardServiceClient constructs a client for the aiserver.v1.DashboardService service. By
@@ -274,14 +278,21 @@ func NewDashboardServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(dashboardServiceMethods.ByName("RegisterSandMachine")),
 			connect.WithClientOptions(opts...),
 		),
+		updateSandMachineLocalToolPermission: connect.NewClient[v1.UpdateSandMachineLocalToolPermissionRequest, v1.UpdateSandMachineLocalToolPermissionResponse](
+			httpClient,
+			baseURL+DashboardServiceUpdateSandMachineLocalToolPermissionProcedure,
+			connect.WithSchema(dashboardServiceMethods.ByName("UpdateSandMachineLocalToolPermission")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // dashboardServiceClient implements DashboardServiceClient.
 type dashboardServiceClient struct {
-	getUserPrivacyMode  *connect.Client[v1.GetUserPrivacyModeRequest, v1.GetUserPrivacyModeResponse]
-	getMe               *connect.Client[v1.GetMeRequest, v1.GetMeResponse]
-	registerSandMachine *connect.Client[v1.RegisterSandMachineRequest, v1.RegisterSandMachineResponse]
+	getUserPrivacyMode                   *connect.Client[v1.GetUserPrivacyModeRequest, v1.GetUserPrivacyModeResponse]
+	getMe                                *connect.Client[v1.GetMeRequest, v1.GetMeResponse]
+	registerSandMachine                  *connect.Client[v1.RegisterSandMachineRequest, v1.RegisterSandMachineResponse]
+	updateSandMachineLocalToolPermission *connect.Client[v1.UpdateSandMachineLocalToolPermissionRequest, v1.UpdateSandMachineLocalToolPermissionResponse]
 }
 
 // GetUserPrivacyMode calls aiserver.v1.DashboardService.GetUserPrivacyMode.
@@ -299,11 +310,18 @@ func (c *dashboardServiceClient) RegisterSandMachine(ctx context.Context, req *c
 	return c.registerSandMachine.CallUnary(ctx, req)
 }
 
+// UpdateSandMachineLocalToolPermission calls
+// aiserver.v1.DashboardService.UpdateSandMachineLocalToolPermission.
+func (c *dashboardServiceClient) UpdateSandMachineLocalToolPermission(ctx context.Context, req *connect.Request[v1.UpdateSandMachineLocalToolPermissionRequest]) (*connect.Response[v1.UpdateSandMachineLocalToolPermissionResponse], error) {
+	return c.updateSandMachineLocalToolPermission.CallUnary(ctx, req)
+}
+
 // DashboardServiceHandler is an implementation of the aiserver.v1.DashboardService service.
 type DashboardServiceHandler interface {
 	GetUserPrivacyMode(context.Context, *connect.Request[v1.GetUserPrivacyModeRequest]) (*connect.Response[v1.GetUserPrivacyModeResponse], error)
 	GetMe(context.Context, *connect.Request[v1.GetMeRequest]) (*connect.Response[v1.GetMeResponse], error)
 	RegisterSandMachine(context.Context, *connect.Request[v1.RegisterSandMachineRequest]) (*connect.Response[v1.RegisterSandMachineResponse], error)
+	UpdateSandMachineLocalToolPermission(context.Context, *connect.Request[v1.UpdateSandMachineLocalToolPermissionRequest]) (*connect.Response[v1.UpdateSandMachineLocalToolPermissionResponse], error)
 }
 
 // NewDashboardServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -331,6 +349,12 @@ func NewDashboardServiceHandler(svc DashboardServiceHandler, opts ...connect.Han
 		connect.WithSchema(dashboardServiceMethods.ByName("RegisterSandMachine")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dashboardServiceUpdateSandMachineLocalToolPermissionHandler := connect.NewUnaryHandler(
+		DashboardServiceUpdateSandMachineLocalToolPermissionProcedure,
+		svc.UpdateSandMachineLocalToolPermission,
+		connect.WithSchema(dashboardServiceMethods.ByName("UpdateSandMachineLocalToolPermission")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aiserver.v1.DashboardService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DashboardServiceGetUserPrivacyModeProcedure:
@@ -339,6 +363,8 @@ func NewDashboardServiceHandler(svc DashboardServiceHandler, opts ...connect.Han
 			dashboardServiceGetMeHandler.ServeHTTP(w, r)
 		case DashboardServiceRegisterSandMachineProcedure:
 			dashboardServiceRegisterSandMachineHandler.ServeHTTP(w, r)
+		case DashboardServiceUpdateSandMachineLocalToolPermissionProcedure:
+			dashboardServiceUpdateSandMachineLocalToolPermissionHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -358,4 +384,8 @@ func (UnimplementedDashboardServiceHandler) GetMe(context.Context, *connect.Requ
 
 func (UnimplementedDashboardServiceHandler) RegisterSandMachine(context.Context, *connect.Request[v1.RegisterSandMachineRequest]) (*connect.Response[v1.RegisterSandMachineResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aiserver.v1.DashboardService.RegisterSandMachine is not implemented"))
+}
+
+func (UnimplementedDashboardServiceHandler) UpdateSandMachineLocalToolPermission(context.Context, *connect.Request[v1.UpdateSandMachineLocalToolPermissionRequest]) (*connect.Response[v1.UpdateSandMachineLocalToolPermissionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aiserver.v1.DashboardService.UpdateSandMachineLocalToolPermission is not implemented"))
 }

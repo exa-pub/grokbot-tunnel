@@ -60,10 +60,13 @@ type Provider struct {
 	LocalRoot       string
 	TerminalsFolder string
 	// Standing returns the local permission mode announced in the hello.
-	Standing     func() entity.Mode
-	Debug        bool
-	Backend      string
-	AccountScope string
+	Standing func() entity.Mode
+	// ServerPermission is the mode set as this computer's permission in Grok
+	// Bot at start (SetPermission), "" if it was not set.
+	ServerPermission entity.Mode
+	Debug            bool
+	Backend          string
+	AccountScope     string
 	// OnConnected, if set, is called once, when the server first accepts the
 	// computer on the watch stream.
 	OnConnected func()

@@ -48,8 +48,10 @@ type Server struct {
 	frames  []*aiserverv1.GrokBotUserComputerResponseFrame
 	changed chan struct{} // closed and replaced when frames or watchers change
 	hello   *aiserverv1.GrokBotUserComputerHello
-	watches int
-	notify  []chan struct{} // one per open watch stream
+	// permissions are the modes set with UpdateSandMachineLocalToolPermission.
+	permissions []string
+	watches     int
+	notify      []chan struct{} // one per open watch stream
 }
 
 // New starts a fake backend that stops when the test ends.
@@ -215,6 +217,28 @@ func (s *Server) RegisterSandMachine(
 		s.t.Error("fakesand: registration checksum missing")
 	}
 	return connect.NewResponse(&aiserverv1.RegisterSandMachineResponse{}), nil
+}
+
+func (s *Server) UpdateSandMachineLocalToolPermission(
+	_ context.Context, r *connect.Request[aiserverv1.UpdateSandMachineLocalToolPermissionRequest],
+) (*connect.Response[aiserverv1.UpdateSandMachineLocalToolPermissionResponse], error) {
+	if r.Msg.GetMachineId() == "" {
+		s.t.Error("fakesand: permission update without machine id")
+	}
+	s.mu.Lock()
+	s.permissions = append(s.permissions, r.Msg.GetLocalToolPermission())
+	s.mu.Unlock()
+	mode := r.Msg.GetLocalToolPermission()
+	return connect.NewResponse(&aiserverv1.UpdateSandMachineLocalToolPermissionResponse{
+		Machine: &aiserverv1.SandMachine{MachineId: r.Msg.GetMachineId(), LocalToolPermission: &mode},
+	}), nil
+}
+
+// Permissions returns the modes set as the computer's permission so far.
+func (s *Server) Permissions() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.permissions...)
 }
 
 func (s *Server) IssueGrokBotUserComputerCredential(

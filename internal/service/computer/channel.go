@@ -43,9 +43,13 @@ func (s *session) authorityNotice(c entity.Credential) string {
 		mode = " " + string(s.pv.Standing())
 	}
 	switch {
+	case c.ServerAuthoritative && s.pv.ServerPermission != "":
+		return "Grok Bot manages permissions for this computer: it decides each action by its setting, " +
+			"set to " + string(s.pv.ServerPermission) + " from --permission at start"
 	case c.ServerAuthoritative:
-		return "Grok Bot manages permissions for this computer: --permission" + mode +
-			" has no effect; actions run as Grok Bot approves them, and its settings show its own mode"
+		return "Grok Bot manages permissions for this computer: it decides each action by its setting, " +
+			"and --permission" + mode + " has no effect; change the setting in Grok Bot, " +
+			"or give --permission to set it at start"
 	case !first:
 		return "Grok Bot no longer manages permissions for this computer: --permission" + mode + " applies"
 	}
