@@ -5,8 +5,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/config"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/pkg/uuid"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/credential"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/replies"
@@ -42,7 +43,7 @@ type polled struct {
 
 // issued is the outcome of a credential issue run off the Run goroutine.
 type issued struct {
-	credential config.Computer
+	credential entity.Credential
 	err        error
 }
 
@@ -89,7 +90,7 @@ type session struct {
 func newSession(ctx context.Context, pv *Provider) *session {
 	s := &session{
 		pv:        pv,
-		presence:  newUUID(),
+		presence:  uuid.New(),
 		replies:   make(chan *responseFrame, replies.SubmitBatch),
 		done:      make(chan string, admission.MaxActive),
 		events:    make(chan watched, 16),

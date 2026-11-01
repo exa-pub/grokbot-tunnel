@@ -10,44 +10,36 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/systemd"
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/tty"
-	"github.com/exa-pub/grokbot-tunnel/internal/auth"
-	"github.com/exa-pub/grokbot-tunnel/internal/config"
+	"github.com/exa-pub/grokbot-tunnel/internal/api/cli"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
-	"github.com/exa-pub/grokbot-tunnel/internal/service"
+	"github.com/exa-pub/grokbot-tunnel/internal/repository/instancelock"
+	"github.com/exa-pub/grokbot-tunnel/internal/repository/staterepo"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/install"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/permission"
 )
 
-// ConnectOptions configure Connect.
-type ConnectOptions struct {
-	Root          string // root for file tools and shell cwd; empty means home
-	Permission    string // one of the permission.Mode* values
-	Label         string // new computer label; empty keeps the saved one
-	Debug         bool   // log raw requests
-	ClientVersion string
-	Version       string // grokbot-tunnel version, recorded in the instance lock
-}
-
 // Validate checks the options without touching the system.
-func (o ConnectOptions) Validate() error {
-	switch o.Permission {
-	case permission.ModeAsk, permission.ModeAlways, permission.ModeNever:
-		return nil
+func validateConnect(o cli.ConnectOptions) error {
+	if _, err := entity.ParseMode(o.Permission); err != nil {
+		return fmt.Errorf("invalid permission %q", o.Permission)
 	}
-	return fmt.Errorf("invalid permission %q", o.Permission)
+	return nil
 }
 
 // Connect registers this computer and executes the agent's requests until ctx
 // is canceled. Only one Connect runs per store, since they would share the
 // computer's identity.
-func Connect(ctx context.Context, opts ConnectOptions) error {
-	if err := opts.Validate(); err != nil {
+func Connect(ctx context.Context, opts cli.ConnectOptions) error {
+	if err := validateConnect(opts); err != nil {
 		return err
 	}
-	notifier := service.NewNotifier()
+	notifier := systemd.NewNotifier()
 	if opts.Root == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -60,7 +52,7 @@ func Connect(ctx context.Context, opts ConnectOptions) error {
 		return err
 	}
 	defer release()
-	policy := &permission.Policy{Mode: opts.Permission, Prompter: tty.Terminal{In: os.Stdin, Out: os.Stderr}}
+	policy := &permission.Policy{Mode: entity.Mode(opts.Permission), Prompter: tty.Terminal{In: os.Stdin, Out: os.Stderr}}
 	ex, err := localexec.New(opts.Root, policy.Allow)
 	if err != nil {
 		return err
@@ -89,22 +81,22 @@ func Connect(ctx context.Context, opts ConnectOptions) error {
 		Standing:        policy.Standing,
 		Debug:           opts.Debug,
 		Backend:         e.base,
-		AccountScope:    auth.AccountScope(u.tokens.Snapshot()),
+		AccountScope:    u.tokens.Snapshot().AccountScope(),
 	}
 	return pv.Run(ctx)
 }
 
 // openConnect takes the instance lock and loads what Connect needs. The
 // caller releases the lock.
-func openConnect(opts ConnectOptions) (*env, config.Auth, func(), error) {
-	store, err := config.Default()
+func openConnect(opts cli.ConnectOptions) (*env, entity.Identity, func(), error) {
+	store, err := staterepo.Default()
 	if err != nil {
-		return nil, config.Auth{}, nil, err
+		return nil, entity.Identity{}, nil, err
 	}
 	// Before anything writes to the store, such as the label below.
 	release, err := claimConnect(store, opts.Version)
 	if err != nil {
-		return nil, config.Auth{}, nil, err
+		return nil, entity.Identity{}, nil, err
 	}
 	e, identity, err := loadConnect(opts)
 	if err != nil {
@@ -114,13 +106,13 @@ func openConnect(opts ConnectOptions) (*env, config.Auth, func(), error) {
 	return e, identity, release, nil
 }
 
-func loadConnect(opts ConnectOptions) (*env, config.Auth, error) {
+func loadConnect(opts cli.ConnectOptions) (*env, entity.Identity, error) {
 	e, err := newEnv(opts.ClientVersion)
 	if err != nil {
-		return nil, config.Auth{}, err
+		return nil, entity.Identity{}, err
 	}
 	warnCopiedStore(e)
-	identity, err := loadIdentity(e.store)
+	identity, err := e.store.Identity()
 	if err != nil {
 		return nil, identity, err
 	}
@@ -133,44 +125,31 @@ func loadConnect(opts ConnectOptions) (*env, config.Auth, error) {
 	return e, identity, nil
 }
 
-// loadIdentity returns the saved login, or auth.ErrNotLoggedIn without one.
-func loadIdentity(store *config.Store) (config.Auth, error) {
-	var identity config.Auth
-	err := store.Load("auth", &identity)
-	switch {
-	case errors.Is(err, os.ErrNotExist), err == nil && identity.RefreshToken == "":
-		return identity, auth.ErrNotLoggedIn
-	case err != nil:
-		return identity, fmt.Errorf("load authentication (run grokbot-tunnel login): %w", err)
-	}
-	return identity, nil
-}
-
 // claimConnect takes the instance lock that keeps a second connect from
 // serving the same computer.
-func claimConnect(store *config.Store, version string) (func(), error) {
+func claimConnect(store *staterepo.Store, version string) (func(), error) {
 	exe, err := os.Executable()
 	if err != nil {
 		exe = ""
 	}
-	self := config.Holder{PID: os.Getpid(), Exe: exe, Version: version, StartedAt: time.Now().UTC()}
-	release, err := store.Claim("connect", self)
-	var busy *config.BusyError
+	self := instancelock.Holder{PID: os.Getpid(), Exe: exe, Version: version, StartedAt: time.Now().UTC()}
+	release, err := instancelock.Claim(store.Dir, "connect", self)
+	var busy *instancelock.BusyError
 	if errors.As(err, &busy) {
 		return nil, busyConnect(busy.Holder)
 	}
 	return release, err
 }
 
-func busyConnect(h config.Holder) error {
+func busyConnect(h instancelock.Holder) error {
 	pid := "pid unknown"
 	if h.PID != 0 {
 		pid = fmt.Sprintf("pid %d", h.PID)
 	}
-	if scope, ok := service.Owner(h.PID); ok {
+	if scope, ok := systemd.Owner(h.PID, install.TunnelUnit); ok {
 		return fmt.Errorf("the grokbot-tunnel service is already connected (%s); "+
 			"stop it with \"systemctl %sstop %s\" or follow its log with \"journalctl %s-u %s -f\"",
-			pid, scope.Flag(), service.Name, scope.Flag(), service.Name)
+			pid, scope.Flag(), install.Name, scope.Flag(), install.Name)
 	}
 	if !h.StartedAt.IsZero() {
 		pid += ", started " + h.StartedAt.Local().Format(time.DateTime)
@@ -182,14 +161,14 @@ func busyConnect(h config.Holder) error {
 // connecting there would fight over the same computer, which the instance
 // lock cannot see.
 func warnCopiedStore(e *env) {
-	if host := config.HostID(); e.machine.HostID != "" && host != "" && e.machine.HostID != host {
+	if host := staterepo.HostID(); e.machine.HostID != "" && host != "" && e.machine.HostID != host {
 		log.Printf("warning: %s was created on another host. If grokbot-tunnel connects there too, "+
 			"both fight over the same computer in Grok Bot. Delete machine.json and computer.json "+
 			"in it to register this host as a new computer.", e.store.Dir)
 	}
 }
 
-func notify(n *service.Notifier, state string) {
+func notify(n *systemd.Notifier, state string) {
 	if err := n.Notify(state); err != nil {
 		log.Printf("notify systemd: %v", err)
 	}

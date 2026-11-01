@@ -10,15 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/auth"
-	"github.com/exa-pub/grokbot-tunnel/internal/config"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/credential"
 )
 
 func noJitter(time.Duration) time.Duration { return 0 }
 
-func valid(now time.Time, ttl time.Duration, name string) config.Computer {
-	return config.Computer{Credential: name, ExpiresAtMS: now.Add(ttl).UnixMilli()}
+func valid(now time.Time, ttl time.Duration, name string) entity.Credential {
+	return entity.Credential{Credential: name, ExpiresAtMS: now.Add(ttl).UnixMilli()}
 }
 
 func unauthenticated() error {
@@ -29,7 +28,7 @@ func unauthenticated() error {
 // shorter lifetime; the old one serves until the new one arrives.
 func TestEnsureRenewal(t *testing.T) {
 	now := time.Unix(1000, 0)
-	m := credential.New(config.Computer{}, noJitter)
+	m := credential.New(entity.Credential{}, noJitter)
 	usable, issue := m.Ensure(now, false)
 	assert.False(t, usable)
 	require.True(t, issue)
@@ -51,28 +50,28 @@ func TestEnsureRenewal(t *testing.T) {
 	assert.False(t, issue)
 	_, issue = m.Ensure(now.Add(55*time.Minute), false)
 	assert.True(t, issue)
-	_, issue = credential.New(config.Computer{}, noJitter).Ensure(now, true)
+	_, issue = credential.New(entity.Credential{}, noJitter).Ensure(now, true)
 	assert.False(t, issue, "issue while stopping")
 }
 
 // Failed issues back off 30 s · 2^(n−1), or longer if Retry-After says so.
 func TestIssueBackoff(t *testing.T) {
 	now := time.Unix(1000, 0)
-	m := credential.New(config.Computer{}, noJitter)
+	m := credential.New(entity.Credential{}, noJitter)
 	down := connect.NewError(connect.CodeUnavailable, errors.New("down"))
 	for _, wait := range []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute} {
 		_, issue := m.Ensure(now, false)
 		require.True(t, issue, wait)
-		require.NoError(t, m.Issued(now, config.Computer{}, down))
+		require.NoError(t, m.Issued(now, entity.Credential{}, down))
 		_, issue = m.Ensure(now.Add(wait-time.Second), false)
 		assert.False(t, issue, "retried before %v", wait)
 		now = now.Add(wait)
 	}
 	slow := connect.NewError(connect.CodeUnavailable, errors.New("slow down"))
 	slow.Meta().Set("Retry-After", "600")
-	m = credential.New(config.Computer{}, noJitter)
+	m = credential.New(entity.Credential{}, noJitter)
 	m.Ensure(now, false)
-	require.NoError(t, m.Issued(now, config.Computer{}, slow))
+	require.NoError(t, m.Issued(now, entity.Credential{}, slow))
 	_, issue := m.Ensure(now.Add(599*time.Second), false)
 	assert.False(t, issue, "Retry-After ignored")
 }
@@ -83,10 +82,10 @@ func TestIssueFatal(t *testing.T) {
 	detail, err := connect.NewErrorDetail(&anypb.Any{TypeUrl: "type.googleapis.com/aiserver.v1.GrokBotUserComputerRemovedDetail"})
 	require.NoError(t, err)
 	removed.AddDetail(detail)
-	for _, fatal := range []error{removed, auth.ErrLogout, auth.ErrNotLoggedIn} {
-		m := credential.New(config.Computer{}, noJitter)
+	for _, fatal := range []error{removed, entity.ErrLogout, entity.ErrNotLoggedIn} {
+		m := credential.New(entity.Credential{}, noJitter)
 		m.Ensure(time.Unix(0, 0), false)
-		require.ErrorIs(t, m.Issued(time.Unix(0, 0), config.Computer{}, fatal), fatal)
+		require.ErrorIs(t, m.Issued(time.Unix(0, 0), entity.Credential{}, fatal), fatal)
 		assert.False(t, m.Issuing())
 	}
 	assert.True(t, credential.Removed(removed))
@@ -100,7 +99,7 @@ func TestIssueFatal(t *testing.T) {
 func TestReject(t *testing.T) {
 	now := time.Unix(1000, 0)
 	for _, proven := range []bool{false, true} {
-		m := credential.New(config.Computer{}, noJitter)
+		m := credential.New(entity.Credential{}, noJitter)
 		m.Ensure(now, false)
 		require.NoError(t, m.Issued(now, valid(now, time.Hour, "c"), nil))
 		if proven {

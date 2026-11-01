@@ -21,7 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/client"
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/sandapi"
 )
 
 const probeTimeout = 20 * time.Second
@@ -164,7 +164,7 @@ func goRequest(ctx context.Context, server *httptest.Server) error {
 	}
 	transport := base.Clone()
 	transport.ForceAttemptHTTP2 = false
-	h := &http.Client{Transport: client.Transport{Base: transport, Profile: client.ComputerRPC}}
+	h := &http.Client{Transport: sandapi.Transport{Base: transport, Profile: sandapi.ComputerRPC}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, nil)
 	if err != nil {
 		return err

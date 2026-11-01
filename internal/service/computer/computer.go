@@ -8,7 +8,6 @@ package computer
 
 import (
 	"context"
-	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"log"
@@ -17,10 +16,11 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/config"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+	"github.com/exa-pub/grokbot-tunnel/internal/repository/staterepo"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/credential"
 )
 
@@ -42,14 +42,14 @@ type Handler interface {
 type Provider struct {
 	User    rpc.GrokBotServiceClient // authenticated with the user's token
 	Channel rpc.GrokBotServiceClient // authenticated with the computer credential
-	Store   *config.Store
-	Machine config.Machine
+	Store   *staterepo.Store
+	Machine entity.Machine
 	Handler Handler
 	// LocalRoot and TerminalsFolder are announced in the hello.
 	LocalRoot       string
 	TerminalsFolder string
 	// Standing returns the local permission mode announced in the hello.
-	Standing     func() string
+	Standing     func() entity.Mode
 	Debug        bool
 	Backend      string
 	AccountScope string
@@ -68,15 +68,15 @@ func rpcContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, rpcTimeout)
 }
 
-func (pv *Provider) issue(ctx context.Context) (config.Computer, error) {
+func (pv *Provider) issue(ctx context.Context) (entity.Credential, error) {
 	ctx, cancel := rpcContext(ctx)
 	defer cancel()
 	req := &aiserverv1.IssueGrokBotUserComputerCredentialRequest{MachineId: pv.Machine.MachineID}
 	r, err := pv.User.IssueGrokBotUserComputerCredential(ctx, connect.NewRequest(req))
 	if err != nil {
-		return config.Computer{}, err
+		return entity.Credential{}, err
 	}
-	c := config.Computer{
+	c := entity.Credential{
 		AccountScope: pv.AccountScope, Backend: pv.Backend, MachineID: pv.Machine.MachineID,
 		Credential:          r.Msg.Credential,
 		ExpiresAtMS:         r.Msg.ExpiresAtMs,
@@ -94,17 +94,17 @@ func (pv *Provider) issue(ctx context.Context) (config.Computer, error) {
 
 // cachedCredential returns the saved credential if it was issued for this
 // account, backend and machine and is not about to expire.
-func (pv *Provider) cachedCredential() config.Computer {
+func (pv *Provider) cachedCredential() entity.Credential {
 	if pv.Store == nil || pv.Backend == "" || pv.AccountScope == "" {
-		return config.Computer{}
+		return entity.Credential{}
 	}
-	var c config.Computer
+	var c entity.Credential
 	if err := pv.Store.Load("computer", &c); err != nil {
-		return config.Computer{}
+		return entity.Credential{}
 	}
 	sameScope := c.Backend == pv.Backend && c.AccountScope == pv.AccountScope && c.MachineID == pv.Machine.MachineID
 	if !sameScope || time.UnixMilli(c.ExpiresAtMS).Sub(pv.now()) <= credential.Margin {
-		return config.Computer{}
+		return entity.Credential{}
 	}
 	return c
 }
@@ -115,7 +115,7 @@ func (pv *Provider) forgetCredential() {
 	if pv.Store == nil {
 		return
 	}
-	if err := pv.Store.Save("computer", config.Computer{}); err != nil {
+	if err := pv.Store.Save("computer", entity.Credential{}); err != nil {
 		log.Printf("forget computer credential: %v", err)
 	}
 }
@@ -142,16 +142,6 @@ func (pv *Provider) submitFrames(ctx context.Context, credential string, frames 
 		return n, fmt.Errorf("server accepted only %d response frames", n)
 	}
 	return n, nil
-}
-
-// newUUID returns a random version 4 UUID, the form of the desktop's
-// presence tokens.
-func newUUID() string {
-	var b [16]byte
-	_, _ = crand.Read(b[:]) // never fails
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 func (pv *Provider) now() time.Time {

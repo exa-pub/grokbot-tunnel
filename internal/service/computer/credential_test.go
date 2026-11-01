@@ -10,8 +10,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/auth"
-	"github.com/exa-pub/grokbot-tunnel/internal/config"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
 )
@@ -38,7 +37,7 @@ func tickWatch(t *testing.T, s *session) error {
 // After the session is revoked no credential can be issued; Run ends instead
 // of retrying forever. The client returns the interceptor's error unwrapped.
 func TestLogoutEndsRun(t *testing.T) {
-	for _, want := range []error{auth.ErrLogout, auth.ErrNotLoggedIn} {
+	for _, want := range []error{entity.ErrLogout, entity.ErrNotLoggedIn} {
 		var now time.Time
 		c := &stubCloud{}
 		s := stubSession(t, c, &now)
@@ -107,7 +106,7 @@ func TestSlowIssueKeepsSessionWorking(t *testing.T) {
 	var now time.Time
 	c := &stubCloud{blockIssue: make(chan struct{}), ttl: time.Hour}
 	s := stubSession(t, c, &now)
-	s.cred.Restore(config.Computer{Credential: "old", ExpiresAtMS: now.Add(4 * time.Minute).UnixMilli()})
+	s.cred.Restore(entity.Credential{Credential: "old", ExpiresAtMS: now.Add(4 * time.Minute).UnixMilli()})
 	start := time.Now()
 	s.onTick()
 	if !s.cred.Issuing() {

@@ -13,8 +13,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/auth"
-	"github.com/exa-pub/grokbot-tunnel/internal/config"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 )
 
 const (
@@ -30,7 +29,7 @@ const (
 // Manager holds the current credential.
 type Manager struct {
 	jitter func(time.Duration) time.Duration
-	c      config.Computer
+	c      entity.Credential
 	// issuedAt is the local time the credential was issued; zero if unknown.
 	issuedAt time.Time
 	// proven is set once the watch stream connected with the credential, as in
@@ -45,7 +44,7 @@ type Manager struct {
 
 // New returns a Manager starting with cached, which may be empty; jitter
 // returns the random part of a retry delay d.
-func New(cached config.Computer, jitter func(d time.Duration) time.Duration) *Manager {
+func New(cached entity.Credential, jitter func(d time.Duration) time.Duration) *Manager {
 	m := &Manager{jitter: jitter}
 	m.Restore(cached)
 	return m
@@ -53,12 +52,12 @@ func New(cached config.Computer, jitter func(d time.Duration) time.Duration) *Ma
 
 // Restore replaces the credential with one of unknown age, as loaded from
 // the cache.
-func (m *Manager) Restore(c config.Computer) {
+func (m *Manager) Restore(c entity.Credential) {
 	m.c, m.issuedAt, m.proven = c, time.Time{}, false
 }
 
 // Current returns the credential; its Credential is empty without one.
-func (m *Manager) Current() config.Computer { return m.c }
+func (m *Manager) Current() entity.Credential { return m.c }
 
 // Issuing reports whether an issue is in flight.
 func (m *Manager) Issuing() bool { return m.issuing }
@@ -93,12 +92,12 @@ func (m *Manager) Ensure(now time.Time, stopping bool) (usable, issue bool) {
 // Issued applies the result of the issue in flight. Without a session or a
 // registration no credential can ever be issued, so those errors are
 // returned as fatal; other failures are retried with backoff.
-func (m *Manager) Issued(now time.Time, c config.Computer, err error) (fatal error) {
+func (m *Manager) Issued(now time.Time, c entity.Credential, err error) (fatal error) {
 	m.issuing = false
 	switch {
 	case Removed(err):
 		return fmt.Errorf("computer registration refused: %w", err)
-	case errors.Is(err, auth.ErrLogout), errors.Is(err, auth.ErrNotLoggedIn):
+	case errors.Is(err, entity.ErrLogout), errors.Is(err, entity.ErrNotLoggedIn):
 		return err
 	case err != nil:
 		m.fail(now, retryAfter(err))
@@ -128,7 +127,7 @@ func (m *Manager) Reject(now time.Time, credential string, err error) bool {
 	if !m.proven {
 		m.fail(now, retryAfter(err))
 	}
-	m.Restore(config.Computer{})
+	m.Restore(entity.Credential{})
 	return true
 }
 

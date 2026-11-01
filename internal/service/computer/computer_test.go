@@ -15,9 +15,10 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/config"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
+	"github.com/exa-pub/grokbot-tunnel/internal/repository/staterepo"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/permission"
 )
@@ -129,7 +130,7 @@ func TestQueueAckDedupCredentialRecoveryAndShutdown(t *testing.T) {
 			return next(ctx, r)
 		}
 	})
-	pv := &Provider{User: rpc.NewGrokBotServiceClient(server.Client(), server.URL, connect.WithInterceptors(userInterceptor)), Channel: rpc.NewGrokBotServiceClient(server.Client(), server.URL), Store: &config.Store{Dir: t.TempDir()}, Machine: config.Machine{MachineID: "m", Label: "test"}, Handler: ex, LocalRoot: ex.Root, TerminalsFolder: ex.TerminalsFolder(), Standing: policy.Standing}
+	pv := &Provider{User: rpc.NewGrokBotServiceClient(server.Client(), server.URL, connect.WithInterceptors(userInterceptor)), Channel: rpc.NewGrokBotServiceClient(server.Client(), server.URL), Store: &staterepo.Store{Dir: t.TempDir()}, Machine: entity.Machine{MachineID: "m", Label: "test"}, Handler: ex, LocalRoot: ex.Root, TerminalsFolder: ex.TerminalsFolder(), Standing: policy.Standing}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)

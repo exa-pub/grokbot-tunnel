@@ -1,7 +1,7 @@
 BINARY    := grokbot-tunnel
 PKG       := github.com/exa-pub/grokbot-tunnel
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS   := -s -w -X $(PKG)/internal/cli.version=$(VERSION)
+LDFLAGS   := -s -w -X $(PKG)/internal/api/cli.version=$(VERSION)
 PLATFORMS := linux/amd64 linux/arm64
 GOLANGCI_LINT ?= golangci-lint
 

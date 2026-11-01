@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/tty"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 )
 
 // openPTY returns the master and slave ends of a new pseudo-terminal.
@@ -58,7 +59,7 @@ func (w promptWriter) Write(b []byte) (int, error) {
 func TestTypeaheadDoesNotAnswerPrompt(t *testing.T) {
 	master, slave := openPTY(t)
 	out := make(promptWriter, 4)
-	p := &Policy{Mode: ModeAsk, Prompter: tty.Terminal{In: slave, Out: out}}
+	p := &Policy{Mode: entity.ModeAsk, Prompter: tty.Terminal{In: slave, Out: out}}
 	if _, err := master.WriteString("y\n"); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ func TestTypeaheadDoesNotAnswerPrompt(t *testing.T) {
 func TestQueuedPromptHonorsCancellation(t *testing.T) {
 	_, slave := openPTY(t)
 	out := make(promptWriter, 4)
-	p := &Policy{Mode: ModeAsk, Prompter: tty.Terminal{In: slave, Out: out}}
+	p := &Policy{Mode: entity.ModeAsk, Prompter: tty.Terminal{In: slave, Out: out}}
 	first, stopFirst := context.WithCancel(context.Background())
 	defer stopFirst()
 	firstDone := make(chan error, 1)

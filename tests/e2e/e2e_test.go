@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
-	"github.com/exa-pub/grokbot-tunnel/internal/service"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/install"
 	"github.com/exa-pub/grokbot-tunnel/tests/e2e/fakesand"
 )
 
@@ -92,7 +92,7 @@ func TestVersion(t *testing.T) {
 // restart.
 func TestConnectWithoutLogin(t *testing.T) {
 	out, code := newCLI(t, fakesand.New(t)).run(t, "connect", "--permission", "always")
-	assert.Equal(t, service.ExitLogin, code, out)
+	assert.Equal(t, install.ExitLogin, code, out)
 }
 
 // login --no-browser, connect, one shell command, SIGTERM: the process

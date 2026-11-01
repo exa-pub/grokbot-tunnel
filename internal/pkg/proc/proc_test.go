@@ -2,6 +2,7 @@ package proc_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -30,7 +31,9 @@ func TestKillProcessGroup(t *testing.T) {
 	}
 	assert.Equal(t, 128+int(syscall.SIGKILL), proc.ExitCode(c.ProcessState))
 	assert.Equal(t, uint32(c.Process.Pid), *proc.PID(c)) //nolint:gosec // PIDs are positive
-	require.ErrorIs(t, syscall.Kill(-c.Process.Pid, 0), syscall.ESRCH)
+	// Orphaned children are reaped by init a moment later.
+	assert.Eventually(t, func() bool { return errors.Is(syscall.Kill(-c.Process.Pid, 0), syscall.ESRCH) },
+		5*time.Second, 10*time.Millisecond, "process group survived")
 	proc.Kill(&exec.Cmd{}) // not started: no-op
 }
 

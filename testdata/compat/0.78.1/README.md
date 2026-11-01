@@ -21,5 +21,5 @@ recorded, so this is not a JA3/JA4 fingerprint. The official executable cannot
 run as Node, so the measurement used a copy with the RunAsNode fuse enabled:
 
 ```sh
-ELECTRON_RUN_AS_NODE=1 go run ./scripts/compat-tls --node /path/to/runtime
+ELECTRON_RUN_AS_NODE=1 go run ./tools/compattls --node /path/to/runtime
 ```

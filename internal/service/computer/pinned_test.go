@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/config"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
@@ -190,7 +190,7 @@ func TestPinnedCancelBeforeStart(t *testing.T) {
 		// submit them with, so they stay pending for inspection. It drops the
 		// task but leaves its id in the backlog, where startJobs would skip it.
 		{"shutdown", func(s *session) {
-			s.cred.Restore(config.Computer{})
+			s.cred.Restore(entity.Credential{})
 			s.shutdown()
 		}, 1},
 	}

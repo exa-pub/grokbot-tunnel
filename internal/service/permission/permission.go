@@ -7,13 +7,8 @@ import (
 	"errors"
 	"strings"
 	"sync"
-)
 
-// Modes accepted by Policy.Mode.
-const (
-	ModeAsk    = "ask"
-	ModeAlways = "always"
-	ModeNever  = "never"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 )
 
 // The error texts are shown to the agent as complete sentences explaining what
@@ -46,18 +41,18 @@ type Prompter interface {
 type Policy struct {
 	mu       sync.Mutex    // guards Mode and prompt
 	prompt   chan struct{} // one-slot semaphore serializing terminal prompts
-	Mode     string
+	Mode     entity.Mode
 	Prompter Prompter // nil: never ask
 }
 
 // Standing returns the current permission mode.
-func (p *Policy) Standing() string {
+func (p *Policy) Standing() entity.Mode {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.Mode
 }
 
-func (p *Policy) setStanding(mode string) {
+func (p *Policy) setStanding(mode entity.Mode) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.Mode = mode
@@ -67,13 +62,13 @@ func (p *Policy) setStanding(mode string) {
 // user has to be prompted.
 func (p *Policy) decide(server, approved bool) (ok bool, err error) {
 	switch {
-	case p.Standing() == ModeNever:
+	case p.Standing() == entity.ModeNever:
 		return true, ErrDisabled
 	case server && approved:
 		return true, nil
 	case server:
 		return true, ErrRefused
-	case p.Standing() == ModeAlways:
+	case p.Standing() == entity.ModeAlways:
 		return true, nil
 	}
 	return false, nil
@@ -113,7 +108,7 @@ func (p *Policy) Allow(ctx context.Context, action string, server, approved bool
 	}
 	switch strings.ToLower(strings.TrimSpace(answer)) {
 	case "a":
-		p.setStanding(ModeAlways)
+		p.setStanding(entity.ModeAlways)
 		return nil
 	case "y", "yes":
 		return nil

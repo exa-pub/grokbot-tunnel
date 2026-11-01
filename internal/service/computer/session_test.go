@@ -13,10 +13,11 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/exa-pub/grokbot-tunnel/internal/config"
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
+	"github.com/exa-pub/grokbot-tunnel/internal/repository/staterepo"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/admission"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/computer/replies"
 )
@@ -44,8 +45,8 @@ func testSession(t *testing.T) *session {
 	t.Cleanup(func() { close(end) })
 	pv := &Provider{
 		Handler:  testHandler{end: end},
-		Store:    &config.Store{Dir: t.TempDir()},
-		Standing: func() string { return "always" },
+		Store:    &staterepo.Store{Dir: t.TempDir()},
+		Standing: func() entity.Mode { return entity.ModeAlways },
 		Now:      func() time.Time { return time.Unix(1000, 0) },
 		Jitter:   func(time.Duration) time.Duration { return 0 },
 	}
@@ -56,7 +57,7 @@ func testSession(t *testing.T) *session {
 
 // withCredential gives s a credential valid for an hour.
 func withCredential(s *session, name string, server bool) {
-	s.cred.Restore(config.Computer{Credential: name, ExpiresAtMS: s.pv.now().Add(time.Hour).UnixMilli(), ServerAuthoritative: server})
+	s.cred.Restore(entity.Credential{Credential: name, ExpiresAtMS: s.pv.now().Add(time.Hour).UnixMilli(), ServerAuthoritative: server})
 }
 
 func execFrame(id string) *requestFrame {
@@ -261,21 +262,21 @@ func TestCancelWaitingRequest(t *testing.T) {
 }
 
 func TestCredentialCacheScopeAndInvalidation(t *testing.T) {
-	store := &config.Store{Dir: t.TempDir()}
+	store := &staterepo.Store{Dir: t.TempDir()}
 	now := time.Now()
-	valid := config.Computer{Credential: "cached", AccountScope: "account", Backend: "https://api.example", MachineID: "machine", ExpiresAtMS: now.Add(time.Hour).UnixMilli()}
+	valid := entity.Credential{Credential: "cached", AccountScope: "account", Backend: "https://api.example", MachineID: "machine", ExpiresAtMS: now.Add(time.Hour).UnixMilli()}
 	if err := store.Save("computer", valid); err != nil {
 		t.Fatal(err)
 	}
 	for _, scope := range []string{"account", "other"} {
-		pv := &Provider{Store: store, AccountScope: scope, Backend: valid.Backend, Machine: config.Machine{MachineID: valid.MachineID}}
+		pv := &Provider{Store: store, AccountScope: scope, Backend: valid.Backend, Machine: entity.Machine{MachineID: valid.MachineID}}
 		s := newSession(context.Background(), pv)
 		if (s.cred.Current().Credential != "") != (scope == "account") {
 			t.Fatal("cross-account cache use")
 		}
 		if scope == "account" {
 			s.invalidate("", connect.NewError(connect.CodeUnauthenticated, errors.New("expired")))
-			var c config.Computer
+			var c entity.Credential
 			store.Load("computer", &c)
 			if c.Credential != "" {
 				t.Fatal("rejected credential persisted")
@@ -287,7 +288,7 @@ func TestCredentialCacheScopeAndInvalidation(t *testing.T) {
 	legacy := valid
 	legacy.AccountScope = ""
 	store.Save("computer", legacy)
-	s := newSession(context.Background(), &Provider{Store: store, AccountScope: "account", Backend: valid.Backend, Machine: config.Machine{MachineID: valid.MachineID}})
+	s := newSession(context.Background(), &Provider{Store: store, AccountScope: "account", Backend: valid.Backend, Machine: entity.Machine{MachineID: valid.MachineID}})
 	defer s.close()
 	if s.cred.Current().Credential != "" {
 		t.Fatal("legacy cache accepted")
@@ -329,7 +330,7 @@ func TestInflightLimitAndShutdownCancel(t *testing.T) {
 	if s.admit.Backlog() != admission.MaxBacklog || len(s.admit.Tasks()) != admission.MaxActive+admission.MaxBacklog || len(s.out.Pending()) != 1 {
 		t.Fatal(s.admit.Backlog(), len(s.admit.Tasks()), len(s.out.Pending()))
 	}
-	s.cred.Restore(config.Computer{}) // nothing to submit with
+	s.cred.Restore(entity.Credential{}) // nothing to submit with
 	s.shutdown()
 	if len(s.admit.Tasks()) != 0 || s.admit.Active() != 0 || len(s.out.Pending()) != 1+admission.MaxBacklog {
 		t.Fatal("queued tasks not canceled", len(s.admit.Tasks()), len(s.out.Pending()))
@@ -431,7 +432,7 @@ func TestFailedRenewalKeepsSessionWorking(t *testing.T) {
 	var now time.Time
 	c := &stubCloud{failIssue: true}
 	s := stubSession(t, c, &now)
-	s.cred.Restore(config.Computer{Credential: "c", ExpiresAtMS: now.Add(4 * time.Minute).UnixMilli()})
+	s.cred.Restore(entity.Credential{Credential: "c", ExpiresAtMS: now.Add(4 * time.Minute).UnixMilli()})
 	s.stream.Start(now, "always")
 	s.out.Add(&responseFrame{RequestId: "r", Frame: &aiserverv1.GrokBotUserComputerResponseFrame_MessagesError{
 		MessagesError: &aiserverv1.GrokBotUserComputerMessagesError{},
@@ -531,12 +532,12 @@ func TestPollFailureRetriesWithBackoff(t *testing.T) {
 func TestServerAuthoritativeStandingChangeKeepsWatch(t *testing.T) {
 	var now time.Time
 	s := stubSession(t, &stubCloud{}, &now)
-	standing := "always"
-	s.pv.Standing = func() string { return standing }
+	standing := entity.ModeAlways
+	s.pv.Standing = func() entity.Mode { return standing }
 	withCredential(s, "c", true)
 	s.startWatch()
 	gen := s.stream.Generation()
-	standing = "ask"
+	standing = entity.ModeAsk
 	s.onTick()
 	if s.stream.Generation() != gen {
 		t.Fatal("reconnected for a standing the server ignores")

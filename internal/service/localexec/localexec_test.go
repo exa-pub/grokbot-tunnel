@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
@@ -21,7 +22,7 @@ import (
 )
 
 // gate returns the Gate of a policy with mode that never asks.
-func gate(mode string) Gate { return (&permission.Policy{Mode: mode}).Allow }
+func gate(mode entity.Mode) Gate { return (&permission.Policy{Mode: mode}).Allow }
 
 func setup(t *testing.T) *Executor {
 	t.Helper()
@@ -34,7 +35,7 @@ func setupHome(t *testing.T, home string) *Executor {
 	t.Helper()
 	t.Setenv("HOME", home)
 	t.Setenv("ZDOTDIR", home)
-	e, err := New(t.TempDir(), gate(permission.ModeAlways))
+	e, err := New(t.TempDir(), gate(entity.ModeAlways))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +224,7 @@ func TestTerminalReadMaxChars(t *testing.T) {
 
 func TestUnrecognizedFrames(t *testing.T) {
 	e := setup(t)
-	e.gate = gate(permission.ModeNever) // answered before any permission check
+	e.gate = gate(entity.ModeNever) // answered before any permission check
 	for _, f := range []*aiserverv1.GrokBotUserComputerRequestFrame{
 		{RequestId: "r"},
 		{RequestId: "r", Frame: &aiserverv1.GrokBotUserComputerRequestFrame_PutFileToUrl{PutFileToUrl: &aiserverv1.GrokBotUserComputerPutFileToUrl{Path: "x", Url: "https://example.invalid/"}}},

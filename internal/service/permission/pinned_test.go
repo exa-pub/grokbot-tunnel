@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 )
 
 // Invariant 17 of ai.tmp/refactor-plan/grok-bot-map.md §4, ≠ (decided: align
@@ -13,19 +15,19 @@ import (
 // row becomes (true, nil) in the alignment PR.
 func TestPinnedDecide(t *testing.T) {
 	for _, tc := range []struct {
-		mode             string
+		mode             entity.Mode
 		server, approved bool
 		ok               bool
 		err              error
 	}{
-		{ModeNever, true, true, true, ErrDisabled},
-		{ModeNever, true, false, true, ErrDisabled},
-		{ModeNever, false, false, true, ErrDisabled},
-		{ModeAsk, true, true, true, nil},
-		{ModeAsk, true, false, true, ErrRefused},
-		{ModeAlways, true, false, true, ErrRefused},
-		{ModeAlways, false, false, true, nil},
-		{ModeAsk, false, false, false, nil},
+		{entity.ModeNever, true, true, true, ErrDisabled},
+		{entity.ModeNever, true, false, true, ErrDisabled},
+		{entity.ModeNever, false, false, true, ErrDisabled},
+		{entity.ModeAsk, true, true, true, nil},
+		{entity.ModeAsk, true, false, true, ErrRefused},
+		{entity.ModeAlways, true, false, true, ErrRefused},
+		{entity.ModeAlways, false, false, true, nil},
+		{entity.ModeAsk, false, false, false, nil},
 	} {
 		p := &Policy{Mode: tc.mode}
 		ok, err := p.decide(tc.server, tc.approved)

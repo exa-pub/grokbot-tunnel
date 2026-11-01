@@ -3,7 +3,7 @@ description: Update grokbot-tunnel to a new Grok Bot release (download, plan, im
 argument-hint: "[version]"
 ---
 
-Update grokbot-tunnel to the latest Grok Bot Linux client release, or to `$ARGUMENTS` if a version is given. The current version is `Version` in `internal/client/client.go`; its unpacked bundle is in `ai.tmp/grok-bot/`. Work autonomously and stop only on real blockers.
+Update grokbot-tunnel to the latest Grok Bot Linux client release, or to `$ARGUMENTS` if a version is given. The current version is `Version` in `internal/adapter/sandapi/sandapi.go`; its unpacked bundle is in `ai.tmp/grok-bot/`. Work autonomously and stop only on real blockers.
 
 1. **Download.** Feed: `curl -s https://api2.cursor.sh/updates/api/update/linux-x64/sand/<current>/x64/stable` returns `version`, `url` (AppImage) and `sha256hash`. If there is no newer version, say so and stop. Download into `ai.tmp/grok-bot/<version>/`, verify the sha256 and unpack it without running it: `unsquashfs -o <squashfs offset>`, then extract `app.asar` into `app/` (with `@electron/asar` or your own asar parser).
 2. **Branch.** From an up-to-date `main`: `git switch -c feat/update-<version>`.

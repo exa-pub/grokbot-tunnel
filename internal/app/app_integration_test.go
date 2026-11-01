@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/api/cli"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/login"
 	"github.com/exa-pub/grokbot-tunnel/tests/e2e/fakesand"
 )
 
@@ -72,7 +74,7 @@ func TestLoginConnectEndToEndLocal(t *testing.T) {
 	cloud := fakesand.New(t)
 	cloud.Setenv(t)
 	var out bytes.Buffer
-	if err := Login(context.Background(), LoginOptions{NoBrowser: true}, &out); err != nil {
+	if err := Login(context.Background(), cli.LoginOptions{Options: login.Options{NoBrowser: true}}, &out); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "Logged in as "+fakesand.Email) {
@@ -89,7 +91,7 @@ func TestLoginConnectEndToEndLocal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- Connect(ctx, ConnectOptions{Root: root, Permission: "always"}) }()
+	go func() { done <- Connect(ctx, cli.ConnectOptions{Root: root, Permission: "always"}) }()
 	cloud.Wait(5*time.Second, func(frames []*aiserverv1.GrokBotUserComputerResponseFrame) bool { return served(t, frames) })
 	if got := readNotify(t, notifications); got != "READY=1" {
 		t.Fatal("systemd notification", got)

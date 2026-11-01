@@ -33,5 +33,5 @@ pre-releases. `grokbot-tunnel update` and the update timer installed by
 `checksums.txt` format.
 
 Package builds should pass
-`-X github.com/exa-pub/grokbot-tunnel/internal/cli.packager=<name>` in
+`-X github.com/exa-pub/grokbot-tunnel/internal/api/cli.packager=<name>` in
 `-ldflags`: such builds refuse `update` and do not install the update timer.
