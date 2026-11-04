@@ -22,7 +22,7 @@ import (
 )
 
 // Version is the Sand desktop version whose protocol this client speaks.
-const Version = "0.78.1"
+const Version = "0.78.4"
 
 // AuthUserAgent is the bundled Undici default: n5t selects "undici" when
 // neither __UNDICI_IS_NODE__ nor esbuildDetection is defined. The desktop
@@ -166,7 +166,7 @@ type TokenSource interface {
 	Snapshot() entity.Identity
 }
 
-// foreignAuthErrors are the ErrorDetails.Error codes (K9t) of Unauthenticated
+// foreignAuthErrors are the ErrorDetails.Error codes (e8t) of Unauthenticated
 // errors that are not about the user's token: GITHUB_NO_USER_CREDENTIALS,
 // GITHUB_USER_NO_ACCESS, GITHUB_APP_NO_ACCESS and GITHUB_MULTIPLE_OWNERS.
 var foreignAuthErrors = map[uint64]bool{46: true, 47: true, 48: true, 49: true}

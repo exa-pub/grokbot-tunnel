@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import path from 'node:path';
 import util from 'node:util';
 import {isUtf8,isAscii} from 'node:buffer';
-const base = process.argv[2] ?? 'ai.tmp/grok-bot/0.78.1/app/dist';
+const base = process.argv[2] ?? 'ai.tmp/grok-bot/0.78.4/app/dist';
 const daemon = fs.readFileSync(path.join(base,'local-exec-daemon/main.cjs'),'utf8');
 function extract(name) {
  const forms=[`async function*${name}(`,`async function ${name}(`,`function ${name}(`,`var ${name}=class`];
@@ -81,5 +81,5 @@ for(const b of formatInputs){try{const r=fmt.THe(b);format.push({hex:b.toString(
 // The size prepareImageForModel scales an image to (zct).
 vm.runInContext('var Gct=1024,Hs=8;'+extract('zct'),fmt);
 const imageFit=[[1,1],[1024,1024],[1025,10],[4000,3000],[3840,2160],[2160,3840],[10000,9],[10000,7],[7,10000],[2000,8],[1281,800],[0,5],[1500,1501]].flatMap(([w,h])=>[1024,1280].map(side=>({width:w,height:h,side,result:fmt.zct(w,h,side)})));
-const output={provenance:{version:'0.78.1',platform:'linux',method:'isolated pure functions from source; not desktop traffic',source:'local-exec-daemon/main.cjs',markers:['QSr','Rye','lfe','hN','Sut','Eye','ZO','zct']},ranges:cases.map(c=>({...c,result:context.QSr(c.text,c.text.split('\n').length,c.args)})),streaming,fallback,discoveryMissing:context.lfe('codex'),terminalHeader:context.hN({pid:42,cwd:'/workspace',command:'printf hello',status:'running',startedAt:'2026-01-01T00:00:00.000Z',runningForMs:0}),format,imageFit};
+const output={provenance:{version:'0.78.4',platform:'linux',method:'isolated pure functions from source; not desktop traffic',source:'local-exec-daemon/main.cjs',markers:['QSr','Rye','lfe','hN','Sut','Eye','ZO','zct']},ranges:cases.map(c=>({...c,result:context.QSr(c.text,c.text.split('\n').length,c.args)})),streaming,fallback,discoveryMissing:context.lfe('codex'),terminalHeader:context.hN({pid:42,cwd:'/workspace',command:'printf hello',status:'running',startedAt:'2026-01-01T00:00:00.000Z',runningForMs:0}),format,imageFit};
 process.stdout.write(JSON.stringify(output,null,2)+'\n');
