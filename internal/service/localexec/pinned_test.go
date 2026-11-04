@@ -438,7 +438,7 @@ func largeWebP(t *testing.T, animated bool, w, h int) []byte {
 	return b
 }
 
-// ≠: the desktop 0.78.1 does not decode a WEBP larger than 1280 pixels or
+// ≠: the desktop 0.78.4 does not decode a WEBP larger than 1280 pixels or
 // 1 MiB and answers with an error, "webp codec not registered…"; we encode
 // it again as JPEG, or PNG when it has transparency. One that Go cannot
 // decode either (animated) gets the desktop's error.

@@ -26,7 +26,7 @@ const (
 	// refresh, as in the desktop's unauthenticated recovery.
 	rejectCooldown = 5 * time.Minute
 	// refreshTimeout bounds waiting for the store lock and the refresh
-	// request, each, as the desktop's deadline (dAn) bounds its fetch.
+	// request, each, as the desktop's deadline (hAn) bounds its fetch.
 	refreshTimeout = 20 * time.Second
 	// WaitTimeout bounds Wait at exit: a refresh takes at most refreshTimeout
 	// for the lock and again for the request, plus time to save its answer.
@@ -135,7 +135,7 @@ func (s *TokenSource) Rejected(ctx context.Context, token string) error {
 // end with its callers, so a process waits for it before exiting: cut off,
 // its answer would be lost after the server may already have rotated the
 // refresh token, and the next start would be logged out with shouldLogout.
-// The desktop's refresh likewise runs to its own deadline (dAn, A@1270062),
+// The desktop's refresh likewise runs to its own deadline (hAn, A@1271742),
 // since a failed registration does not end the app. Callers bound ctx by
 // WaitTimeout.
 func (s *TokenSource) Wait(ctx context.Context) error {

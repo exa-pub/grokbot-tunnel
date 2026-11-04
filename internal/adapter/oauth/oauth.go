@@ -54,7 +54,7 @@ func ClientIDFor(base, override string) string {
 	return ClientID
 }
 
-// Login polling follows the desktop's Epn: at most pollAttempts polls,
+// Login polling follows the desktop's Ipn: at most pollAttempts polls,
 // pollFirstDelay*1.2^n but at most pollMaxDelay apart, and pollMaxFailures
 // failed polls in a row end the login.
 const (
@@ -115,7 +115,7 @@ func sleep(ctx context.Context, d time.Duration) error {
 }
 
 // Poll waits until the user completes login in the browser, like the
-// desktop's Epn: "not signed in yet" (404) is polled again, and
+// desktop's Ipn: "not signed in yet" (404) is polled again, and
 // pollMaxFailures other failures in a row, network errors included, end the
 // login. A 403 ends it at once only for a sign-in policy violation. Errors
 // never contain the poll URL, whose query holds the PKCE verifier.
