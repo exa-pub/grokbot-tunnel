@@ -1,0 +1,83 @@
+{
+  "scenario": "ls/tree",
+  "digest": "sha256:167ff451e434e972a4515e73ebde248b499681e8acdaad09eb39c411e542afe8",
+  "subject": "desktop-0.78.4",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "lsResult": {
+            "success": {
+              "directoryTreeRoot": {
+                "absPath": "$ROOT",
+                "childrenDirs": [
+                  {
+                    "absPath": "$ROOT/src",
+                    "childrenDirs": [
+                      {
+                        "absPath": "$ROOT/src/util",
+                        "childrenFiles": [
+                          {
+                            "name": "x.go"
+                          }
+                        ],
+                        "childrenWereProcessed": true
+                      }
+                    ],
+                    "childrenFiles": [
+                      {
+                        "name": "main.go"
+                      }
+                    ],
+                    "childrenWereProcessed": true
+                  }
+                ],
+                "childrenFiles": [
+                  {
+                    "name": "_under"
+                  },
+                  {
+                    "name": "10.txt"
+                  },
+                  {
+                    "name": "9.txt"
+                  },
+                  {
+                    "name": "a.md"
+                  },
+                  {
+                    "name": "ä.txt"
+                  },
+                  {
+                    "name": "b.txt"
+                  },
+                  {
+                    "name": "Zeta.TXT"
+                  }
+                ],
+                "childrenWereProcessed": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  }
+}

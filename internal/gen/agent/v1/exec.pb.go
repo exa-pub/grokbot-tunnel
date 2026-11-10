@@ -3359,14 +3359,17 @@ func (*ExecServerMessage_ShellStreamArgs) isExecServerMessage_Message() {}
 func (*ExecServerMessage_BackgroundShellSpawnArgs) isExecServerMessage_Message() {}
 
 type BackgroundShellSpawnArgs struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Command          string                 `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
-	WorkingDirectory string                 `protobuf:"bytes,2,opt,name=working_directory,json=workingDirectory,proto3" json:"working_directory,omitempty"`
-	Description      *string                `protobuf:"bytes,7,opt,name=description,proto3,oneof" json:"description,omitempty"`
-	ConversationId   *string                `protobuf:"bytes,13,opt,name=conversation_id,json=conversationId,proto3,oneof" json:"conversation_id,omitempty"`
-	RequestId        *string                `protobuf:"bytes,15,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	Command              string                 `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
+	WorkingDirectory     string                 `protobuf:"bytes,2,opt,name=working_directory,json=workingDirectory,proto3" json:"working_directory,omitempty"`
+	SandboxPolicy        *SandboxPolicy         `protobuf:"bytes,5,opt,name=sandbox_policy,json=sandboxPolicy,proto3,oneof" json:"sandbox_policy,omitempty"`
+	Description          *string                `protobuf:"bytes,7,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	SkipApproval         bool                   `protobuf:"varint,12,opt,name=skip_approval,json=skipApproval,proto3" json:"skip_approval,omitempty"`
+	ConversationId       *string                `protobuf:"bytes,13,opt,name=conversation_id,json=conversationId,proto3,oneof" json:"conversation_id,omitempty"`
+	AdminCommandDenylist []string               `protobuf:"bytes,14,rep,name=admin_command_denylist,json=adminCommandDenylist,proto3" json:"admin_command_denylist,omitempty"`
+	RequestId            *string                `protobuf:"bytes,15,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *BackgroundShellSpawnArgs) Reset() {
@@ -3413,6 +3416,13 @@ func (x *BackgroundShellSpawnArgs) GetWorkingDirectory() string {
 	return ""
 }
 
+func (x *BackgroundShellSpawnArgs) GetSandboxPolicy() *SandboxPolicy {
+	if x != nil {
+		return x.SandboxPolicy
+	}
+	return nil
+}
+
 func (x *BackgroundShellSpawnArgs) GetDescription() string {
 	if x != nil && x.Description != nil {
 		return *x.Description
@@ -3420,11 +3430,25 @@ func (x *BackgroundShellSpawnArgs) GetDescription() string {
 	return ""
 }
 
+func (x *BackgroundShellSpawnArgs) GetSkipApproval() bool {
+	if x != nil {
+		return x.SkipApproval
+	}
+	return false
+}
+
 func (x *BackgroundShellSpawnArgs) GetConversationId() string {
 	if x != nil && x.ConversationId != nil {
 		return *x.ConversationId
 	}
 	return ""
+}
+
+func (x *BackgroundShellSpawnArgs) GetAdminCommandDenylist() []string {
+	if x != nil {
+		return x.AdminCommandDenylist
+	}
+	return nil
 }
 
 func (x *BackgroundShellSpawnArgs) GetRequestId() string {
@@ -3439,12 +3463,15 @@ type ShellArgs struct {
 	Command                  string                 `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
 	WorkingDirectory         string                 `protobuf:"bytes,2,opt,name=working_directory,json=workingDirectory,proto3" json:"working_directory,omitempty"`
 	Timeout                  int32                  `protobuf:"varint,3,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	RequestedSandboxPolicy   *SandboxPolicy         `protobuf:"bytes,9,opt,name=requested_sandbox_policy,json=requestedSandboxPolicy,proto3,oneof" json:"requested_sandbox_policy,omitempty"`
 	FileOutputThresholdBytes *uint64                `protobuf:"varint,10,opt,name=file_output_threshold_bytes,json=fileOutputThresholdBytes,proto3,oneof" json:"file_output_threshold_bytes,omitempty"`
 	IsBackground             bool                   `protobuf:"varint,11,opt,name=is_background,json=isBackground,proto3" json:"is_background,omitempty"`
+	SkipApproval             bool                   `protobuf:"varint,12,opt,name=skip_approval,json=skipApproval,proto3" json:"skip_approval,omitempty"`
 	TimeoutBehavior          TimeoutBehavior        `protobuf:"varint,13,opt,name=timeout_behavior,json=timeoutBehavior,proto3,enum=agent.v1.TimeoutBehavior" json:"timeout_behavior,omitempty"`
 	HardTimeout              *int32                 `protobuf:"varint,14,opt,name=hard_timeout,json=hardTimeout,proto3,oneof" json:"hard_timeout,omitempty"`
 	Description              *string                `protobuf:"bytes,15,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	ConversationId           *string                `protobuf:"bytes,21,opt,name=conversation_id,json=conversationId,proto3,oneof" json:"conversation_id,omitempty"`
+	AdminCommandDenylist     []string               `protobuf:"bytes,22,rep,name=admin_command_denylist,json=adminCommandDenylist,proto3" json:"admin_command_denylist,omitempty"`
 	RequestId                *string                `protobuf:"bytes,23,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
@@ -3501,6 +3528,13 @@ func (x *ShellArgs) GetTimeout() int32 {
 	return 0
 }
 
+func (x *ShellArgs) GetRequestedSandboxPolicy() *SandboxPolicy {
+	if x != nil {
+		return x.RequestedSandboxPolicy
+	}
+	return nil
+}
+
 func (x *ShellArgs) GetFileOutputThresholdBytes() uint64 {
 	if x != nil && x.FileOutputThresholdBytes != nil {
 		return *x.FileOutputThresholdBytes
@@ -3511,6 +3545,13 @@ func (x *ShellArgs) GetFileOutputThresholdBytes() uint64 {
 func (x *ShellArgs) GetIsBackground() bool {
 	if x != nil {
 		return x.IsBackground
+	}
+	return false
+}
+
+func (x *ShellArgs) GetSkipApproval() bool {
+	if x != nil {
+		return x.SkipApproval
 	}
 	return false
 }
@@ -3543,6 +3584,13 @@ func (x *ShellArgs) GetConversationId() string {
 	return ""
 }
 
+func (x *ShellArgs) GetAdminCommandDenylist() []string {
+	if x != nil {
+		return x.AdminCommandDenylist
+	}
+	return nil
+}
+
 func (x *ShellArgs) GetRequestId() string {
 	if x != nil && x.RequestId != nil {
 		return *x.RequestId
@@ -3554,6 +3602,7 @@ type LsArgs struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	Ignore        []string               `protobuf:"bytes,2,rep,name=ignore,proto3" json:"ignore,omitempty"`
+	SandboxPolicy *SandboxPolicy         `protobuf:"bytes,4,opt,name=sandbox_policy,json=sandboxPolicy,proto3,oneof" json:"sandbox_policy,omitempty"`
 	TimeoutMs     *uint32                `protobuf:"varint,5,opt,name=timeout_ms,json=timeoutMs,proto3,oneof" json:"timeout_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3599,6 +3648,13 @@ func (x *LsArgs) GetPath() string {
 func (x *LsArgs) GetIgnore() []string {
 	if x != nil {
 		return x.Ignore
+	}
+	return nil
+}
+
+func (x *LsArgs) GetSandboxPolicy() *SandboxPolicy {
+	if x != nil {
+		return x.SandboxPolicy
 	}
 	return nil
 }
@@ -4109,40 +4165,50 @@ const file_agent_v1_exec_proto_rawDesc = "" +
 	"\als_args\x18\b \x01(\v2\x10.agent.v1.LsArgsH\x00R\x06lsArgs\x12A\n" +
 	"\x11shell_stream_args\x18\x0e \x01(\v2\x13.agent.v1.ShellArgsH\x00R\x0fshellStreamArgs\x12c\n" +
 	"\x1bbackground_shell_spawn_args\x18\x10 \x01(\v2\".agent.v1.BackgroundShellSpawnArgsH\x00R\x18backgroundShellSpawnArgsB\t\n" +
-	"\amessage\"\x8d\x02\n" +
+	"\amessage\"\xc0\x03\n" +
 	"\x18BackgroundShellSpawnArgs\x12\x18\n" +
 	"\acommand\x18\x01 \x01(\tR\acommand\x12+\n" +
-	"\x11working_directory\x18\x02 \x01(\tR\x10workingDirectory\x12%\n" +
-	"\vdescription\x18\a \x01(\tH\x00R\vdescription\x88\x01\x01\x12,\n" +
-	"\x0fconversation_id\x18\r \x01(\tH\x01R\x0econversationId\x88\x01\x01\x12\"\n" +
+	"\x11working_directory\x18\x02 \x01(\tR\x10workingDirectory\x12C\n" +
+	"\x0esandbox_policy\x18\x05 \x01(\v2\x17.agent.v1.SandboxPolicyH\x00R\rsandboxPolicy\x88\x01\x01\x12%\n" +
+	"\vdescription\x18\a \x01(\tH\x01R\vdescription\x88\x01\x01\x12#\n" +
+	"\rskip_approval\x18\f \x01(\bR\fskipApproval\x12,\n" +
+	"\x0fconversation_id\x18\r \x01(\tH\x02R\x0econversationId\x88\x01\x01\x124\n" +
+	"\x16admin_command_denylist\x18\x0e \x03(\tR\x14adminCommandDenylist\x12\"\n" +
 	"\n" +
-	"request_id\x18\x0f \x01(\tH\x02R\trequestId\x88\x01\x01B\x0e\n" +
+	"request_id\x18\x0f \x01(\tH\x03R\trequestId\x88\x01\x01B\x11\n" +
+	"\x0f_sandbox_policyB\x0e\n" +
 	"\f_descriptionB\x12\n" +
 	"\x10_conversation_idB\r\n" +
-	"\v_request_id\"\xa0\x04\n" +
+	"\v_request_id\"\xf0\x05\n" +
 	"\tShellArgs\x12\x18\n" +
 	"\acommand\x18\x01 \x01(\tR\acommand\x12+\n" +
 	"\x11working_directory\x18\x02 \x01(\tR\x10workingDirectory\x12\x18\n" +
-	"\atimeout\x18\x03 \x01(\x05R\atimeout\x12B\n" +
+	"\atimeout\x18\x03 \x01(\x05R\atimeout\x12V\n" +
+	"\x18requested_sandbox_policy\x18\t \x01(\v2\x17.agent.v1.SandboxPolicyH\x00R\x16requestedSandboxPolicy\x88\x01\x01\x12B\n" +
 	"\x1bfile_output_threshold_bytes\x18\n" +
-	" \x01(\x04H\x00R\x18fileOutputThresholdBytes\x88\x01\x01\x12#\n" +
-	"\ris_background\x18\v \x01(\bR\fisBackground\x12D\n" +
+	" \x01(\x04H\x01R\x18fileOutputThresholdBytes\x88\x01\x01\x12#\n" +
+	"\ris_background\x18\v \x01(\bR\fisBackground\x12#\n" +
+	"\rskip_approval\x18\f \x01(\bR\fskipApproval\x12D\n" +
 	"\x10timeout_behavior\x18\r \x01(\x0e2\x19.agent.v1.TimeoutBehaviorR\x0ftimeoutBehavior\x12&\n" +
-	"\fhard_timeout\x18\x0e \x01(\x05H\x01R\vhardTimeout\x88\x01\x01\x12%\n" +
-	"\vdescription\x18\x0f \x01(\tH\x02R\vdescription\x88\x01\x01\x12,\n" +
-	"\x0fconversation_id\x18\x15 \x01(\tH\x03R\x0econversationId\x88\x01\x01\x12\"\n" +
+	"\fhard_timeout\x18\x0e \x01(\x05H\x02R\vhardTimeout\x88\x01\x01\x12%\n" +
+	"\vdescription\x18\x0f \x01(\tH\x03R\vdescription\x88\x01\x01\x12,\n" +
+	"\x0fconversation_id\x18\x15 \x01(\tH\x04R\x0econversationId\x88\x01\x01\x124\n" +
+	"\x16admin_command_denylist\x18\x16 \x03(\tR\x14adminCommandDenylist\x12\"\n" +
 	"\n" +
-	"request_id\x18\x17 \x01(\tH\x04R\trequestId\x88\x01\x01B\x1e\n" +
+	"request_id\x18\x17 \x01(\tH\x05R\trequestId\x88\x01\x01B\x1b\n" +
+	"\x19_requested_sandbox_policyB\x1e\n" +
 	"\x1c_file_output_threshold_bytesB\x0f\n" +
 	"\r_hard_timeoutB\x0e\n" +
 	"\f_descriptionB\x12\n" +
 	"\x10_conversation_idB\r\n" +
-	"\v_request_id\"g\n" +
+	"\v_request_id\"\xbf\x01\n" +
 	"\x06LsArgs\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
-	"\x06ignore\x18\x02 \x03(\tR\x06ignore\x12\"\n" +
+	"\x06ignore\x18\x02 \x03(\tR\x06ignore\x12C\n" +
+	"\x0esandbox_policy\x18\x04 \x01(\v2\x17.agent.v1.SandboxPolicyH\x00R\rsandboxPolicy\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"timeout_ms\x18\x05 \x01(\rH\x00R\ttimeoutMs\x88\x01\x01B\r\n" +
+	"timeout_ms\x18\x05 \x01(\rH\x01R\ttimeoutMs\x88\x01\x01B\x11\n" +
+	"\x0f_sandbox_policyB\r\n" +
 	"\v_timeout_ms\"\xaf\x02\n" +
 	"\bReadArgs\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12 \n" +
@@ -4297,13 +4363,16 @@ var file_agent_v1_exec_proto_depIdxs = []int32{
 	48, // 51: agent.v1.ExecServerMessage.ls_args:type_name -> agent.v1.LsArgs
 	47, // 52: agent.v1.ExecServerMessage.shell_stream_args:type_name -> agent.v1.ShellArgs
 	46, // 53: agent.v1.ExecServerMessage.background_shell_spawn_args:type_name -> agent.v1.BackgroundShellSpawnArgs
-	2,  // 54: agent.v1.ShellArgs.timeout_behavior:type_name -> agent.v1.TimeoutBehavior
-	34, // 55: agent.v1.LsDirectoryTreeNode.File.terminal_metadata:type_name -> agent.v1.TerminalMetadata
-	56, // [56:56] is the sub-list for method output_type
-	56, // [56:56] is the sub-list for method input_type
-	56, // [56:56] is the sub-list for extension type_name
-	56, // [56:56] is the sub-list for extension extendee
-	0,  // [0:56] is the sub-list for field type_name
+	23, // 54: agent.v1.BackgroundShellSpawnArgs.sandbox_policy:type_name -> agent.v1.SandboxPolicy
+	23, // 55: agent.v1.ShellArgs.requested_sandbox_policy:type_name -> agent.v1.SandboxPolicy
+	2,  // 56: agent.v1.ShellArgs.timeout_behavior:type_name -> agent.v1.TimeoutBehavior
+	23, // 57: agent.v1.LsArgs.sandbox_policy:type_name -> agent.v1.SandboxPolicy
+	34, // 58: agent.v1.LsDirectoryTreeNode.File.terminal_metadata:type_name -> agent.v1.TerminalMetadata
+	59, // [59:59] is the sub-list for method output_type
+	59, // [59:59] is the sub-list for method input_type
+	59, // [59:59] is the sub-list for extension type_name
+	59, // [59:59] is the sub-list for extension extendee
+	0,  // [0:59] is the sub-list for field type_name
 }
 
 func init() { file_agent_v1_exec_proto_init() }

@@ -40,7 +40,8 @@ const scriptVarPrefix = "__grok_"
 // change how every later command and the state dump behave, and xtrace and
 // verbose would trace the replay; the others are set by the interactive shell
 // that reads the profile, and job control (monitor) would move background jobs
-// out of the command's process group. Alias expansion stays off.
+// out of the command's process group. Alias expansion is turned on for every
+// command (shell.prepare), whatever the last one left.
 var volatileOptions = map[string]bool{
 	"errexit": true, "errreturn": true, "unset": true, "nounset": true, "pipefail": true,
 	"xtrace": true, "verbose": true, "aliases": true, "expandaliases": true,
@@ -56,6 +57,9 @@ type State struct {
 	env       []string // nil means the CLI's own environment
 	options   []string // "set -o x" / "shopt -s x" lines
 	functions string
+	// aliases are the alias definitions of the commands so far, as the shell
+	// prints them; those of the user's profile are left out (Session.Init).
+	aliases string
 }
 
 // Cwd returns the working directory the state was saved in.
@@ -78,12 +82,15 @@ func (s shell) startupEnv() []string {
 
 // replayScript returns the shell code that restores st for sh. The saved
 // values of the variables the shell reads at startup come first, then
-// functions, so that options such as posix cannot break their definitions;
-// option lines that cannot be changed in a non-interactive shell fail
-// quietly.
+// aliases, before a replayed function could be named alias, then functions,
+// so that options such as posix cannot break their definitions; option lines
+// that cannot be changed in a non-interactive shell fail quietly. The shell
+// evaluates it with alias expansion off (shell.prepare).
 func (st State) replayScript(sh shell) string {
 	var b strings.Builder
 	b.WriteString(st.replayEnv(sh))
+	b.WriteString(st.aliases)
+	b.WriteString("\n")
 	b.WriteString(st.functions)
 	b.WriteString("\n")
 	for _, option := range st.options {
@@ -224,6 +231,7 @@ func parseSnapshot(b []byte) (State, bool) {
 	}
 	st.options = parseOptions(sections[sectionOptions])
 	st.functions = sections[sectionFunctions]
+	st.aliases = sections[sectionAliases]
 	return st, true
 }
 

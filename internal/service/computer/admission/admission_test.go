@@ -51,15 +51,16 @@ func full(t *testing.T) *admission.Scheduler {
 }
 
 // Invariant 3: 8 running and 64 waiting; one more is refused in the
-// desktop's words, and its redelivery is not answered again.
+// desktop's words, and so is its redelivery.
 func TestAcceptBusy(t *testing.T) {
 	s := full(t)
 	v, err := s.Accept(exec("over"), false)
 	assert.Equal(t, admission.Reject, v)
 	require.ErrorIs(t, err, admission.ErrBusy)
 	assert.Equal(t, "The user's computer is busy with other requests right now; try again shortly.", err.Error())
-	v, _ = s.Accept(exec("over"), false)
-	assert.Equal(t, admission.Ignore, v)
+	v, err = s.Accept(exec("over"), false)
+	assert.Equal(t, admission.Reject, v)
+	require.ErrorIs(t, err, admission.ErrBusy)
 	assert.Len(t, s.Tasks(), admission.MaxActive+admission.MaxBacklog)
 }
 
@@ -70,8 +71,13 @@ func TestAcceptUnrecognized(t *testing.T) {
 	v, err := s.Accept(putURL("url"), false)
 	assert.Equal(t, admission.Reject, v)
 	require.ErrorIs(t, err, frames.ErrUnknownFrame)
-	v, _ = s.Accept(putURL("url"), false)
-	assert.Equal(t, admission.Ignore, v, "repeated delivery answered twice")
+	v, err = s.Accept(putURL("url"), false)
+	assert.Equal(t, admission.Reject, v, "repeated delivery not answered")
+	require.ErrorIs(t, err, frames.ErrUnknownFrame)
+	// Also with the ID of a request that waits.
+	v, err = s.Accept(putURL("0"), false)
+	assert.Equal(t, admission.Reject, v)
+	require.ErrorIs(t, err, frames.ErrUnknownFrame)
 	v, _ = s.Accept(&admission.Request{}, false)
 	assert.Equal(t, admission.Ignore, v, "frame without a request id answered")
 }
@@ -96,8 +102,9 @@ func TestAcceptVerdicts(t *testing.T) {
 	}
 }
 
-// Invariant 5: a cancel removes the request from the backlog, and a later
-// delivery does not start it again.
+// Invariant 5: a cancel removes the request from the backlog. Like the
+// desktop's poll loop, a delivery in the same poll is answered as canceled,
+// and one in a later poll is a new request, whose results are not dropped.
 func TestCancelWaitingRequest(t *testing.T) {
 	s := full(t)
 	t0 := s.Cancel(fmt.Sprint(admission.MaxActive)) // the first waiting one
@@ -106,15 +113,22 @@ func TestCancelWaitingRequest(t *testing.T) {
 	assert.Equal(t, admission.MaxBacklog-1, s.Backlog())
 	assert.True(t, s.Canceled(t0.ID))
 	assert.NotContains(t, s.Tasks(), t0.ID)
-	v, _ := s.Accept(t0.Frame, false)
-	assert.Equal(t, admission.Ignore, v, "canceled work restarted")
+	v, err := s.Accept(t0.Frame, false)
+	assert.Equal(t, admission.Reject, v, "canceled work restarted")
+	require.ErrorIs(t, err, frames.ErrCanceledBeforeStart)
 	assert.Nil(t, s.Cancel("unknown"))
+	s.Polled(nil)
+	v, err = s.Accept(t0.Frame, false)
+	require.NoError(t, err)
+	assert.Equal(t, admission.Queued, v)
+	assert.False(t, s.Canceled(t0.ID))
+	assert.Contains(t, s.Tasks(), t0.ID)
 }
 
 // Like the desktop's poll loop, a work frame that follows the cancel of its
-// request in the same poll is answered as canceled before it started, once,
-// and an unrecognized one as unknown; in a later poll, or for a request seen
-// before the cancel, it is ignored.
+// request in the same poll is answered as canceled before it started, also
+// when the request was seen before the cancel, and an unrecognized one as
+// unknown; in a later poll it is a new request.
 func TestCancelBeforeWorkFrame(t *testing.T) {
 	poll := func(s *admission.Scheduler, fs ...*admission.Request) []admission.Verdict {
 		queued := make([]*aiserverv1.GrokBotUserComputerQueuedRequest, 0, len(fs))
@@ -144,20 +158,40 @@ func TestCancelBeforeWorkFrame(t *testing.T) {
 		name  string
 		polls [][]*admission.Request
 		want  [][]admission.Verdict
+		tasks int
 	}{
-		{"same poll", [][]*admission.Request{{cancel("a"), exec("a"), exec("a")}}, [][]admission.Verdict{{C, R, I}}},
-		{"later poll", [][]*admission.Request{{cancel("a")}, {exec("a")}}, [][]admission.Verdict{{C}, {I}}},
-		{"seen before", [][]*admission.Request{{exec("a"), cancel("a"), exec("a")}}, [][]admission.Verdict{{Q, C, I}}},
-		{"unrecognized", [][]*admission.Request{{cancel("u"), putURL("u")}}, [][]admission.Verdict{{C, R}}},
+		{"same poll", [][]*admission.Request{{cancel("a"), exec("a"), exec("a")}}, [][]admission.Verdict{{C, R, R}}, 0},
+		{"later poll", [][]*admission.Request{{cancel("a")}, {exec("a"), exec("a")}}, [][]admission.Verdict{{C}, {Q, I}}, 1},
+		{"seen before", [][]*admission.Request{{exec("a"), cancel("a"), exec("a")}}, [][]admission.Verdict{{Q, C, R}}, 0},
+		{"unrecognized", [][]*admission.Request{{cancel("u"), putURL("u")}}, [][]admission.Verdict{{C, R}}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := admission.New()
 			for i, fs := range tc.polls {
 				assert.Equal(t, tc.want[i], poll(s, fs...), i)
 			}
-			assert.Empty(t, s.Tasks())
+			assert.Len(t, s.Tasks(), tc.tasks)
 		})
 	}
+}
+
+// Like the desktop, a request ID that arrives again after its request has
+// ended is a new request; while the request waits or runs it is ignored.
+func TestAcceptRepeatedID(t *testing.T) {
+	s := admission.New()
+	accept := func() admission.Verdict {
+		v, err := s.Accept(exec("a"), false)
+		require.NoError(t, err)
+		return v
+	}
+	assert.Equal(t, admission.Queued, accept())
+	assert.Equal(t, admission.Ignore, accept(), "waits")
+	run, _ := s.Ready(true, false)
+	require.Len(t, run, 1)
+	assert.Equal(t, admission.Ignore, accept(), "runs")
+	s.Finish("a")
+	assert.Equal(t, admission.Queued, accept(), "ended")
+	assert.Equal(t, 1, s.Backlog())
 }
 
 // A started task stays until Finish; the caller stops it.

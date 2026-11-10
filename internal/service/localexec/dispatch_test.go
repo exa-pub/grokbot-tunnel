@@ -177,10 +177,104 @@ func TestShellOptionsPersist(t *testing.T) {
 	}
 }
 
-func TestShellFunctionsPersistAliasesDoNot(t *testing.T) {
+// Like the desktop on Linux, a command that is to run in a sandbox does not
+// run: neither has one. The start event names the policy, the refusal
+// follows, and a background command leaves a terminal file that says why.
+func TestShellSandboxRefused(t *testing.T) {
 	t.Setenv("SHELL", "/bin/bash")
 	e := setup(t)
-	collect(t, e, execFrame(`{"shellStreamArgs":{"command":"shopt -s expand_aliases; alias grok_hi='printf alias-ok'; grok_fn() { printf function-ok; }"}}`))
+	const policy = `{"type":"TYPE_WORKSPACE_READONLY","networkAccess":false}`
+	frames := collect(t, e, execFrame(`{"shellStreamArgs":{"command":"echo ran > ran.txt","requestedSandboxPolicy":`+policy+`}}`))
+	messages := clientMessages(t, frames)
+	if len(messages) != 2 {
+		t.Fatal(frames)
+	}
+	if got := messages[0].GetShellStream().GetStart().GetSandboxPolicy().GetType(); got != agentv1.SandboxPolicy_TYPE_WORKSPACE_READONLY {
+		t.Fatal(messages[0])
+	}
+	refusal := messages[1].GetShellStream().GetSandboxUnsupported()
+	if refusal.GetCommand() != "echo ran > ran.txt" || refusal.GetWorkingDirectory() != e.Root || !refusal.GetIsReadonly() ||
+		refusal.GetSandboxPolicyType() != "workspace_readonly" || refusal.GetReason() != "Sandbox binary path was not configured" {
+		t.Fatal(messages[1])
+	}
+	if controlMessage(t, frames[len(frames)-1]).GetStreamClose() == nil {
+		t.Fatal(frames)
+	}
+
+	frames = collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"echo ran > ran.txt","sandboxPolicy":`+policy+`}}`))
+	messages = clientMessages(t, frames)
+	if len(messages) != 1 || messages[0].GetBackgroundShellSpawnResult().GetSandboxUnsupported().GetReason() == "" {
+		t.Fatal(frames)
+	}
+	if _, err := os.Stat(filepath.Join(e.Root, "ran.txt")); !os.IsNotExist(err) {
+		t.Fatal("a command ran without the sandbox it was to run in", err)
+	}
+	terminals, err := filepath.Glob(filepath.Join(e.Root, "terminals", "*.txt"))
+	if err != nil || len(terminals) != 1 {
+		t.Fatal(terminals, err)
+	}
+	b, err := os.ReadFile(terminals[0])
+	if err != nil || !strings.Contains(string(b), "status: failed") ||
+		!strings.Contains(string(b), `error: "Sandbox policy 'workspace_readonly' is not supported on this system.`) {
+		t.Fatal(string(b), err)
+	}
+
+	// A listing is refused too, in the error of its result.
+	frames = collect(t, e, execFrame(`{"lsArgs":{"path":".","sandboxPolicy":`+policy+`}}`))
+	messages = clientMessages(t, frames)
+	if len(messages) != 1 || !strings.HasPrefix(messages[0].GetLsResult().GetError().GetError(), "Sandbox policy 'workspace_readonly' is not") {
+		t.Fatal(frames)
+	}
+	frames = collect(t, e, execFrame(`{"lsArgs":{"path":".","sandboxPolicy":{"type":"TYPE_INSECURE_NONE"}}}`))
+	if clientMessages(t, frames)[0].GetLsResult().GetSuccess() == nil {
+		t.Fatal(frames)
+	}
+
+	// Without a sandbox both run.
+	collect(t, e, execFrame(`{"shellStreamArgs":{"command":"echo ran > ran.txt","requestedSandboxPolicy":{"type":"TYPE_INSECURE_NONE"}}}`))
+	if _, err := os.Stat(filepath.Join(e.Root, "ran.txt")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Like the desktop, a command that an administrator's denylist blocks is
+// refused before anything of it starts, and so is a background command,
+// which leaves no terminal file.
+func TestShellDenylist(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
+	e := setup(t)
+	frames := collect(t, e, execFrame(`{"shellStreamArgs":{"command":"echo ok > ran.txt; r\\m -f x","adminCommandDenylist":["rm"]}}`))
+	messages := clientMessages(t, frames)
+	if len(messages) != 1 {
+		t.Fatal(frames)
+	}
+	rejected := messages[0].GetShellStream().GetRejected()
+	if rejected.GetCommand() != `echo ok > ran.txt; r\m -f x` || rejected.GetWorkingDirectory() != e.Root ||
+		!strings.Contains(rejected.GetReason(), "blocked by administrator policy (denylist rule: rm)") {
+		t.Fatal(messages[0])
+	}
+	frames = collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"rm -f x; echo ok > ran.txt","adminCommandDenylist":["rm"]}}`))
+	messages = clientMessages(t, frames)
+	if len(messages) != 1 || !strings.Contains(messages[0].GetBackgroundShellSpawnResult().GetRejected().GetReason(), "denylist rule: rm") {
+		t.Fatal(frames)
+	}
+	if _, err := os.Stat(filepath.Join(e.Root, "ran.txt")); !os.IsNotExist(err) {
+		t.Fatal("a blocked command ran", err)
+	}
+	if terminals, _ := filepath.Glob(filepath.Join(e.Root, "terminals", "*.txt")); len(terminals) != 0 {
+		t.Fatal(terminals)
+	}
+	// A command the list does not block runs.
+	collect(t, e, execFrame(`{"shellStreamArgs":{"command":"echo ok > ran.txt","adminCommandDenylist":["rm"]}}`))
+	if _, err := os.Stat(filepath.Join(e.Root, "ran.txt")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestShellFunctionsAndAliasesPersist(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
+	e := setup(t)
+	collect(t, e, execFrame(`{"shellStreamArgs":{"command":"alias grok_hi='printf alias-ok'; grok_fn() { printf function-ok; }"}}`))
 	frames := collect(t, e, execFrame(`{"shellStreamArgs":{"command":"grok_hi 2>/dev/null || printf no-alias; printf '|'; grok_fn"}}`))
 	var output strings.Builder
 	for _, m := range clientMessages(t, frames) {
@@ -189,7 +283,7 @@ func TestShellFunctionsPersistAliasesDoNot(t *testing.T) {
 			t.Error(stderr)
 		}
 	}
-	if output.String() != "no-alias|function-ok" {
+	if output.String() != "alias-ok|function-ok" {
 		t.Fatal(output.String())
 	}
 }

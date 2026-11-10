@@ -54,8 +54,11 @@ func parse(f *aiserverv1.GrokBotUserComputerRequestFrame) (request, error) {
 	case *aiserverv1.GrokBotUserComputerRequestFrame_Download:
 		r.action = fmt.Sprintf("Read %q", v.Download.Path)
 		auth = v.Download
+	case *aiserverv1.GrokBotUserComputerRequestFrame_LocalTool:
+		return r, frames.NoLocalTool(v.LocalTool.GetToolId())
 	default:
-		return r, errors.New("unsupported on Linux")
+		// A Messages operation; unknown kinds of frames were answered above.
+		return r, frames.ErrMessagesOff
 	}
 	r.approved = auth.GetAuthorizedByApproval() || auth.GetAuthorizedByStanding()
 	return r, nil
@@ -84,6 +87,9 @@ func (e *Executor) Handle(ctx context.Context, f *aiserverv1.GrokBotUserComputer
 		if err != nil && ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return frames.Canceled(f, sink)
 		}
+	}
+	if errors.Is(err, frames.ErrMessagesOff) {
+		return frames.MessagesOff(f, sink)
 	}
 	if err != nil {
 		return frames.Reject(f, err, sink)

@@ -131,7 +131,7 @@ func TestShellStateDropsVolatileSettings(t *testing.T) {
 
 // The profile is read once, by an interactive login shell, so functions from
 // the rc file are available and profile edits to PATH, EDITOR and SHLVL do not
-// accumulate or override the agent's. Aliases are not expanded: an
+// accumulate or override the agent's. The profile's aliases are not kept: an
 // interactive alias such as rm -i would silently keep files.
 func TestShellProfileReadOnce(t *testing.T) {
 	eachShell(t, func(t *testing.T, home string) {
@@ -286,10 +286,50 @@ func TestShellOptionsAndFunctionsPersist(t *testing.T) {
 	eachShell(t, func(t *testing.T, home string) {
 		e := setupHome(t, home)
 		expectStdout(t, e, "set -o noclobber; alias grok_a='printf a'; grok_f() { printf f; }", "")
-		r := expectStdout(t, e, "[[ -o noclobber ]] && grok_f; grok_a 2>/dev/null || printf '|no-alias'", "f|no-alias")
+		r := expectStdout(t, e, "[[ -o noclobber ]] && grok_f; grok_a 2>/dev/null || printf '|no-alias'", "fa")
 		if r.stderr != "" {
 			t.Fatal(r.stderr)
 		}
+	})
+}
+
+// Aliases a command defines work in the commands after it, as on the
+// desktop, until a command removes them.
+func TestShellAliasesPersist(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		runShell(t, e, `alias grok_a='printf "%s|" one'; alias grok_q="printf '%s|' \"it's\""`)
+		expectStdout(t, e, "grok_a two; grok_q", "one|two|it's|")
+		// An alias does not change how a function defined before it parses.
+		runShell(t, e, "grok_f() { grok_word; }; alias grok_word='printf alias'; grok_word() { printf function; }")
+		expectStdout(t, e, "grok_f", "function")
+		runShell(t, e, "unalias grok_a")
+		expectStdout(t, e, "grok_a 2>/dev/null || printf no-alias; grok_q", "no-aliasit's|")
+		// Expansion is on for every command, whatever the last one left.
+		runShell(t, e, "shopt -u expand_aliases 2>/dev/null; unsetopt aliases 2>/dev/null; true")
+		expectStdout(t, e, "grok_q", "it's|")
+	})
+}
+
+// An alias of a word the scripts around a command use changes neither the
+// state saved after the command nor the one its EXIT trap saves.
+func TestShellAliasesDoNotReachStateDump(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		const aliases = "alias builtin=false printf=false test=false set=false eval=false; "
+		runShell(t, e, aliases+"export GROK_DUMP=after; cd /tmp")
+		expectStdout(t, e, `\printf '%s|%s' "$GROK_DUMP" "$PWD"`, "after|/tmp")
+		runShell(t, e, "export GROK_DUMP=trap; cd /; exit 0")
+		expectStdout(t, e, `\printf '%s|%s' "$GROK_DUMP" "$PWD"`, "trap|/")
+	})
+}
+
+// Aliases of a startup file are not those of the session.
+func TestShellStartupFileAliasesRemoved(t *testing.T) {
+	eachShell(t, func(t *testing.T, home string) {
+		startupFile(t, home, "shopt -s expand_aliases 2>/dev/null; alias grok_env='printf env'; alias printf=false")
+		e := setupHome(t, home)
+		expectStdout(t, e, "grok_env 2>/dev/null || printf no-alias", "no-alias")
 	})
 }
 

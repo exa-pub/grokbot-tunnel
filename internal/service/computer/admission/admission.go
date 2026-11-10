@@ -64,24 +64,23 @@ type Scheduler struct {
 	backlog  []string // IDs of tasks waiting to start
 	active   int
 	seen     dedup    // queue IDs
-	requests dedup    // request IDs ever accepted; redeliveries are ignored
 	canceled dedup    // request IDs canceled by the server; their results are dropped
 	acks     []string // queue IDs to acknowledge on the next poll
-	// early holds the request IDs that the current poll canceled before any
-	// frame of theirs arrived; their work frames in the same poll are answered.
-	early map[string]bool
+	// polled holds the request IDs that the current poll canceled; their
+	// work frames later in the same poll are answered.
+	polled map[string]bool
 }
 
 // New returns an empty Scheduler.
 func New() *Scheduler {
-	return &Scheduler{tasks: map[string]*Task{}, seen: newDedup(), requests: newDedup(), canceled: newDedup()}
+	return &Scheduler{tasks: map[string]*Task{}, seen: newDedup(), canceled: newDedup()}
 }
 
 // Polled records a successful poll: its queue IDs are acknowledged by the
 // next one. It returns the request frames not seen before.
 func (s *Scheduler) Polled(queued []*aiserverv1.GrokBotUserComputerQueuedRequest) []*Request {
 	s.acks = nil
-	s.early = nil
+	s.polled = nil
 	var fresh []*Request
 	for _, q := range queued {
 		s.acks = append(s.acks, q.Id)
@@ -95,37 +94,34 @@ func (s *Scheduler) Polled(queued []*aiserverv1.GrokBotUserComputerQueuedRequest
 // Acks returns the queue IDs to acknowledge.
 func (s *Scheduler) Acks() []string { return s.acks }
 
-// Accept decides about a request frame polled under server mode server.
-// Unrecognized frames are answered before admission, like the desktop's poll
-// loop, which leaves a frame without a request ID unanswered. A work frame
-// that follows the cancel of its request in the same poll is answered with
-// frames.ErrCanceledBeforeStart, like the desktop's poll loop; later
-// deliveries are ignored.
+// Accept decides about a request frame polled under server mode server,
+// like the desktop's poll loop. Unrecognized frames are answered before
+// admission; one without a request ID is left unanswered. A work frame that
+// follows the cancel of its request in the same poll is answered with
+// frames.ErrCanceledBeforeStart. A frame whose request waits or runs is
+// ignored. Queue IDs are the only memory of what was delivered (Polled): a
+// request ID that arrives again once its request has ended, been refused or
+// been canceled in an earlier poll is a new request, since the server queues
+// a request again when it is still owed an answer.
 func (s *Scheduler) Accept(f *Request, server bool) (Verdict, error) {
 	switch {
 	case f.GetCancel() != nil:
 		return Cancel, nil
 	case f.GetRetireApproval() != nil:
 		return Ignore, nil
-	case s.early[f.RequestId]:
-		delete(s.early, f.RequestId)
-		if frames.Unrecognized(f) {
-			return Reject, frames.ErrUnknownFrame
-		}
-		return Reject, frames.ErrCanceledBeforeStart
-	case s.tasks[f.RequestId] != nil || s.requests.has(f.RequestId):
-		return Ignore, nil // already queued, running or answered
 	case frames.Unrecognized(f):
 		if f.RequestId == "" {
 			return Ignore, nil
 		}
-		s.requests.add(f.RequestId)
 		return Reject, frames.ErrUnknownFrame
+	case s.polled[f.RequestId]:
+		return Reject, frames.ErrCanceledBeforeStart
+	case s.tasks[f.RequestId] != nil:
+		return Ignore, nil // waits or runs
 	case s.active >= MaxActive && len(s.backlog) >= MaxBacklog:
-		s.requests.add(f.RequestId)
 		return Reject, ErrBusy
 	}
-	s.requests.add(f.RequestId)
+	s.canceled.remove(f.RequestId)
 	s.tasks[f.RequestId] = &Task{ID: f.RequestId, Frame: f, Server: server}
 	s.backlog = append(s.backlog, f.RequestId)
 	return Queued, nil
@@ -136,14 +132,11 @@ func (s *Scheduler) Accept(f *Request, server bool) (Verdict, error) {
 // if any: a started task must be stopped through its Cancel, an unstarted one
 // is forgotten and must be answered.
 func (s *Scheduler) Cancel(id string) *Task {
-	if !s.requests.has(id) {
-		if s.early == nil {
-			s.early = map[string]bool{}
-		}
-		s.early[id] = true
+	if s.polled == nil {
+		s.polled = map[string]bool{}
 	}
+	s.polled[id] = true
 	s.canceled.add(id)
-	s.requests.add(id)
 	s.backlog = slices.DeleteFunc(s.backlog, func(queued string) bool { return queued == id })
 	t := s.tasks[id]
 	if t != nil && !t.started {

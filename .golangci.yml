@@ -70,7 +70,7 @@ linters:
       for-loops: true
 
     depguard:
-      # Layers of ai.tmp/refactor-plan/LAYOUT.md: entity < pkg < adapter, repository < service < api < app.
+      # Layers (CONTRIBUTING.md, Code layout): entity < pkg < adapter, repository < service < api < app.
       # Tests may cross layers.
       rules:
         entity:
@@ -79,7 +79,7 @@ linters:
             - "!$test"
           deny:
             - pkg: "github.com/exa-pub/grokbot-tunnel/internal/"
-              desc: entity depends on nothing inside internal (LAYOUT.md, Dependencies)
+              desc: entity depends on nothing inside internal (CONTRIBUTING.md, Code layout)
         pkg:
           files:
             - "**/internal/pkg/**"
@@ -491,7 +491,8 @@ linters:
           - funlen
           - lll
     paths:
-      - ai.tmp
+      # Scratch directories, which git ignores too.
+      - "\\.tmp/"
       - ".*\\.pb\\.go$"
       - "mock/"
 

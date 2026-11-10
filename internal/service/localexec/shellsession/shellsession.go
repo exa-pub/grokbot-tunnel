@@ -9,7 +9,8 @@
 // back, so the command that ends last wins. A "sleep 5; true" started before a
 // parallel "cd a" and ending after it puts the old cwd back.
 //
-// Aliases are not kept or expanded: they come from interactive profiles, are
+// Aliases that a command defines are kept and expanded in later commands, as
+// on the desktop. Those of the user's profile are not, unlike there: they are
 // meant for people (rm -i) and would make commands behave differently than
 // written. The user's profile is read once, by an interactive login shell
 // that only dumps its state; every command then runs in a fresh non-login
@@ -20,7 +21,7 @@
 //
 // Descriptors of a foreground shell:
 //
-//	3  replay script (options, functions), read and closed first
+//	3  replay script (aliases, functions, options), read and closed first
 //	4  state snapshot, closed while the command runs
 //	5  command text ended by a NUL, read and closed first
 //
@@ -74,6 +75,7 @@ const (
 	sectionEnvSaved  = sectionPrefix + "ENV_SAVED"
 	sectionOptions   = sectionPrefix + "OPTIONS"
 	sectionFunctions = sectionPrefix + "FUNCTIONS"
+	sectionAliases   = sectionPrefix + "ALIASES"
 	sectionEnd       = sectionPrefix + "END"
 )
 
@@ -158,9 +160,10 @@ func (s *Session) SetState(st State) {
 }
 
 // Init captures the state of the user's profile once, before the first
-// command. A profile that fails or hangs leaves the CLI's environment. Either
-// way the first command starts in the root, like the desktop's session, which
-// is cloned into the root after reading the profile. If ctx ends first, the
+// command, without the profile's aliases. A profile that fails or hangs
+// leaves the CLI's environment. Either way the first command starts in the
+// root, like the desktop's session, which is cloned into the root after
+// reading the profile. If ctx ends first, the
 // profile keeps loading for the next command.
 func (s *Session) Init(ctx context.Context) error {
 	s.initOnce.Do(func() {
@@ -172,7 +175,7 @@ func (s *Session) Init(ctx context.Context) error {
 				log.Printf("shell profile: %v; using the CLI environment", err)
 				st = State{}
 			}
-			st.cwd = s.root.Dir()
+			st.cwd, st.aliases = s.root.Dir(), ""
 			s.SetState(st)
 		}()
 	})

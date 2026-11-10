@@ -6,43 +6,53 @@ import (
 	"unicode/utf16"
 )
 
-// secretPatterns match API keys and tokens of common providers, bearer
-// tokens, basic credentials, JWTs and long hex strings: the desktop's (Pqt)
-// and a few more.
-var secretPatterns = []string{
-	`\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}\b`,
-	`\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{10,}\b`,
-	`\bglpat-[A-Za-z0-9_-]{20,}\b`,
-	`\bhf_[A-Za-z0-9]{30,}\b`,
-	`\bnpm_[A-Za-z0-9]{36}\b`,
-	`(?i:Authorization:\s*Basic\s+[A-Za-z0-9+/=]{8,})`,
-	`\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{16,}\b`,
-	`\bxox[abpors]-[A-Za-z0-9-]{10,}\b`,
-	`\bAKIA[0-9A-Z]{16}\b`,
-	`\bAIza[0-9A-Za-z_-]{30,}\b`,
-	`(?i:Bearer\s+[A-Za-z0-9._~+/=-]{16,})`,
-	`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`,
-	`\b[A-Fa-f0-9]{32,}\b`,
-}
+// The desktop's patterns for what a title must not show (Pqt and the four
+// after it). Go's regexp matches like JavaScript's for all of them but two
+// that look around, which redactAssigned and redactPaths stand for.
+// JavaScript's ignoreCase flag, without its unicode flag, folds ASCII letters
+// only; here the letters are spelled out, since (?i) folds more.
+var (
+	// desktopTokens are keys and tokens of common providers, bearer tokens
+	// and JWTs, in the desktop's order: each sees what the one before left.
+	desktopTokens = []*regexp.Regexp{
+		regexp.MustCompile(`\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}\b`),
+		regexp.MustCompile(`\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{16,}\b`),
+		regexp.MustCompile(`\bxox[abpors]-[A-Za-z0-9-]{10,}\b`),
+		regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
+		regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{30,}\b`),
+		regexp.MustCompile(`\b[Bb][Ee][Aa][Rr][Ee][Rr]\s+[A-Za-z0-9._~+/=-]{16,}`),
+		regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`),
+	}
+	desktopHex   = regexp.MustCompile(`\b[A-Fa-f0-9]{32,}\b`)
+	desktopLink  = regexp.MustCompile("\\b[A-Za-z][A-Za-z0-9+.-]*://[^\\s<>\"'`]+")     // Oqt
+	desktopEmail = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`) // kqt
+	windowsPath  = regexp.MustCompile("\\b[A-Za-z]:\\\\(?:[^\\s\\\\<>\"'`,;)]+\\\\?)+") // Mqt
+	// unixPath is the desktop's path pattern (Nqt) without its lookbehind
+	// (?<![\w.:-]), which redactPaths checks.
+	unixPath = regexp.MustCompile("^(?:~|\\.{1,2})?(?:/[^\\s/<>\"'`,;)]+){2,}/?")
+)
 
-// redactors strip secrets, links and emails from discovered titles, in the
-// desktop's order (Bp).
-var redactors = []struct {
+// extraSecrets are redacted besides the desktop's, in what the desktop's
+// patterns left: more providers' keys, basic credentials, a quoted value
+// after "=" or ":", and 40 characters of base64, the form of an AWS secret
+// access key. A title therefore never shows more than the desktop's.
+var extraSecrets = []struct {
 	pattern     *regexp.Regexp
 	replacement string
 }{
-	{regexp.MustCompile(strings.Join(secretPatterns, "|")), "[redacted]"},
-	{regexp.MustCompile(`([=:]\s*["']?)[A-Za-z0-9+/_-]{32,}={0,2}`), "${1}[redacted]"},
-	// AWS secret access keys: 40 characters of base64, often with slashes.
-	{regexp.MustCompile(`(^|[\s"'])[A-Za-z0-9+][A-Za-z0-9+/]{39}($|[\s"',;.])`), "${1}[redacted]${2}"},
-	{regexp.MustCompile("(?i)\\b[a-z][a-z0-9+.-]*://[^\\s<>\"'`]+"), "[link]"},
-	{regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`), "[email]"},
-	{regexp.MustCompile("\\b[A-Za-z]:\\\\(?:[^\\s\\\\<>\"'`,;)]+\\\\?)+"), "[path]"}, // Mqt
+	{regexp.MustCompile(strings.Join([]string{
+		`\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{10,}\b`,
+		`\bglpat-[A-Za-z0-9_-]{20,}\b`,
+		`\bhf_[A-Za-z0-9]{30,}\b`,
+		`\bnpm_[A-Za-z0-9]{36}\b`,
+		`(?i:Authorization:\s*Basic\s+[A-Za-z0-9+/=]{8,})`,
+	}, "|")), redacted},
+	{regexp.MustCompile(`([=:]\s*["']?)[A-Za-z0-9+/_-]{32,}={0,2}`), "${1}" + redacted},
+	{regexp.MustCompile(`(^|[\s"'])[A-Za-z0-9+][A-Za-z0-9+/]{39}($|[\s"',;.])`), "${1}" + redacted + "${2}"},
 }
 
-// unixPath is the desktop's path pattern (Nqt) without its lookbehind
-// (?<![\w.:-]), which redactPaths checks.
-var unixPath = regexp.MustCompile("^(?:~|\\.{1,2})?(?:/[^\\s/<>\"'`,;)]+){2,}/?")
+// redacted stands for a key or token.
+const redacted = "[redacted]"
 
 var (
 	slashCommand = regexp.MustCompile(`^/[A-Za-z][\w:-]*`)
@@ -83,14 +93,78 @@ func collapseSpace(s string) string {
 	return b.String()
 }
 
-// redact normalizes whitespace and replaces secrets, links, emails and
-// paths, as the desktop's Bp does before shortening.
+// redact is the desktop's redaction and, in what it left, grokbot-tunnel's
+// own (extraSecrets).
 func redact(text string) string {
-	text = collapseSpace(text)
-	for _, r := range redactors {
+	text = redactDesktop(text)
+	for _, r := range extraSecrets {
 		text = r.pattern.ReplaceAllString(text, r.replacement)
 	}
-	return redactPaths(text)
+	return text
+}
+
+// redactDesktop normalizes whitespace and replaces secrets, links, emails
+// and paths exactly as the desktop's Bp does before shortening; the oracle
+// test compares the two on random texts.
+func redactDesktop(text string) string {
+	text = collapseSpace(text)
+	for _, token := range desktopTokens {
+		text = token.ReplaceAllString(text, redacted)
+	}
+	text = desktopHex.ReplaceAllString(redactAssigned(text), redacted)
+	text = desktopLink.ReplaceAllString(text, "[link]")
+	text = desktopEmail.ReplaceAllString(text, "[email]")
+	return redactPaths(windowsPath.ReplaceAllString(text, "[path]"))
+}
+
+// redactAssigned replaces 32 or more characters of a key, with their "="
+// padding, that follow "=" or ":" and at most one space: the desktop's
+// /(?<=[=:]\s?)[A-Za-z0-9+/_-]{32,}={0,2}(?![A-Za-z0-9+/_-])/g, on text whose
+// whitespace is collapsed. The "=" or ":" may be the padding of the match
+// before, which a pattern that consumed it would miss.
+func redactAssigned(s string) string {
+	var b strings.Builder
+	last := 0
+	for i := 0; i < len(s); i++ {
+		if !keyByte(s[i]) {
+			continue
+		}
+		end := i
+		for end < len(s) && keyByte(s[end]) {
+			end++
+		}
+		if end-i < 32 || !assigned(s[:i]) {
+			i = end - 1
+			continue
+		}
+		// Up to two "=", fewer if a key character would follow them.
+		padding := 0
+		for padding < 2 && end+padding < len(s) && s[end+padding] == '=' {
+			padding++
+		}
+		for padding > 0 && end+padding < len(s) && keyByte(s[end+padding]) {
+			padding--
+		}
+		b.WriteString(s[last:i])
+		b.WriteString(redacted)
+		last = end + padding
+		i = last - 1
+	}
+	if last == 0 {
+		return s
+	}
+	return b.String() + s[last:]
+}
+
+// assigned reports whether before ends with "=" or ":" and at most one
+// space.
+func assigned(before string) bool {
+	before = strings.TrimSuffix(before, " ")
+	return strings.HasSuffix(before, "=") || strings.HasSuffix(before, ":")
+}
+
+func keyByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '+' || c == '/' || c == '_' || c == '-'
 }
 
 // redactPaths replaces paths of two or more components that do not follow a
@@ -123,12 +197,15 @@ func pathNeighbor(c byte) bool {
 func discoveryTitle(text string) string { return shorten(redact(text)) }
 
 // commandTitle names a command by its redacted namespace and name (eFe).
-func commandTitle(parts []string) string {
-	redacted := make([]string, len(parts))
+func commandTitle(parts []string) string { return joinTitle(parts, redact) }
+
+// joinTitle joins parts, each redacted on its own, and shortens the result.
+func joinTitle(parts []string, redact func(string) string) string {
+	out := make([]string, len(parts))
 	for i, part := range parts {
-		redacted[i] = redact(part)
+		out[i] = redact(part)
 	}
-	return shorten(strings.Join(redacted, ":"))
+	return shorten(strings.Join(out, ":"))
 }
 
 // shorten cuts text longer than maxTitleUnits UTF-16 code units to one less,

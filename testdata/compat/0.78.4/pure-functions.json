@@ -3,17 +3,7 @@
     "version": "0.78.4",
     "platform": "linux",
     "method": "isolated pure functions from source; not desktop traffic",
-    "source": "local-exec-daemon/main.cjs",
-    "markers": [
-      "QSr",
-      "Rye",
-      "lfe",
-      "hN",
-      "Sut",
-      "Eye",
-      "ZO",
-      "zct"
-    ]
+    "source": "local-exec-daemon/main.cjs"
   },
   "ranges": [
     {
@@ -388,6 +378,624 @@
     "sessionCount": 0,
     "items": []
   },
+  "discoveryTitles": [
+    {
+      "text": "fix the bug in /home/me/project/main.go and mail me@example.com",
+      "title": "fix the bug in [path] and mail [email]",
+      "whole": "fix the bug in [path] and mail [email]"
+    },
+    {
+      "text": "see https://example.com/a?b=c, then src/main/java and ./a/b",
+      "title": "see [link] then src/main/java and [path]",
+      "whole": "see [link] then src/main/java and [path]"
+    },
+    {
+      "text": "open C:\\Users\\me\\file.txt or ~/notes/todo.md",
+      "title": "open [path] or [path]",
+      "whole": "open [path] or [path]"
+    },
+    {
+      "text": "  several\n lines\tand spaces  ",
+      "title": "several lines and spaces",
+      "whole": "several lines and spaces"
+    },
+    {
+      "text": "use sk-abcdefghijklmnop1234 and ghp_abcdefghijklmnop1234",
+      "title": "use [redacted] and [redacted]",
+      "whole": "use [redacted] and [redacted]"
+    },
+    {
+      "text": "xoxb-1234567890-abc AKIA0123456789ABCDEF AIzaSyA-abcdefghijklmnopqrstuvwxyz0123",
+      "title": "[redacted] [redacted] [redacted]",
+      "whole": "[redacted] [redacted] [redacted]"
+    },
+    {
+      "text": "Bearer abcdefghijklmnop.qrst",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "xBearer abcdefghijklmnop.qrst",
+      "title": "xBearer abcdefghijklmnop.qrst",
+      "whole": "xBearer abcdefghijklmnop.qrst"
+    },
+    {
+      "text": "BEARER   abcdefghijklmnop",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "token=AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "token=[redacted]",
+      "whole": "token=[redacted]"
+    },
+    {
+      "text": "token: AbCdEfGhIjKlMnOpQrStUvWxYz012345==",
+      "title": "token: [redacted]",
+      "whole": "token: [redacted]"
+    },
+    {
+      "text": "token:  AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "token: [redacted]",
+      "whole": "token: [redacted]"
+    },
+    {
+      "text": "token=\"AbCdEfGhIjKlMnOpQrStUvWxYz012345\"",
+      "title": "token=\"AbCdEfGhIjKlMnOpQrStUvWxYz012345\"",
+      "whole": "token=\"AbCdEfGhIjKlMnOpQrStUvWxYz012345\""
+    },
+    {
+      "text": "a=AbCdEfGhIjKlMnOpQrStUvWxYz012345==AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "a=[redacted]=[redacted]",
+      "whole": "a=[redacted]=[redacted]"
+    },
+    {
+      "text": "a=AbCdEfGhIjKlMnOpQrStUvWxYz012345=AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "a=[redacted]=[redacted]",
+      "whole": "a=[redacted]=[redacted]"
+    },
+    {
+      "text": "a=AbCdEfGhIjKlMnOpQrStUvWxYz012345===b",
+      "title": "a=[redacted]=b",
+      "whole": "a=[redacted]=b"
+    },
+    {
+      "text": "AbCdEfGhIjKlMnOpQrStUvWxYz012345 AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "AbCdEfGhIjKlMnOpQrStUvWxYz012345 AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "whole": "AbCdEfGhIjKlMnOpQrStUvWxYz012345 AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    },
+    {
+      "text": "0123456789abcdef0123456789abcdef",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "x0123456789abcdef0123456789abcdefg",
+      "title": "x0123456789abcdef0123456789abcdefg",
+      "whole": "x0123456789abcdef0123456789abcdefg"
+    },
+    {
+      "text": "key=0123456789abcdef0123456789abcdef!",
+      "title": "key=[redacted]!",
+      "whole": "key=[redacted]!"
+    },
+    {
+      "text": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN",
+      "title": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN",
+      "whole": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"
+    },
+    {
+      "text": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "title": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "whole": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    },
+    {
+      "text": "sk_live_a1a1a1a1a1a1a1a1a1a1a1a1 glpat-c3c3c3c3c3c3c3c3c3c3",
+      "title": "sk_live_a1a1a1a1a1a1a1a1a1a1a1a1 glpat-c3c3c3c3c3c3c3c3c3c3",
+      "whole": "sk_live_a1a1a1a1a1a1a1a1a1a1a1a1 glpat-c3c3c3c3c3c3c3c3c3c3"
+    },
+    {
+      "text": "ſ://host/path K://x/y HTTP://Example.COM",
+      "title": "ſ:/[path] [link] [link]",
+      "whole": "ſ:/[path] [link] [link]"
+    },
+    {
+      "text": "a@b.c a@b.co @b.co a@.co",
+      "title": "a@b.c [email] @b.co a@.co",
+      "whole": "a@b.c [email] @b.co a@.co"
+    },
+    {
+      "text": ".../a/b x/a/b -/a/b (/a/b) /a /a/b/ //a//b",
+      "title": ".../a/b x/a/b -/a/b ([path]) /a [path] //a//b",
+      "whole": ".../a/b x/a/b -/a/b ([path]) /a [path] //a//b"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  tail",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx tail"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx /home/me/project/file",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [path]",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [path]"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx AbCdEfGhIjKlMnOpQr…",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    }
+  ],
+  "commandTitles": [
+    {
+      "parts": [
+        "ns",
+        "/home/me/x",
+        "cmd"
+      ],
+      "title": "ns:[path]:cmd"
+    },
+    {
+      "parts": [
+        "review"
+      ],
+      "title": "review"
+    },
+    {
+      "parts": [
+        "a",
+        "k=AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "title": "a:k=[redacted]:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+    },
+    {
+      "parts": [
+        "  a  b ",
+        "me@example.com"
+      ],
+      "title": "a b:[email]"
+    }
+  ],
+  "denylist": [
+    {
+      "command": "rm -f x; echo one",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm -f x",
+        "echo one"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo ok",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "echo ok"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "r\\m -f x",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "r\\m -f x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "'rm' -f x",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "'rm' -f x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "/bin/rm -rf x",
+      "rules": [
+        "rm -rf"
+      ],
+      "reason": null,
+      "commands": [
+        "/bin/rm -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "sudo rm -rf /",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "sudo rm -rf /"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "sudo rm -rf /",
+      "rules": [
+        "*rm*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: *rm*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "sudo rm -rf /"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "git push --force origin main",
+      "rules": [
+        "git:*--force*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: git:*--force*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "git push --force origin main"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "git push origin main",
+      "rules": [
+        "git:*--force*"
+      ],
+      "reason": null,
+      "commands": [
+        "git push origin main"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "aws s3 rm s3://b --recursive",
+      "rules": [
+        "aws:*s3 rm*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: aws:*s3 rm*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "aws s3 rm s3://b --recursive"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [
+        "*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: *) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [
+        ":x"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: :x) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [
+        "  ",
+        ""
+      ],
+      "reason": null,
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [],
+      "reason": null,
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command could not be conclusively analyzed against your team's administrator command denylist, so it was blocked (fail-closed) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [],
+      "parsingFailed": false
+    },
+    {
+      "command": "A=1 B=2",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command could not be conclusively analyzed against your team's administrator command denylist, so it was blocked (fail-closed) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [],
+      "parsingFailed": false
+    },
+    {
+      "command": "ls | xargs rm",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "ls",
+        "xargs rm"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "ls | xargs rm",
+      "rules": [
+        "xargs:rm*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: xargs:rm*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "ls",
+        "xargs rm"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo \"$(rm x)\"",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo \"$(rm x)\"",
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "cat <<EOF\nbody $(rm x)\nEOF",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "cat",
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "if [ -f x ]; then rm x; fi",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "for f in *; do echo $f; done",
+      "rules": [
+        "rm",
+        "echo"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: echo) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo $f"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "time rm x",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "time rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "time rm x",
+      "rules": [
+        "time"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: time) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "time rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "FOO=1 rm x > out y",
+      "rules": [
+        "rm x y"
+      ],
+      "reason": null,
+      "commands": [
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "FOO=1 rm x > out y",
+      "rules": [
+        "rm x"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm x) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "unset A; export B=1; [ -f x ] && local c=2",
+      "rules": [
+        "unset",
+        "export",
+        "local",
+        "["
+      ],
+      "reason": "Denied: this command could not be conclusively analyzed against your team's administrator command denylist, so it was blocked (fail-closed) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [],
+      "parsingFailed": false
+    },
+    {
+      "command": "! unset A",
+      "rules": [
+        "unset"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: unset) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "unset A"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "let x=1+2",
+      "rules": [
+        "let"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: let) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "let x=1+2"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "rm    -rf\t x",
+      "rules": [
+        "rm -rf"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm -rf) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "RM -rf x",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "RM -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo rm",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "echo rm"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "$'r\\x6d' -rf x",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "$'r\\x6d' -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "f() { rm x; }; f",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm x",
+        "f"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "( cd /tmp && rm x ) &",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "cd /tmp",
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "git commit -m \"rm old files\"",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "git commit -m \"rm old files\""
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo a\nrm b",
+      "rules": [
+        "e*b"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: e*b) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo a",
+        "rm b"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo a b",
+      "rules": [
+        "e*b"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: e*b) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo a b"
+      ],
+      "parsingFailed": false
+    }
+  ],
   "terminalHeader": "---\npid: 42\ncwd: \"/workspace\"\ncommand: \"printf hello\"\nstatus: running  \nstarted_at: 2026-01-01T00:00:00.000Z\nrunning_for_ms: 0        \n---\n",
   "format": [
     {

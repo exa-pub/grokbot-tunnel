@@ -8,10 +8,13 @@ import (
 
 func TestParseSnapshotRejectsTruncated(t *testing.T) {
 	full := "/w\x00A=1\x00SHLVL=3\x00_=/usr/bin/env\x00\x00" + sectionEnvSaved + "\x00\x00" + sectionOptions + "\x00set -o noclobber\nset -o errexit\nset -o monitor\nset +o nounset\nshopt -s login_shell\nshopt -s nullglob\n\x00" +
-		sectionFunctions + "\x00f () { :; }\n\x00" + sectionEnd + "\x00"
+		sectionFunctions + "\x00f () { :; }\n\x00" + sectionAliases + "\x00alias a='b'\n\x00" + sectionEnd + "\x00"
 	st, ok := parseSnapshot([]byte(full))
 	if !ok || strings.Join(st.env, " ") != "A=1" || strings.Join(st.options, "|") != "set -o noclobber|shopt -s nullglob" || st.functions != "f () { :; }\n" {
 		t.Fatal(ok, st)
+	}
+	if st.aliases != "alias a='b'\n" || !strings.Contains(st.replayScript(shell{}), "alias a='b'\n\nf () { :; }\n") {
+		t.Fatal(st.aliases, st.replayScript(shell{}))
 	}
 	if _, ok := parseSnapshot([]byte(full[:len(full)-len(sectionEnd)-2])); ok {
 		t.Fatal("truncated snapshot accepted")

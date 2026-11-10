@@ -28,13 +28,14 @@ func (s *session) accept(f *requestFrame, server bool) {
 			log.Printf("reject %s: %v", f.RequestId, err)
 		}
 	case admission.Queued:
+		s.alive.Admitted(f.RequestId, s.pv.now())
 		s.startJobs()
 	case admission.Ignore:
 	}
 }
 
-// cancel stops a request and discards its undelivered results. The request
-// is remembered so a late or repeated delivery does not start it again.
+// cancel stops a request and discards its undelivered results. A delivery
+// of the request later in the same poll does not start it.
 func (s *session) cancel(id string) {
 	s.out.Cancel(id)
 	switch t := s.admit.Cancel(id); {
@@ -103,6 +104,9 @@ func (s *session) onSubmitted(r submitted) {
 	rejected := connect.CodeOf(r.err) == connect.CodeUnauthenticated
 	if r.err != nil {
 		s.invalidate(r.credential, r.err)
+	}
+	if r.err == nil {
+		s.alive.Heard(r.frames[:r.accepted], s.pv.now())
 	}
 	again, failed := s.out.Submitted(s.pv.now(), r.frames, r.accepted, rejected, s.admit.Canceled)
 	if failed != nil {

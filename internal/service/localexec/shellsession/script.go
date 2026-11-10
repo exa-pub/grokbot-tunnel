@@ -46,8 +46,8 @@ func (s shell) args(flags, script, name string, params ...string) []string {
 }
 
 // dump writes the state as NUL-separated cwd and environment, a tag that the
-// environment was written in full, then tagged option and function sections
-// and an end tag. Command output cannot be mistaken for state, and state is
+// environment was written in full, then tagged option, function and alias
+// sections and an end tag. Command output cannot be mistaken for state, and state is
 // replayed from a file, not parsed back from output.
 //
 // Like the desktop's dump, the environment leaves out ELECTRON_RUN_AS_NODE
@@ -56,9 +56,11 @@ func (s shell) args(flags, script, name string, params ...string) []string {
 func (s shell) dump() string {
 	options := `builtin set +o; builtin shopt -p`
 	env := `/usr/bin/env -u ELECTRON_RUN_AS_NODE -u POSIXLY_CORRECT -0`
+	aliases := `builtin alias -p`
 	if s.zsh {
 		options = `builtin set +o`
 		env = `/usr/bin/env -u ELECTRON_RUN_AS_NODE -0`
+		aliases = `builtin alias -L; builtin alias -L -s`
 	}
 	return strings.Join([]string{
 		`builtin printf '%s\0' "$PWD"`,
@@ -67,6 +69,8 @@ func (s shell) dump() string {
 		options,
 		`builtin printf '\0` + sectionFunctions + `\0'`,
 		`builtin typeset -f`,
+		`builtin printf '\0` + sectionAliases + `\0'`,
+		aliases,
 		`builtin printf '\0` + sectionEnd + `\0'`,
 	}, "; ")
 }
@@ -91,12 +95,18 @@ const readCommand = `IFS= builtin read -r -d '' __grok_cmd <&5 2>/dev/null || { 
 // descriptor, is skipped. The descriptors are closed with a bare exec before
 // the replay, which could define a function named exec; "builtin exec" would
 // only close them for the duration of the builtin.
+//
+// The aliases of a startup file ($BASH_ENV, .zshenv) are removed and the
+// replay runs without alias expansion, so that no alias changes how the
+// replayed functions parse. The command then runs with the session's aliases
+// expanded, as on the desktop (State.aliases).
 func (s shell) prepare(piped bool) string {
-	unalias := `builtin shopt -u expand_aliases 2>/dev/null; `
+	clearAliases := `builtin shopt -u expand_aliases 2>/dev/null; builtin unalias -a 2>/dev/null; `
+	expand := `builtin shopt -s expand_aliases 2>/dev/null; `
 	if s.zsh {
-		// zsh expands aliases even when not interactive; aliases from
-		// .zshenv must not change how the replayed functions parse either.
-		unalias = `builtin unsetopt aliases 2>/dev/null; builtin unalias -m '*' 2>/dev/null; `
+		clearAliases = `builtin unsetopt aliases 2>/dev/null; builtin unalias -m '*' 2>/dev/null; ` +
+			`builtin unalias -s -m '*' 2>/dev/null; `
+		expand = `builtin setopt aliases 2>/dev/null; `
 	}
 	read := ""
 	if piped {
@@ -104,7 +114,17 @@ func (s shell) prepare(piped bool) string {
 	}
 	return read + `{ __grok_replay=$(</dev/fd/3); } 2>/dev/null || __grok_replay=; ` +
 		`exec 3<&- 5<&-; ` +
-		unalias + `builtin eval -- "$__grok_replay"; builtin unset __grok_replay; `
+		clearAliases + `builtin eval -- "$__grok_replay"; builtin unset __grok_replay; ` + expand
+}
+
+// aliasesOff starts the EXIT trap. The trap is parsed when it runs, with the
+// aliases the command defined; the quoted words are not expanded, and what
+// they evaluate is parsed with expansion off.
+func (s shell) aliasesOff() string {
+	if s.zsh {
+		return `\builtin \unsetopt \aliases 2>/dev/null; `
+	}
+	return `\builtin \shopt -u expand_aliases 2>/dev/null; `
 }
 
 // foregroundScript runs the command with descriptor 4 closed and then dumps
@@ -112,14 +132,17 @@ func (s shell) prepare(piped bool) string {
 // unless piped, $2 is the command. The script's own variables start unset, so
 // that an inherited __grok_dumped cannot disable the trap; under "set -a" they
 // are exported to the dump, which parseSnapshot drops. The trap overwrites
-// the fallback file even under noclobber.
+// the fallback file even under noclobber. The script is one line, which the
+// shell parses before it runs any of it: aliases of the command do not reach
+// the dump after it.
 func (s shell) foregroundScript(piped bool) string {
 	subshell := "BASH_SUBSHELL"
 	if s.zsh {
 		subshell = "ZSH_SUBSHELL"
 	}
-	trap := `{ builtin set +xveu; builtin test -z "$__grok_dumped" && builtin test "$` + subshell + `" = 0 && ` +
+	dump := `{ builtin set +xveu; builtin test -z "$__grok_dumped" && builtin test "$` + subshell + `" = 0 && ` +
 		`{ ` + s.dump() + `; } >|"$__grok_fallback"; } 2>/dev/null`
+	trap := s.aliasesOff() + `\builtin \eval ` + shellQuote(dump)
 	command := ""
 	if !piped {
 		command = `__grok_cmd=$2; `

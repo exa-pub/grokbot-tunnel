@@ -10,9 +10,9 @@ Shell tests run against bash and, when found, zsh: set `GROK_TEST_ZSH` to a zsh
 binary or put zsh on `PATH`.
 
 `testdata/compat/0.78.4/` holds reference data from the desktop client;
-`scripts/compat-reference.mjs` regenerates it. `scripts/extract-proto.py`
-reconstructs `.proto` schemas from the client's bundle without running it;
-`api/proto/` is a subset of its output.
+`make compare-record` regenerates it (see `tests/compare/README.md`).
+`scripts/extract-proto.py` reconstructs `.proto` schemas from the client's
+bundle without running it; `api/proto/` is a subset of its output.
 
 ## Code layout
 
@@ -50,8 +50,8 @@ Further rules:
 
 ## Tests
 
-- `make test`, `make test-race`, `make e2e`, `make lint`. CI installs zsh and
-  ripgrep so that their code paths run.
+- `make test`, `make test-race`, `make e2e`, `make compare-golden`,
+  `make lint`. CI installs zsh and ripgrep so that their code paths run.
 - Unit tests of a module live next to it, in the `<module>_test` package when
   the contract is enough. State machines are tested with tables of events and
   times, without goroutines or `sleep`.
@@ -61,6 +61,13 @@ Further rules:
 - `pinned_test.go` files pin current behavior, including known differences
   from the desktop; a test comment names the difference. Changing such a
   behavior means changing its test in the same change.
+- `tests/compare` runs scenarios against the built binary and compares its
+  answers with the desktop client's: `make compare-golden` (needs docker)
+  with the answers recorded in `testdata/compat/<version>/transcripts/`,
+  `make compare` with the desktop itself, for those who have its AppImage.
+  A difference from the desktop is fixed or listed with its reason in
+  `testdata/compat/<version>/known-diffs.json`; a new or changed scenario is
+  recorded with `make compare-record`. See `tests/compare/README.md`.
 - `tests/e2e` runs the built binary against `tests/e2e/fakesand`, a fake
   backend that `internal/app`'s integration test uses too.
 - `make systemd-test` (needs docker) boots systemd in a container and runs

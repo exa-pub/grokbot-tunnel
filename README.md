@@ -149,8 +149,9 @@ tunnel runs per user at a time, so stop the service first
 ## What the agent gets
 
 - A persistent shell: each command continues from the working directory,
-  variables, shell options and functions the previous one left (aliases are
-  not kept). Background commands
+  variables, shell options, functions and aliases the previous one left. The
+  aliases of your shell profile are not used: they are made for people, and
+  an `rm -i` would keep the agent's files. Background commands
   write their output to `<root>/terminals/<number>.txt`.
 - File reads, directory listings, and uploads and downloads up to 100 MiB.
   Paths may start with `~` or be `file://` URLs; they are checked against
@@ -164,6 +165,12 @@ tunnel runs per user at a time, so stop the service first
   commands start in it unless the agent asks for another directory, and can
   access anything you can. Codex and Claude Code
   settings are read from the home directory even if it is outside `--root`.
+- There is no sandbox. A command that Grok Bot asks to run in one (no network,
+  or writes only below a directory) is refused, not run without it; the
+  desktop app on Linux does the same.
+- A command that an administrator's denylist blocks, if Grok Bot sends one
+  with it, is refused as by the desktop app. A command written in a way that
+  cannot be checked against the list is refused too.
 - Tokens are stored unencrypted in `~/.grok/bot-tunnel/`, readable only by you.
 - `--debug` logs requests in full, including commands and file contents; for
   the service they go to the journal.

@@ -19,8 +19,10 @@ import (
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/proc"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/denylist"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/pathroot"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/sandbox"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/shellsession"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/terminalfile"
 )
@@ -58,16 +60,35 @@ func New(root *pathroot.Root, session *shellsession.Session) *Executor {
 	}
 }
 
-// Execute starts args.Command and sends its shell ID.
+// Execute starts args.Command and sends its shell ID, or, like the desktop,
+// the refusal of a command that an administrator's denylist blocks or, on
+// Linux, of one that is to run in a sandbox.
 func (bg *Executor) Execute(ctx context.Context, args *agentv1.BackgroundShellSpawnArgs, send execstream.Send) error {
-	result, err := bg.Spawn(ctx, args)
+	result := &agentv1.BackgroundShellSpawnResult{}
+	rejected, err := bg.denied(ctx, args)
 	if err != nil {
 		return err
 	}
+	var refusal *agentv1.ShellSandboxUnsupported
+	if rejected == nil {
+		refusal, err = bg.sandboxed(ctx, args)
+	}
+	switch {
+	case err != nil:
+		return err
+	case rejected != nil:
+		result.Result = &agentv1.BackgroundShellSpawnResult_Rejected{Rejected: rejected}
+	case refusal != nil:
+		result.Result = &agentv1.BackgroundShellSpawnResult_SandboxUnsupported{SandboxUnsupported: refusal}
+	default:
+		success, err := bg.Spawn(ctx, args)
+		if err != nil {
+			return err
+		}
+		result.Result = &agentv1.BackgroundShellSpawnResult_Success{Success: success}
+	}
 	return send(&agentv1.ExecClientMessage{Message: &agentv1.ExecClientMessage_BackgroundShellSpawnResult{
-		BackgroundShellSpawnResult: &agentv1.BackgroundShellSpawnResult{
-			Result: &agentv1.BackgroundShellSpawnResult_Success{Success: result},
-		},
+		BackgroundShellSpawnResult: result,
 	}})
 }
 
@@ -205,6 +226,53 @@ func (bg *Executor) Release(n uint32) {
 func (bg *Executor) Remove(n uint32) error {
 	defer bg.Release(n)
 	return bg.root.Remove(fmt.Sprintf("%s/%d.txt", terminalfile.Dir, n))
+}
+
+// denied returns the refusal of a command that the denylist of its request
+// blocks (see denylist), like the desktop's: before anything is started or
+// written.
+func (bg *Executor) denied(ctx context.Context, args *agentv1.BackgroundShellSpawnArgs) (*agentv1.ShellRejected, error) {
+	reason := denylist.Refusal(args.Command, args.AdminCommandDenylist)
+	if reason == "" {
+		return nil, nil //nolint:nilnil // no refusal
+	}
+	if err := bg.session.Init(ctx); err != nil {
+		return nil, err
+	}
+	cwd, _ := bg.session.Cwd(args.WorkingDirectory, bg.session.State())
+	return &agentv1.ShellRejected{Command: args.Command, WorkingDirectory: cwd, Reason: reason}, nil
+}
+
+// sandboxed returns the refusal of a command whose request asks for a
+// sandbox, which neither the desktop on Linux nor grokbot-tunnel has (see
+// sandbox), and writes it to a terminal file of the command's own, as the
+// desktop does. A command whose session cwd no longer exists is left to
+// Spawn, which says so first, like the desktop.
+func (bg *Executor) sandboxed(ctx context.Context, args *agentv1.BackgroundShellSpawnArgs) (*agentv1.ShellSandboxUnsupported, error) {
+	policy := sandbox.Effective(args.SandboxPolicy, args.SkipApproval)
+	if sandbox.Unsupported(policy, "", "") == nil {
+		return nil, nil //nolint:nilnil // no refusal
+	}
+	if err := bg.session.Init(ctx); err != nil {
+		return nil, err
+	}
+	cwd, _ := bg.session.Cwd(args.WorkingDirectory, bg.session.State())
+	if gone, err := goneCwd(args.WorkingDirectory, cwd); err != nil || gone != "" {
+		return nil, err
+	}
+	refusal := sandbox.Unsupported(policy, args.Command, cwd)
+	n, f, err := bg.Terminal()
+	if err != nil {
+		return nil, err
+	}
+	defer bg.Release(n)
+	header := terminalfile.Command{Cwd: cwd, Command: args.Command, Title: args.GetDescription(), Started: time.Now()}
+	tf, err := terminalfile.Start(f, header, "")
+	if err != nil {
+		proc.CloseLogged(f)
+		return nil, err
+	}
+	return refusal, tf.Fail(sandbox.Error(refusal))
 }
 
 // refuse writes the terminal file f of shell ID n for a command that does not

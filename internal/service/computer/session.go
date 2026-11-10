@@ -5,6 +5,8 @@ import (
 	"log"
 	"time"
 
+	"connectrpc.com/connect"
+
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/frames"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/entity"
@@ -17,9 +19,8 @@ import (
 )
 
 const (
-	tickInterval      = 100 * time.Millisecond
-	pollInterval      = 30 * time.Second
-	keepAliveInterval = 2 * time.Second
+	tickInterval = 100 * time.Millisecond
+	pollInterval = 30 * time.Second
 )
 
 // channelRetry is how long the watch stays down after the server rejected the
@@ -32,6 +33,13 @@ type submitted struct {
 	credential string
 	frames     []*responseFrame
 	accepted   int
+	err        error
+}
+
+// aliveSent is the outcome of a keep-alive submit run off the Run goroutine.
+type aliveSent struct {
+	credential string
+	frames     []*responseFrame
 	err        error
 }
 
@@ -75,9 +83,11 @@ type session struct {
 	replies chan *responseFrame
 	done    chan string
 	events  chan watched
-	// At most one submit, one poll and one issue are in flight; their results
-	// come back on these channels, buffered so an abandoned RPC never blocks.
+	// At most one submit, one keep-alive submit, one poll and one issue are
+	// in flight; their results come back on these channels, buffered so an
+	// abandoned RPC never blocks.
 	submitted chan submitted
+	aliveSent chan aliveSent
 	polled    chan polled
 	issued    chan issued
 
@@ -90,6 +100,7 @@ type session struct {
 	admit                           *admission.Scheduler
 	poll                            admission.Poller
 	out                             replies.Queue
+	alive                           replies.KeepAlive
 	// connected is set once the server first accepted the computer.
 	connected bool
 
@@ -106,6 +117,7 @@ func newSession(ctx context.Context, pv *Provider) *session {
 		done:      make(chan string, admission.MaxActive),
 		events:    make(chan watched, 16),
 		submitted: make(chan submitted, 1),
+		aliveSent: make(chan aliveSent, 1),
 		polled:    make(chan polled, 1),
 		issued:    make(chan issued, 1),
 		cred:      credential.New(pv.cachedCredential(), pv.jitter),
@@ -138,11 +150,12 @@ func (s *session) sink(f *responseFrame) error {
 }
 
 // taskSink is sink for a task run under ctx. Only a frame that ends the
-// request (frames.Closes) waits for room regardless of ctx. Once ctx is
+// request (frames.Closes) and the exit event of a shell command, which says
+// how a canceled command ended, wait for room regardless of ctx. Once ctx is
 // canceled, any other frame, heartbeats and other intermediate control
 // messages included, is dropped with frames.Dropped instead of waiting, so
 // that a worker blocked on a full queue notices the cancellation (bugs B8,
-// L1) and still sends the frame that ends the request.
+// L1) and still sends the frames that end the request.
 func (s *session) taskSink(ctx context.Context) frames.Sink {
 	return func(f *responseFrame) error {
 		select {
@@ -150,7 +163,7 @@ func (s *session) taskSink(ctx context.Context) frames.Sink {
 			return nil
 		default:
 		}
-		if frames.Closes(f) {
+		if frames.Closes(f) || frames.ShellExit(f) {
 			return s.sink(f)
 		}
 		select {
@@ -169,24 +182,22 @@ func (s *session) run(ctx context.Context) error {
 	defer tick.Stop()
 	pollTick := time.NewTicker(pollInterval)
 	defer pollTick.Stop()
-	aliveTick := time.NewTicker(keepAliveInterval)
+	aliveTick := time.NewTicker(replies.AliveTick)
 	defer aliveTick.Stop()
 	for {
 		var err error
-		var accepting chan *responseFrame
-		if s.out.Accepting() {
-			accepting = s.replies // otherwise workers wait
-		}
 		select {
 		case <-ctx.Done():
 			s.stop()
 			return nil
-		case f := <-accepting:
+		case f := <-s.accepting():
 			if s.out.Take(f, s.admit.Canceled(f.RequestId)) {
 				s.startSubmit()
 			}
 		case r := <-s.submitted:
 			s.onSubmitted(r)
+		case r := <-s.aliveSent:
+			s.onAliveSent(r)
 		case r := <-s.polled:
 			s.onPolled(r)
 		case r := <-s.issued:
@@ -210,12 +221,56 @@ func (s *session) run(ctx context.Context) error {
 	}
 }
 
-// keepAlive tells the server that accepted requests are still being
-// handled; without a credential it could not be delivered anyway.
-func (s *session) keepAlive() {
-	if s.cred.Current().Credential != "" {
-		s.out.KeepAlive(s.admit.Tasks(), s.admit.Canceled)
+// accepting is the channel of the workers' replies, or nil while enough are
+// pending: the workers wait then.
+func (s *session) accepting() chan *responseFrame {
+	if s.out.Accepting() {
+		return s.replies
 	}
+	return nil
+}
+
+// keepAlive tells the server, in a submit of its own, that requests it has
+// not heard of for a while are alive: those that wait for their turn and
+// those with frames it has not accepted. Canceled requests are left out;
+// without a credential nothing could be delivered.
+func (s *session) keepAlive() {
+	credential := s.cred.Current().Credential
+	if credential == "" {
+		return
+	}
+	now := s.pv.now()
+	held, eligible := s.out.Unheard(now)
+	for id, started := range s.admit.Tasks() {
+		held[id] = true
+		if !started {
+			eligible[id] = true
+		}
+	}
+	for id := range eligible {
+		if s.admit.Canceled(id) {
+			delete(eligible, id)
+		}
+	}
+	batch := s.alive.Next(now, held, eligible)
+	if batch == nil {
+		return
+	}
+	go func() {
+		_, err := s.pv.submitFrames(s.life, replies.AliveTimeout, credential, batch)
+		s.aliveSent <- aliveSent{credential: credential, frames: batch, err: err}
+	}()
+}
+
+// onAliveSent applies the result of a keep-alive submit. Like the desktop,
+// only a rejected credential and an exhausted server change anything; a
+// keep-alive that failed otherwise is due again on the next tick.
+func (s *session) onAliveSent(r aliveSent) {
+	code := connect.CodeOf(r.err)
+	if r.err != nil && code == connect.CodeUnauthenticated {
+		s.invalidate(r.credential, r.err)
+	}
+	s.alive.Sent(s.pv.now(), r.frames, r.err == nil, r.err != nil && code == connect.CodeResourceExhausted)
 }
 
 func (s *session) onTick() {

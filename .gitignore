@@ -33,6 +33,9 @@ go.work.sum
 # .vscode/
 
 *.tmp/
+# The desktop client's AppImages and the reports of the comparison tests.
+/tests/compare/desktop/
+/tests/compare/out/
 # Build output
 /bin/
 /dist/

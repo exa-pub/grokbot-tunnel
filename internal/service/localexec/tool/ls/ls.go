@@ -14,6 +14,7 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/nodeerr"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/pathroot"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/sandbox"
 )
 
 const (
@@ -54,6 +55,10 @@ func (ls *Executor) Execute(ctx context.Context, x *agentv1.LsArgs, send execstr
 		return send(statError(path, err))
 	case !st.IsDir():
 		return send(lsError(path, "Path is not a directory: "+path))
+	}
+	// Like the desktop on Linux, which has no sandbox to list in.
+	if refusal := sandbox.Unsupported(sandbox.Effective(x.SandboxPolicy, true), "", path); refusal != nil {
+		return send(lsError(path, sandbox.Error(refusal)))
 	}
 	timeout := defaultTimeout
 	if x.TimeoutMs != nil {
