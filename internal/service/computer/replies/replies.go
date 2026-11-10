@@ -1,8 +1,9 @@
 // Package replies queues the response frames of the user-computer channel
 // until the server accepts them, like the desktop provider's reply queue and
 // submit loop: per-request lanes, fair batches, one submit in flight with a
-// short retry, and keep-alives for requests still being handled. Queue is a
-// synchronous state machine; the caller runs the submit RPCs.
+// short retry, and keep-alives for requests the server has not heard of for
+// a while (KeepAlive). Queue is a synchronous state machine; the caller runs
+// the submit RPCs.
 package replies
 
 import (
@@ -16,7 +17,7 @@ import (
 const (
 	// SubmitBatch pending frames trigger an immediate submit.
 	SubmitBatch = 32
-	// MaxPending frames other than keep-alives make workers wait.
+	// MaxPending frames make workers wait.
 	MaxPending = 256
 	// MaxPendingData bytes of unsent file data make workers wait too. The
 	// desktop reads at most one chunk ahead per download (MX.readAhead);
@@ -56,9 +57,8 @@ type Queue struct {
 	partial map[string]bool
 }
 
-// Add queues f. Like the desktop, whose enqueue flushes at once, a frame
-// other than a keep-alive ends the pause after a failed round of closing
-// frames, which then go along with it.
+// Add queues f. Like the desktop, whose enqueue flushes at once, it ends the
+// pause after a failed round of closing frames, which then go along with f.
 func (q *Queue) Add(f *Frame) {
 	if q.closingSince == nil {
 		q.closingSince, q.partial, q.ordered = map[*Frame]time.Time{}, map[string]bool{}, map[string]bool{}
@@ -67,7 +67,7 @@ func (q *Queue) Add(f *Frame) {
 		q.ordered[f.RequestId] = true
 		q.order = append(q.order, f.RequestId)
 	}
-	if q.closingWait && f.GetMessagesAccepted() == nil {
+	if q.closingWait {
 		q.closingWait = false
 		q.nextSubmit = time.Time{}
 	}
@@ -81,7 +81,9 @@ func (q *Queue) Sink(f *Frame) error {
 }
 
 // Take queues a reply of a worker. The reply of a canceled request is
-// dropped unless it ends the request's stream, and the last chunk of a
+// dropped unless it ends the request's stream or is the exit event of its
+// shell command, which says that the command was aborted: like the desktop,
+// which delivers what an aborted request still reports. The last chunk of a
 // canceled transfer becomes an error. It reports whether a full batch is
 // pending.
 func (q *Queue) Take(f *Frame, canceled bool) bool {
@@ -92,7 +94,7 @@ func (q *Queue) Take(f *Frame, canceled bool) bool {
 		return false // the download already ended with ErrPartialFile
 	}
 	if canceled {
-		if f.GetControl() == nil && !frames.Final(f) {
+		if !frames.Keep(f) && !frames.ShellExit(f) {
 			return false
 		}
 		f = frames.CanceledFile(f)
@@ -126,18 +128,6 @@ func (q *Queue) Cancel(id string) {
 // Pending returns the frames not yet accepted, in order.
 func (q *Queue) Pending() []*Frame { return q.pending }
 
-// Stuck counts the pending frames other than keep-alives, which are bounded
-// by the number of requests and must not end the session on their own.
-func (q *Queue) Stuck() int {
-	n := 0
-	for _, f := range q.pending {
-		if f.GetMessagesAccepted() == nil {
-			n++
-		}
-	}
-	return n
-}
-
 // Accepting reports whether workers may hand over more replies. They wait
 // while enough frames or file data are pending, as a blocking submit used
 // to.
@@ -145,14 +135,11 @@ func (q *Queue) Accepting() bool {
 	if q.submitting && len(q.pending) >= SubmitBatch {
 		return false
 	}
-	stuck, data := 0, 0
+	data := 0
 	for _, f := range q.pending {
-		if f.GetMessagesAccepted() == nil {
-			stuck++
-		}
 		data += len(f.GetFile().GetData())
 	}
-	return stuck < MaxPending && data < MaxPendingData
+	return len(q.pending) < MaxPending && data < MaxPendingData
 }
 
 // Submitting reports whether a submit is in flight.

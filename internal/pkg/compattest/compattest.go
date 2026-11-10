@@ -26,7 +26,21 @@ type PureFunctions struct {
 	Streaming        []Streaming
 	Fallback         []Fallback
 	DiscoveryMissing json.RawMessage
+	DiscoveryTitles  []DiscoveryTitle
+	CommandTitles    []CommandTitle
 	TerminalHeader   string
+}
+
+// DiscoveryTitle is a text as the title of a discovered item: Title is cut
+// to the desktop's limit, Whole is not.
+type DiscoveryTitle struct {
+	Text, Title, Whole string
+}
+
+// CommandTitle is the title of a command with a namespace.
+type CommandTitle struct {
+	Parts []string
+	Title string
 }
 
 // Range is a read with a line range applied to a short text.

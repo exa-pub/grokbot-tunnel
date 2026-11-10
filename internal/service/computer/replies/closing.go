@@ -81,7 +81,7 @@ type Failure struct {
 // frames are kept until their budget, counted from the start of the round in
 // which they first failed, runs out. A download that lost a chunk is replaced
 // by a file error. If only kept closing frames remain, the next submit waits
-// a growing delay, or until Add queues a frame other than a keep-alive.
+// a growing delay, or until Add queues a frame.
 func (q *Queue) fail(now time.Time, batch []*Frame, canceled func(string) bool) Failure {
 	var out Failure
 	broken := map[string]bool{}

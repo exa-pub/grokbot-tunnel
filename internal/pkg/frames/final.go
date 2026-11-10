@@ -30,8 +30,22 @@ func Closes(f *aiserverv1.GrokBotUserComputerResponseFrame) bool {
 	return msg.GetStreamClose() != nil || msg.GetThrow() != nil
 }
 
-// Keep reports whether f is still delivered after its request was canceled:
-// control messages and final frames.
+// ShellExit reports whether f is the exit event of a shell command: the
+// frame that tells how the command ended, sent before the stream closes. A
+// command aborted by a cancel still reports it, like the desktop's.
+func ShellExit(f *aiserverv1.GrokBotUserComputerResponseFrame) bool {
+	if f.GetClient() == nil {
+		return false
+	}
+	var msg agentv1.ExecClientMessage
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal([]byte(f.GetClient().MessageJson), &msg); err != nil {
+		return false
+	}
+	return msg.GetShellStream().GetExit() != nil
+}
+
+// Keep reports whether f, waiting to be sent when its request is canceled,
+// is still delivered: control messages and final frames.
 func Keep(f *aiserverv1.GrokBotUserComputerResponseFrame) bool {
 	return f.GetControl() != nil || Final(f)
 }

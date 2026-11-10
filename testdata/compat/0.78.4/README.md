@@ -7,7 +7,9 @@ probe; `tests/compare/README.md` says how the comparison works.
 `pure-functions.json` holds outputs of pure functions of the bundle: read
 ranges, the streaming text reader the Linux read executor uses (including
 `max_chars`), the choice between lossy UTF-8 and Latin-1 for invalid UTF-8,
-the missing-setup discovery result, the terminal header, how the start of a
+the missing-setup discovery result, the titles of discovered items with
+what is replaced in them (`discoveryTitles`, `commandTitles`), the terminal
+header, how the start of a
 file is classified (`format`: UTF-16/UTF-32, binary, image; inputs that would
 reach jschardet are left out) and the size an image is scaled to (`imageFit`).
 `tests/compare/js/pure/reference.mjs` runs only these functions, in a `vm`

@@ -2,8 +2,9 @@ package computer
 
 // Characterization tests from phase 0 of the refactor: they pin the observable
 // behavior of the session, including where it knowingly differs from the
-// desktop. Invariant numbers refer to grok-bot-map.md §4. Invariant 11 (the
-// keep-alive ID set) is pinned by replies.TestKeepAlive.
+// desktop. Invariant numbers refer to grok-bot-map.md §4. Invariant 11 (which
+// requests are kept alive, and when) is pinned by replies.TestKeepAlive and
+// TestKeepAliveSubmit.
 
 import (
 	"fmt"
@@ -43,7 +44,7 @@ func pinnedDownload(id string) *requestFrame {
 
 func pinnedMessagesOp(id string) *requestFrame {
 	return &requestFrame{RequestId: id, Frame: &aiserverv1.GrokBotUserComputerRequestFrame_MessagesOp{
-		MessagesOp: &aiserverv1.GrokBotUserComputerMessagesOp{},
+		MessagesOp: &aiserverv1.GrokBotUserComputerMessagesOp{OpJson: `{"kind":"check-permissions"}`},
 	}}
 }
 
@@ -127,9 +128,10 @@ func TestPinnedBusyResponse(t *testing.T) {
 			assert.NotContains(t, s.admit.Tasks(), "extra")
 			assert.Equal(t, admission.MaxBacklog, s.admit.Backlog())
 
-			// A redelivery of the refused request is not answered again.
+			// A redelivery of the refused request is answered again, as
+			// on the desktop.
 			s.accept(tc.frame, false)
-			assert.Len(t, s.out.Pending(), 1)
+			assert.Len(t, s.out.Pending(), 2)
 		})
 	}
 }

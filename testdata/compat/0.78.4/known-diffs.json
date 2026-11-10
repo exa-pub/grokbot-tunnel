@@ -66,11 +66,6 @@
     "reason": "A symbolic link that loops: the desktop fails the request with a throw from realpath, grokbot-tunnel answers with a read error from stat. Not decided."
   },
   {
-    "scenario": "dispatch/duplicate-id",
-    "path": "requests/r1/*",
-    "reason": "A request with the ID of one already answered: the desktop runs it, grokbot-tunnel drops it. Not decided."
-  },
-  {
     "scenario": "dispatch/invalid",
     "path": "requests/*/0/control/throw/error",
     "reason": "The text of a JSON decoding error is that of each client's protobuf library."
@@ -106,16 +101,10 @@
     "reason": "bash calls itself -- in the messages of the desktop's shell and grokbot-shell in grokbot-tunnel's. Not decided."
   },
   {
-    "scenario": "shell/session-alias",
-    "path": "requests/r2/*",
-    "reason": "An alias defined by one command works in the next on the desktop; grokbot-tunnel keeps alias expansion off.",
-    "ref": "ai.tmp/TEST-PLAN.md B-4"
-  },
-  {
-    "scenario": "shell/session-alias",
-    "path": "requests/r2/*/client/shellStream/stdout/data",
-    "reason": "An alias defined by one command works in the next on the desktop; grokbot-tunnel keeps alias expansion off.",
-    "ref": "ai.tmp/TEST-PLAN.md B-4"
+    "scenario": "shell/profile-alias",
+    "path": "requests/r1/1/client/shellStream/stdout/data",
+    "reason": "An alias of the user's profile works in commands on the desktop; grokbot-tunnel leaves the profile's aliases out, since they are made for people (rm -i), and keeps only those that commands define.",
+    "ref": "internal/service/localexec/shellsession/shellsession.go"
   },
   {
     "scenario": "shell/session-shellopts",
@@ -148,12 +137,14 @@
   {
     "scenario": "discovery/claude",
     "path": "requests/r1/0/file/*",
-    "reason": "A word of 40 letters in a request text: grokbot-tunnel replaces it with [redacted] as if it were a key, the desktop keeps it. Not decided."
+    "reason": "A word of 40 letters in a request text: grokbot-tunnel replaces it with [redacted], since 40 characters of base64 are the form of an AWS secret access key; the desktop keeps it. grokbot-tunnel applies the desktop's patterns first and its own to what they left, so it never shows more than the desktop.",
+    "ref": "internal/service/localexec/tool/discovery/redact.go"
   },
   {
     "scenario": "discovery/codex",
     "path": "requests/r1/0/file/*",
-    "reason": "A word of 40 letters in a request text: grokbot-tunnel replaces it with [redacted] as if it were a key, the desktop keeps it. Not decided."
+    "reason": "A word of 40 letters in a request text: grokbot-tunnel replaces it with [redacted], since 40 characters of base64 are the form of an AWS secret access key; the desktop keeps it. grokbot-tunnel applies the desktop's patterns first and its own to what they left, so it never shows more than the desktop.",
+    "ref": "internal/service/localexec/tool/discovery/redact.go"
   },
   {
     "scenario": "transfer/upload-errors",
@@ -189,29 +180,5 @@
     "scenario": "channel/headers",
     "path": "headers/*/connect-timeout-ms",
     "reason": "Both clients accept gzip and Brotli but name them in another order; grokbot-tunnel also sends its deadline as Connect-Timeout-Ms and asks for an uncompressed watch stream. Not decided."
-  },
-  {
-    "scenario": "channel/keep-alive",
-    "path": "requests/*/*",
-    "reason": "Both clients send exec heartbeats for a request that runs. Besides them, the desktop sends messages_accepted for a request that waits for its turn and not for one that runs; grokbot-tunnel does the opposite.",
-    "ref": "internal/service/computer/replies/keepalive.go"
-  },
-  {
-    "scenario": "channel/keep-alive-waiting",
-    "path": "requests/*/*",
-    "reason": "Both clients send exec heartbeats for a request that runs. Besides them, the desktop sends messages_accepted for a request that waits for its turn and not for one that runs; grokbot-tunnel does the opposite.",
-    "ref": "internal/service/computer/replies/keepalive.go"
-  },
-  {
-    "scenario": "channel/keep-alive-waiting",
-    "path": "requests/*/*/client",
-    "reason": "Both clients send exec heartbeats for a request that runs. Besides them, the desktop sends messages_accepted for a request that waits for its turn and not for one that runs; grokbot-tunnel does the opposite.",
-    "ref": "internal/service/computer/replies/keepalive.go"
-  },
-  {
-    "scenario": "channel/keep-alive-waiting",
-    "path": "requests/*/*/messagesAccepted",
-    "reason": "Both clients send exec heartbeats for a request that runs. Besides them, the desktop sends messages_accepted for a request that waits for its turn and not for one that runs; grokbot-tunnel does the opposite.",
-    "ref": "internal/service/computer/replies/keepalive.go"
   }
 ]

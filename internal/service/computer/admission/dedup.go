@@ -1,5 +1,7 @@
 package admission
 
+import "slices"
+
 // dedupWindow is how many IDs a dedup remembers.
 const dedupWindow = 4096
 
@@ -25,4 +27,13 @@ func (d *dedup) add(id string) bool {
 		d.order = d.order[1:]
 	}
 	return true
+}
+
+// remove forgets id.
+func (d *dedup) remove(id string) {
+	if !d.seen[id] {
+		return
+	}
+	delete(d.seen, id)
+	d.order = slices.DeleteFunc(d.order, func(seen string) bool { return seen == id })
 }

@@ -31,6 +31,11 @@ const (
 	Email     = "test@example.invalid"
 )
 
+// Credential is the user-computer credential every computer is issued.
+//
+//nolint:gosec // a fake credential, not a secret
+const Credential = "fixture-credential"
+
 // Server is a running fake backend.
 type Server struct {
 	rpc.UnimplementedDashboardServiceHandler
@@ -41,29 +46,41 @@ type Server struct {
 	// HoldConnected, if set before the CLI starts, holds back the connected
 	// event of watch streams until it is closed.
 	HoldConnected chan struct{}
+	// ServerAuthoritative, if set before the CLI starts, is what issued
+	// credentials say about who decides on permissions.
+	ServerAuthoritative bool
 
 	t       testing.TB
 	mu      sync.Mutex
+	queued  int // frames queued so far
 	queue   []*aiserverv1.GrokBotUserComputerQueuedRequest
 	frames  []*aiserverv1.GrokBotUserComputerResponseFrame
 	changed chan struct{} // closed and replaced when frames or watchers change
 	hello   *aiserverv1.GrokBotUserComputerHello
 	// permissions are the modes set with UpdateSandMachineLocalToolPermission.
 	permissions []string
-	watches     int
-	notify      []chan struct{} // one per open watch stream
+	// unknown are the paths of requests no handler serves.
+	unknown []string
+	// calls are the calls of the user-computer channel, failures the codes
+	// the next calls of an RPC fail with.
+	calls    []Call
+	failures map[string][]connect.Code
+	drop     chan struct{} // closed and replaced to end the watch streams
+	watches  int
+	notify   []chan struct{} // one per open watch stream
 }
 
 // New starts a fake backend that stops when the test ends.
 func New(t testing.TB) *Server {
 	t.Helper()
-	s := &Server{t: t, changed: make(chan struct{})}
+	s := &Server{t: t, changed: make(chan struct{}), drop: make(chan struct{})}
 	mux := http.NewServeMux()
 	path, handler := rpc.NewDashboardServiceHandler(s)
 	mux.Handle(path, handler)
 	path, handler = rpc.NewGrokBotServiceHandler(s)
 	mux.Handle(path, handler)
 	mux.HandleFunc("/auth/poll", s.authPoll)
+	mux.HandleFunc("/", s.notFound)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	s.URL = srv.URL
@@ -90,7 +107,11 @@ func (s *Server) Enqueue(frames ...*aiserverv1.GrokBotUserComputerRequestFrame) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, f := range frames {
-		s.queue = append(s.queue, &aiserverv1.GrokBotUserComputerQueuedRequest{Id: f.RequestId, Frame: f})
+		// The backend gives every queued frame an ID of its own: a cancel
+		// has the request ID of what it cancels.
+		s.queued++
+		id := fmt.Sprintf("q%d-%s", s.queued, f.RequestId)
+		s.queue = append(s.queue, &aiserverv1.GrokBotUserComputerQueuedRequest{Id: id, Frame: f})
 	}
 	for _, c := range s.notify {
 		select {
@@ -106,20 +127,40 @@ func (s *Server) Wait(
 	timeout time.Duration, done func([]*aiserverv1.GrokBotUserComputerResponseFrame) bool,
 ) []*aiserverv1.GrokBotUserComputerResponseFrame {
 	s.t.Helper()
+	frames, ok := s.Await(timeout, done)
+	if !ok {
+		s.t.Fatalf("fakesand: condition not met within %v; %d frames submitted", timeout, len(frames))
+	}
+	return frames
+}
+
+// Await returns the submitted response frames once done accepts them, or the
+// frames submitted so far and false after timeout.
+func (s *Server) Await(
+	timeout time.Duration, done func([]*aiserverv1.GrokBotUserComputerResponseFrame) bool,
+) ([]*aiserverv1.GrokBotUserComputerResponseFrame, bool) {
 	deadline := time.After(timeout)
 	for {
 		s.mu.Lock()
 		frames, changed := append([]*aiserverv1.GrokBotUserComputerResponseFrame(nil), s.frames...), s.changed
 		s.mu.Unlock()
 		if done(frames) {
-			return frames
+			return frames, true
 		}
 		select {
 		case <-changed:
 		case <-deadline:
-			s.t.Fatalf("fakesand: condition not met within %v; %d frames submitted", timeout, len(frames))
+			return frames, false
 		}
 	}
+}
+
+// Unknown returns the paths of the requests the fake backend does not serve,
+// in the order they came.
+func (s *Server) Unknown() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.unknown...)
 }
 
 // Hello returns the hello of the last watch stream, nil before the first.
@@ -244,9 +285,9 @@ func (s *Server) Permissions() []string {
 func (s *Server) IssueGrokBotUserComputerCredential(
 	context.Context, *connect.Request[aiserverv1.IssueGrokBotUserComputerCredentialRequest],
 ) (*connect.Response[aiserverv1.IssueGrokBotUserComputerCredentialResponse], error) {
-	//nolint:gosec // a fake credential, not a secret
 	return connect.NewResponse(&aiserverv1.IssueGrokBotUserComputerCredentialResponse{
-		Credential: "fixture-credential", ExpiresAtMs: time.Now().Add(time.Hour).UnixMilli(),
+		Credential: Credential, ExpiresAtMs: time.Now().Add(time.Hour).UnixMilli(),
+		ServerAuthoritative: s.ServerAuthoritative,
 	}), nil
 }
 
@@ -265,25 +306,11 @@ func (s *Server) WatchGrokBotUserComputerRequests(
 	if r.Header().Get("X-Sand-Box-Namespace") != "prod" {
 		s.t.Error("fakesand: namespace missing")
 	}
-	notify := make(chan struct{}, 1)
-	s.mu.Lock()
-	s.hello = r.Msg.GetHello()
-	s.notify = append(s.notify, notify)
-	s.watches++
-	s.signal()
-	s.mu.Unlock()
-	defer func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		for i, c := range s.notify {
-			if c == notify {
-				s.notify = append(s.notify[:i], s.notify[i+1:]...)
-				break
-			}
-		}
-		s.watches--
-		s.signal()
-	}()
+	if err := s.enter(Watch, r.Header(), r.Msg); err != nil {
+		return err
+	}
+	notify, drop := s.watching(r.Msg.GetHello())
+	defer s.watched(notify)
 	if s.HoldConnected != nil {
 		select {
 		case <-s.HoldConnected:
@@ -299,6 +326,8 @@ func (s *Server) WatchGrokBotUserComputerRequests(
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-drop:
+			return connect.NewError(connect.CodeUnavailable, nil)
 		case <-notify:
 			ev := &aiserverv1.WatchGrokBotUserComputerRequestsEvent_Notify{Notify: &aiserverv1.WatchGrokBotUserComputerNotify{}}
 			if err := stream.Send(&aiserverv1.WatchGrokBotUserComputerRequestsEvent{Event: ev}); err != nil {
@@ -308,14 +337,22 @@ func (s *Server) WatchGrokBotUserComputerRequests(
 	}
 }
 
-// PollGrokBotUserComputerRequests hands out every queued request once.
+// PollGrokBotUserComputerRequests hands out every queued request once, up
+// to the limit of the call.
 func (s *Server) PollGrokBotUserComputerRequests(
-	context.Context, *connect.Request[aiserverv1.PollGrokBotUserComputerRequestsRequest],
+	_ context.Context, r *connect.Request[aiserverv1.PollGrokBotUserComputerRequestsRequest],
 ) (*connect.Response[aiserverv1.PollGrokBotUserComputerRequestsResponse], error) {
+	if err := s.enter(Poll, r.Header(), r.Msg); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := &aiserverv1.PollGrokBotUserComputerRequestsResponse{Requests: s.queue}
-	s.queue = nil
+	n := len(s.queue)
+	if limit := int(r.Msg.GetLimit()); limit > 0 && limit < n {
+		n = limit
+	}
+	out := &aiserverv1.PollGrokBotUserComputerRequestsResponse{Requests: s.queue[:n]}
+	s.queue = s.queue[n:]
 	return connect.NewResponse(out), nil
 }
 
@@ -324,6 +361,9 @@ func (s *Server) PollGrokBotUserComputerRequests(
 func (s *Server) SubmitGrokBotUserComputerResponses(
 	_ context.Context, r *connect.Request[aiserverv1.SubmitGrokBotUserComputerResponsesRequest],
 ) (*connect.Response[aiserverv1.SubmitGrokBotUserComputerResponsesResponse], error) {
+	if err := s.enter(Submit, r.Header(), r.Msg); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.frames = append(s.frames, r.Msg.Frames...)
@@ -331,6 +371,43 @@ func (s *Server) SubmitGrokBotUserComputerResponses(
 	return connect.NewResponse(&aiserverv1.SubmitGrokBotUserComputerResponsesResponse{
 		AcceptedCount: uint32(len(r.Msg.Frames)), //nolint:gosec // bounded by the request size
 	}), nil
+}
+
+// WithdrawGrokBotUserComputerPresence accepts every withdrawal.
+func (s *Server) WithdrawGrokBotUserComputerPresence(
+	_ context.Context, r *connect.Request[aiserverv1.WithdrawGrokBotUserComputerPresenceRequest],
+) (*connect.Response[aiserverv1.WithdrawGrokBotUserComputerPresenceResponse], error) {
+	if err := s.enter(Withdraw, r.Header(), r.Msg); err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&aiserverv1.WithdrawGrokBotUserComputerPresenceResponse{Withdrawn: true}), nil
+}
+
+// watching registers a watch stream and returns the channels that tell it
+// of a queued request and of the end of all streams.
+func (s *Server) watching(hello *aiserverv1.GrokBotUserComputerHello) (notify chan struct{}, drop <-chan struct{}) {
+	notify = make(chan struct{}, 1)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hello = hello
+	s.notify = append(s.notify, notify)
+	s.watches++
+	s.signal()
+	return notify, s.drop
+}
+
+// watched removes a watch stream that ended.
+func (s *Server) watched(notify chan struct{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, c := range s.notify {
+		if c == notify {
+			s.notify = append(s.notify[:i], s.notify[i+1:]...)
+			break
+		}
+	}
+	s.watches--
+	s.signal()
 }
 
 // signal wakes Wait; s.mu must be held.
@@ -352,4 +429,12 @@ func (s *Server) authPoll(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		s.t.Error(err)
 	}
+}
+
+// notFound records a request no handler serves.
+func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	s.unknown = append(s.unknown, r.Method+" "+r.URL.Path)
+	s.mu.Unlock()
+	http.NotFound(w, r)
 }

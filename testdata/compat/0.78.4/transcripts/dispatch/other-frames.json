@@ -1,6 +1,6 @@
 {
   "scenario": "dispatch/other-frames",
-  "digest": "sha256:e011a144647ab158858e8a2eb926ffabcde1f8200077721f26aae0b046dc399b",
+  "digest": "sha256:6e8d53e50347afea1948c408409c3ab811f508a86b0c963ab0f88c4c1c155f7c",
   "subject": "desktop-0.78.4",
   "env": {
     "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
@@ -41,6 +41,36 @@
           "throw": {
             "error": "This computer's local-exec daemon does not understand that request frame; update the desktop app."
           }
+        }
+      }
+    ],
+    "r5": [
+      {
+        "messagesError": {
+          "error": "Messages is turned off in the user's settings, so their Messages cannot be read or sent from here. Do not retry while it stays off. If the user wants this, ask them to turn it back on in [Messages](grokbot://app/v1/messages) (Connect Apps → Mac → Messages)."
+        }
+      }
+    ],
+    "r6": [
+      {
+        "messagesError": {
+          "error": "Messages is turned off in the user's settings, so their Messages cannot be read or sent from here. Do not retry while it stays off. If the user wants this, ask them to turn it back on in [Messages](grokbot://app/v1/messages) (Connect Apps → Mac → Messages)."
+        }
+      }
+    ],
+    "r7": [
+      {
+        "messagesConsentResult": {
+          "reason": "Messages is turned off in the user's settings, so their Messages cannot be read or sent from here. Do not retry while it stays off. If the user wants this, ask them to turn it back on in [Messages](grokbot://app/v1/messages) (Connect Apps → Mac → Messages).",
+          "verdict": "GROK_BOT_USER_COMPUTER_MESSAGES_CONSENT_VERDICT_REFUSED"
+        }
+      }
+    ],
+    "r8": [
+      {
+        "localToolResult": {
+          "error": "This computer has no \"\" tool.",
+          "status": "failed"
         }
       }
     ]

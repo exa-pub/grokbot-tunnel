@@ -148,18 +148,24 @@ func TestBatchKeepsOrderWithinRequest(t *testing.T) {
 	assert.Equal(t, []uint32{0, 1, 2, 3, 4, 5, 6}, seqs)
 }
 
-// Replies of a canceled request are dropped unless they end its stream; the
-// last chunk of a canceled transfer becomes an error.
+// Replies of a canceled request are dropped unless they end its stream or
+// say how its command ended; the last chunk of a canceled transfer becomes
+// an error.
 func TestTakeCanceled(t *testing.T) {
 	var q replies.Queue
 	assert.False(t, q.Take(client("x"), true))
+	assert.False(t, q.Take(stdout("x"), true))
 	assert.False(t, q.Take(file("x", 0, 1, false), true))
 	assert.Empty(t, q.Pending())
 	q.Take(file("x", 1, 1, true), true)
 	require.Len(t, q.Pending(), 1)
 	assert.Equal(t, context.Canceled.Error(), q.Pending()[0].GetFileError().GetError())
+	// Like the desktop, the exit event of an aborted command reaches the
+	// server before the stream closes.
+	q.Take(exit("x"), true)
 	q.Take(closeFrame("x"), true)
-	assert.Len(t, q.Pending(), 2)
+	require.Len(t, q.Pending(), 3)
+	assert.Equal(t, exit("x").GetClient().GetMessageJson(), q.Pending()[1].GetClient().GetMessageJson())
 }
 
 func TestTakeReportsFullBatch(t *testing.T) {
@@ -231,63 +237,109 @@ func TestBatchLeavesOutSubmitInFlight(t *testing.T) {
 	assert.Equal(t, inflight, q.Batch(), "a settled frame is batched again")
 }
 
-// Invariant 11, ≠ desktop: keep-alives go to started tasks and to requests
-// with unsent frames, not to waiting or canceled ones, nor once a stream is
-// closed or a keep-alive is pending; the desktop keeps alive the backlog,
-// unsent replies and the submit in flight, but not running requests.
+// Invariant 11, like the desktop's sendKeepAlives: a request is kept alive
+// while it waits for its turn or has frames the server has not accepted, not
+// while it only runs; the first keep-alive is due 1 s after the request was
+// accepted, the next 3 s after the server heard of it.
 func TestKeepAlive(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		tasks    map[string]bool
-		pending  []*replies.Frame
-		canceled bool
-		want     int // keep-alives for request r afterwards
-	}{
-		{"started task", map[string]bool{"r": true}, nil, false, 1},
-		{"waiting in backlog", map[string]bool{"r": false}, nil, false, 0},
-		{"unsent reply of finished request", nil, []*replies.Frame{client("r")}, false, 1},
-		{"unsent reply of started task", map[string]bool{"r": true}, []*replies.Frame{client("r")}, false, 1},
-		{"stream close pending", nil, []*replies.Frame{closeFrame("r")}, false, 0},
-		{"canceled", map[string]bool{"r": true}, nil, true, 0},
-		{"keep-alive pending", map[string]bool{"r": true}, []*replies.Frame{keepAlive("r")}, false, 1},
-	} {
-		var q replies.Queue
-		for _, f := range tc.pending {
-			q.Add(f)
+	start := time.Unix(1000, 0)
+	ids := func(batch []*replies.Frame) []string {
+		out := make([]string, 0, len(batch))
+		for _, f := range batch {
+			require.NotNil(t, f.GetMessagesAccepted())
+			out = append(out, f.RequestId)
 		}
-		q.KeepAlive(tc.tasks, func(string) bool { return tc.canceled })
-		n := 0
-		for _, f := range q.Pending() {
-			if f.RequestId == "r" && f.GetMessagesAccepted() != nil {
-				n++
-			}
-		}
-		assert.Equal(t, tc.want, n, tc.name)
+		return out
 	}
+	set := func(ids ...string) map[string]bool {
+		out := map[string]bool{}
+		for _, id := range ids {
+			out[id] = true
+		}
+		return out
+	}
+	var k replies.KeepAlive
+	k.Admitted("waits", start)
+	k.Admitted("runs", start)
+	k.Admitted("unsent", start)
+	held, eligible := set("waits", "runs", "unsent"), set("waits", "unsent")
+
+	assert.Nil(t, k.Next(start.Add(999*time.Millisecond), held, eligible), "before the first is due")
+	batch := k.Next(start.Add(time.Second), held, eligible)
+	assert.Equal(t, []string{"unsent", "waits"}, ids(batch))
+	assert.Nil(t, k.Next(start.Add(2*time.Second), held, eligible), "a second submit while one is in flight")
+	k.Sent(start.Add(2*time.Second), batch, true, false)
+
+	// 3 s after the server heard of them, and not before.
+	assert.Nil(t, k.Next(start.Add(4999*time.Millisecond), held, eligible))
+	// The request that ran has frames to send now: it was due long ago.
+	eligible["runs"] = true
+	batch = k.Next(start.Add(4999*time.Millisecond), held, eligible)
+	assert.Equal(t, []string{"runs", "unsent", "waits"}, ids(batch), "those due within 1.5 s go along, earliest first")
+	// A failure is tried again on the next tick.
+	k.Sent(start.Add(5*time.Second), batch, false, false)
+	batch = k.Next(start.Add(5500*time.Millisecond), held, eligible)
+	require.Len(t, batch, 3)
+	// An exhausted server gets a pause of 5 s.
+	k.Sent(start.Add(6*time.Second), batch, false, true)
+	assert.Nil(t, k.Next(start.Add(10999*time.Millisecond), held, eligible))
+	batch = k.Next(start.Add(11*time.Second), held, eligible)
+	require.Len(t, batch, 3)
+	k.Sent(start.Add(11*time.Second), batch, true, false)
+
+	// The server heard of a request through its own frames.
+	k.Heard([]*replies.Frame{client("waits")}, start.Add(13*time.Second))
+	batch = k.Next(start.Add(14*time.Second), held, eligible)
+	assert.Equal(t, []string{"runs", "unsent"}, ids(batch))
+	k.Sent(start.Add(14*time.Second), batch, true, false)
+
+	// A request that is gone is forgotten, also when it comes back.
+	delete(held, "waits")
+	assert.Nil(t, k.Next(start.Add(15*time.Second), held, eligible))
+	held["waits"] = true
+	batch = k.Next(start.Add(30*time.Second), held, eligible)
+	assert.Equal(t, []string{"runs", "unsent"}, ids(batch))
 }
 
-// Repeated keep-alive rounds add at most one per request.
+// A submit carries at most 256 keep-alives, those due longest first.
 func TestKeepAliveIsBounded(t *testing.T) {
+	start := time.Unix(1000, 0)
+	var k replies.KeepAlive
+	all := map[string]bool{}
+	for i := range 300 {
+		id := fmt.Sprintf("%03d", i)
+		all[id] = true
+		k.Admitted(id, start.Add(time.Duration(i)*time.Millisecond))
+	}
+	batch := k.Next(start.Add(time.Minute), all, all)
+	require.Len(t, batch, 256)
+	assert.Equal(t, "000", batch[0].RequestId)
+	assert.Equal(t, "255", batch[255].RequestId)
+}
+
+// The requests with frames the server has not accepted are kept alive,
+// those of the submit in flight until its round has taken as long as a
+// submit may.
+func TestUnheard(t *testing.T) {
 	var q replies.Queue
-	tasks := map[string]bool{"queued": false}
-	for i := range 72 {
-		tasks[fmt.Sprint(i)] = true
-	}
-	q.Add(closeFrame("closed"))
-	for range 10 {
-		q.KeepAlive(tasks, never)
-	}
-	alive := map[string]int{}
-	for _, f := range q.Pending() {
-		if f.GetMessagesAccepted() != nil {
-			alive[f.RequestId]++
-		}
-	}
-	assert.Len(t, alive, 72)
-	for id, n := range alive {
-		assert.Equal(t, 1, n, id)
-	}
-	assert.Equal(t, 1, q.Stuck())
+	start := time.Unix(1000, 0)
+	q.Add(client("sent"))
+	batch := q.Next(start)
+	require.Len(t, batch, 1)
+	q.Add(client("waits"))
+	q.Add(client("sent"))
+
+	held, alive := q.Unheard(start.Add(replies.StaleSubmit - time.Second))
+	assert.Equal(t, map[string]bool{"sent": true, "waits": true}, held)
+	assert.Equal(t, held, alive)
+	held, alive = q.Unheard(start.Add(replies.StaleSubmit))
+	assert.Equal(t, map[string]bool{"sent": true, "waits": true}, held)
+	assert.Equal(t, map[string]bool{"waits": true}, alive)
+
+	q.Settle(batch, 1)
+	held, alive = q.Unheard(start.Add(replies.StaleSubmit))
+	assert.Equal(t, map[string]bool{"sent": true, "waits": true}, held)
+	assert.Equal(t, held, alive)
 }
 
 func exit(id string) *replies.Frame {
@@ -405,20 +457,18 @@ func TestSubmitRetryStep(t *testing.T) {
 }
 
 // Like the desktop, whose enqueue flushes at once, a new frame ends the pause
-// after a round of only closing frames and goes along with them; a
-// keep-alive does not.
+// after a round of only closing frames and goes along with them.
 func TestNewFrameEndsClosingPause(t *testing.T) {
 	var q replies.Queue
 	now := time.Unix(1000, 0)
 	q.Add(exit("sh"))
 	failRound(t, &q, &now, never)
-	q.Add(keepAlive("ka"))
-	assert.Nil(t, q.Next(now), "keep-alive ended the pause")
+	assert.Nil(t, q.Next(now), "no pause after the failed round")
 	q.Add(stdout("new"))
 	batch := q.Next(now)
-	require.Len(t, batch, 3)
-	ids := []string{batch[0].RequestId, batch[1].RequestId, batch[2].RequestId}
-	assert.ElementsMatch(t, []string{"sh", "ka", "new"}, ids)
+	require.Len(t, batch, 2)
+	ids := []string{batch[0].RequestId, batch[1].RequestId}
+	assert.ElementsMatch(t, []string{"sh", "new"}, ids)
 	// A new frame does not cut the retry delay within a round.
 	_, failed := q.Submitted(now, batch, 0, false, never)
 	require.Nil(t, failed)
@@ -456,18 +506,16 @@ func TestRejectedSubmitKeepsFrames(t *testing.T) {
 	assert.Len(t, q.Pending(), 1)
 }
 
-// Workers wait while MaxPending frames other than keep-alives are pending.
+// Workers wait while MaxPending frames are pending.
 func TestAcceptingBackpressure(t *testing.T) {
 	var q replies.Queue
-	for i := range replies.MaxPending {
-		q.Add(keepAlive(fmt.Sprint(i)))
-	}
 	q.Add(closeFrame("x"))
-	assert.Equal(t, 1, q.Stuck())
 	assert.True(t, q.Accepting())
-	for i := range replies.MaxPending - 1 {
+	for i := range replies.MaxPending - 2 {
 		q.Add(client(fmt.Sprint(i)))
 	}
+	assert.True(t, q.Accepting())
+	q.Add(client("last"))
 	assert.False(t, q.Accepting())
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -312,7 +313,7 @@ func tick(t *testing.T, s *session) error {
 }
 
 // A request canceled while it waits is closed and forgotten, its unsent
-// frames are dropped, and a redelivery does not start it again.
+// frames are dropped, and a delivery in the same poll does not start it.
 func TestCancelWaitingRequest(t *testing.T) {
 	s := testSession(t)
 	withCredential(s, "c", false)
@@ -411,7 +412,8 @@ func TestInflightLimitAndShutdownCancel(t *testing.T) {
 	}
 }
 
-// Invariant 4: an unrecognized frame is answered even when busy, once.
+// Invariant 4: an unrecognized frame is answered even when busy, and again
+// when it is delivered again, as on the desktop.
 func TestUnrecognizedFrameAnsweredWhenBusy(t *testing.T) {
 	s := testSession(t)
 	withCredential(s, "c", false)
@@ -429,8 +431,8 @@ func TestUnrecognizedFrameAnsweredWhenBusy(t *testing.T) {
 	}
 	s.accept(url, false)
 	s.accept(&requestFrame{}, false)
-	if len(s.out.Pending()) != 1 {
-		t.Fatal("answered twice, or without a request id")
+	if len(s.out.Pending()) != 2 {
+		t.Fatal("redelivery not answered, or a frame without a request id answered")
 	}
 }
 
@@ -453,20 +455,20 @@ func TestEventsRequestPoll(t *testing.T) {
 	}
 }
 
-// Failed submit rounds never end the session (bug B3): keep-alives are
-// dropped, the closing frame is kept and retried with a growing delay
-// (bug B4).
+// Failed submit rounds never end the session (bug B3): frames that do not
+// close a request are dropped, the closing frame is kept and retried with a
+// growing delay (bug B4).
 func TestFailedSubmitRoundKeepsSession(t *testing.T) {
 	var now time.Time
 	c := &stubCloud{failSubmit: true}
 	s := stubSession(t, c, &now)
 	withCredential(s, "c", false)
-	tasks := map[string]bool{}
-	for i := range 72 {
-		tasks[fmt.Sprint(i)] = true
-	}
 	s.out.Add(closeFrame("closed"))
-	s.out.KeepAlive(tasks, s.admit.Canceled)
+	for i := range 72 {
+		s.out.Add(&responseFrame{RequestId: fmt.Sprint(i), Frame: &aiserverv1.GrokBotUserComputerResponseFrame_Client{
+			Client: &aiserverv1.GrokBotUserComputerClientMessage{MessageJson: "{}"},
+		}})
+	}
 	for range 2 * replies.SubmitAttempts {
 		now = now.Add(time.Second)
 		s.startSubmit()
@@ -479,6 +481,77 @@ func TestFailedSubmitRoundKeepsSession(t *testing.T) {
 	}
 	if s.out.Pending()[0].RequestId != "closed" {
 		t.Fatal("closing frame dropped")
+	}
+}
+
+// Invariant 11, like the desktop: a request that waits for its turn and one
+// whose frames are held up by a submit that takes long are kept alive, in a
+// submit of their own that does not wait for the other; a request that only
+// runs is not.
+func TestKeepAliveSubmit(t *testing.T) {
+	var now time.Time
+	c := &stubCloud{holdFirst: make(chan struct{}), held: make(chan struct{})}
+	s := stubSession(t, c, &now)
+	withCredential(s, "c", false)
+	occupy(t, s, "busy", admission.MaxActive)
+	s.accept(execFrame("waits"), false)
+	// A frame of a running request is on its way and does not arrive.
+	s.out.Add(&responseFrame{RequestId: "busy0", Frame: &aiserverv1.GrokBotUserComputerResponseFrame_Client{
+		Client: &aiserverv1.GrokBotUserComputerClientMessage{MessageJson: "{}"},
+	}})
+	s.startSubmit()
+	<-c.held
+
+	alive := func() []string {
+		t.Helper()
+		s.keepAlive()
+		select {
+		case r := <-s.aliveSent:
+			s.onAliveSent(r)
+			ids := make([]string, 0, len(r.frames))
+			for _, f := range r.frames {
+				if f.GetMessagesAccepted() == nil {
+					t.Fatal("not a keep-alive", f)
+				}
+				ids = append(ids, f.RequestId)
+			}
+			return ids
+		case <-time.After(100 * time.Millisecond):
+			return nil
+		}
+	}
+	if ids := alive(); ids != nil {
+		t.Fatal("kept alive before a second passed", ids)
+	}
+	now = now.Add(time.Second)
+	if ids := alive(); !slices.Equal(ids, []string{"busy0", "waits"}) {
+		t.Fatal(ids)
+	}
+	if c.submitTimeout < 2*time.Second || c.submitTimeout > 3*time.Second {
+		t.Fatal("keep-alive deadline", c.submitTimeout)
+	}
+	now = now.Add(2 * time.Second)
+	if ids := alive(); ids != nil {
+		t.Fatal("kept alive again before 3 s passed", ids)
+	}
+	now = now.Add(time.Second)
+	if ids := alive(); !slices.Equal(ids, []string{"busy0", "waits"}) {
+		t.Fatal(ids)
+	}
+	// Once the frame arrived, the server has heard of its request.
+	close(c.holdFirst)
+	if err := settle(t, s); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(3 * time.Second)
+	if ids := alive(); !slices.Equal(ids, []string{"waits"}) {
+		t.Fatal(ids)
+	}
+	// A canceled request is not kept alive.
+	s.accept(cancelFrame("waits"), false)
+	now = now.Add(time.Minute)
+	if ids := alive(); ids != nil {
+		t.Fatal(ids)
 	}
 }
 

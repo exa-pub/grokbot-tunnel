@@ -378,6 +378,199 @@
     "sessionCount": 0,
     "items": []
   },
+  "discoveryTitles": [
+    {
+      "text": "fix the bug in /home/me/project/main.go and mail me@example.com",
+      "title": "fix the bug in [path] and mail [email]",
+      "whole": "fix the bug in [path] and mail [email]"
+    },
+    {
+      "text": "see https://example.com/a?b=c, then src/main/java and ./a/b",
+      "title": "see [link] then src/main/java and [path]",
+      "whole": "see [link] then src/main/java and [path]"
+    },
+    {
+      "text": "open C:\\Users\\me\\file.txt or ~/notes/todo.md",
+      "title": "open [path] or [path]",
+      "whole": "open [path] or [path]"
+    },
+    {
+      "text": "  several\n lines\tand spaces  ",
+      "title": "several lines and spaces",
+      "whole": "several lines and spaces"
+    },
+    {
+      "text": "use sk-abcdefghijklmnop1234 and ghp_abcdefghijklmnop1234",
+      "title": "use [redacted] and [redacted]",
+      "whole": "use [redacted] and [redacted]"
+    },
+    {
+      "text": "xoxb-1234567890-abc AKIA0123456789ABCDEF AIzaSyA-abcdefghijklmnopqrstuvwxyz0123",
+      "title": "[redacted] [redacted] [redacted]",
+      "whole": "[redacted] [redacted] [redacted]"
+    },
+    {
+      "text": "Bearer abcdefghijklmnop.qrst",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "xBearer abcdefghijklmnop.qrst",
+      "title": "xBearer abcdefghijklmnop.qrst",
+      "whole": "xBearer abcdefghijklmnop.qrst"
+    },
+    {
+      "text": "BEARER   abcdefghijklmnop",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "token=AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "token=[redacted]",
+      "whole": "token=[redacted]"
+    },
+    {
+      "text": "token: AbCdEfGhIjKlMnOpQrStUvWxYz012345==",
+      "title": "token: [redacted]",
+      "whole": "token: [redacted]"
+    },
+    {
+      "text": "token:  AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "token: [redacted]",
+      "whole": "token: [redacted]"
+    },
+    {
+      "text": "token=\"AbCdEfGhIjKlMnOpQrStUvWxYz012345\"",
+      "title": "token=\"AbCdEfGhIjKlMnOpQrStUvWxYz012345\"",
+      "whole": "token=\"AbCdEfGhIjKlMnOpQrStUvWxYz012345\""
+    },
+    {
+      "text": "a=AbCdEfGhIjKlMnOpQrStUvWxYz012345==AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "a=[redacted]=[redacted]",
+      "whole": "a=[redacted]=[redacted]"
+    },
+    {
+      "text": "a=AbCdEfGhIjKlMnOpQrStUvWxYz012345=AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "a=[redacted]=[redacted]",
+      "whole": "a=[redacted]=[redacted]"
+    },
+    {
+      "text": "a=AbCdEfGhIjKlMnOpQrStUvWxYz012345===b",
+      "title": "a=[redacted]=b",
+      "whole": "a=[redacted]=b"
+    },
+    {
+      "text": "AbCdEfGhIjKlMnOpQrStUvWxYz012345 AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "AbCdEfGhIjKlMnOpQrStUvWxYz012345 AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "whole": "AbCdEfGhIjKlMnOpQrStUvWxYz012345 AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    },
+    {
+      "text": "0123456789abcdef0123456789abcdef",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "x0123456789abcdef0123456789abcdefg",
+      "title": "x0123456789abcdef0123456789abcdefg",
+      "whole": "x0123456789abcdef0123456789abcdefg"
+    },
+    {
+      "text": "key=0123456789abcdef0123456789abcdef!",
+      "title": "key=[redacted]!",
+      "whole": "key=[redacted]!"
+    },
+    {
+      "text": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN",
+      "title": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN",
+      "whole": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"
+    },
+    {
+      "text": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "title": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "whole": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    },
+    {
+      "text": "sk_live_a1a1a1a1a1a1a1a1a1a1a1a1 glpat-c3c3c3c3c3c3c3c3c3c3",
+      "title": "sk_live_a1a1a1a1a1a1a1a1a1a1a1a1 glpat-c3c3c3c3c3c3c3c3c3c3",
+      "whole": "sk_live_a1a1a1a1a1a1a1a1a1a1a1a1 glpat-c3c3c3c3c3c3c3c3c3c3"
+    },
+    {
+      "text": "ſ://host/path K://x/y HTTP://Example.COM",
+      "title": "ſ:/[path] [link] [link]",
+      "whole": "ſ:/[path] [link] [link]"
+    },
+    {
+      "text": "a@b.c a@b.co @b.co a@.co",
+      "title": "a@b.c [email] @b.co a@.co",
+      "whole": "a@b.c [email] @b.co a@.co"
+    },
+    {
+      "text": ".../a/b x/a/b -/a/b (/a/b) /a /a/b/ //a//b",
+      "title": ".../a/b x/a/b -/a/b ([path]) /a [path] //a//b",
+      "whole": ".../a/b x/a/b -/a/b ([path]) /a [path] //a//b"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  tail",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx tail"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx /home/me/project/file",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [path]",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [path]"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx AbCdEfGhIjKlMnOpQr…",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    }
+  ],
+  "commandTitles": [
+    {
+      "parts": [
+        "ns",
+        "/home/me/x",
+        "cmd"
+      ],
+      "title": "ns:[path]:cmd"
+    },
+    {
+      "parts": [
+        "review"
+      ],
+      "title": "review"
+    },
+    {
+      "parts": [
+        "a",
+        "k=AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "title": "a:k=[redacted]:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+    },
+    {
+      "parts": [
+        "  a  b ",
+        "me@example.com"
+      ],
+      "title": "a b:[email]"
+    }
+  ],
   "terminalHeader": "---\npid: 42\ncwd: \"/workspace\"\ncommand: \"printf hello\"\nstatus: running  \nstarted_at: 2026-01-01T00:00:00.000Z\nrunning_for_ms: 0        \n---\n",
   "format": [
     {

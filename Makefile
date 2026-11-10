@@ -6,7 +6,8 @@ PLATFORMS := linux/amd64 linux/arm64
 GOLANGCI_LINT ?= golangci-lint
 FUZZTIME  ?= 10s
 
-.PHONY: all build test test-race e2e systemd-test fuzz shellcheck lint proto proto-check dist clean
+.PHONY: all build test test-race e2e systemd-test compare-image compare compare-record compare-golden compare-oracle fuzz \
+	shellcheck lint proto proto-check dist clean
 
 all: lint test build
 
@@ -43,6 +44,33 @@ e2e:
 # needs docker.
 systemd-test:
 	./tests/systemd/run.sh
+
+# Comparison with the desktop client, in a container without network; needs
+# docker (DOCKER="sudo docker" if your user may not use it directly). See
+# tests/compare/README.md.
+#
+# All but compare-golden need the desktop's AppImage, in ai.tmp/grok-bot/<version>/
+# or at the URL of tests/compare/docker/desktop.lock; DESKTOP_VERSION picks
+# another release than the one the recordings are of. ARGS go to the test
+# binary, e.g. ARGS='-test.run TestLive/shell'.
+compare-image:
+	./tests/compare/run.sh image
+
+# Runs the desktop client and grokbot-tunnel side by side.
+compare:
+	./tests/compare/run.sh live $(ARGS)
+
+# The same, and records the desktop's answers in testdata/compat/<version>/.
+compare-record:
+	./tests/compare/run.sh record $(ARGS)
+
+# Compares grokbot-tunnel with the recorded answers; needs no desktop.
+compare-golden:
+	./tests/compare/run.sh golden $(ARGS)
+
+# Compares single functions with the desktop's on random inputs.
+compare-oracle:
+	./tests/compare/run.sh oracle $(ARGS)
 
 # Runs every fuzz target for FUZZTIME.
 fuzz:

@@ -95,6 +95,11 @@ func TestClassification(t *testing.T) {
 		}}
 	}
 	client := &response{Frame: &aiserverv1.GrokBotUserComputerResponseFrame_Client{Client: &aiserverv1.GrokBotUserComputerClientMessage{}}}
+	shell := func(event string) *response {
+		return &response{Frame: &aiserverv1.GrokBotUserComputerResponseFrame_Client{
+			Client: &aiserverv1.GrokBotUserComputerClientMessage{MessageJson: `{"id":1,"shellStream":{` + event + `}}`},
+		}}
+	}
 	for _, tc := range []struct {
 		name                string
 		f                   *response
@@ -108,11 +113,16 @@ func TestClassification(t *testing.T) {
 		{"stream close", controlFrame(closeJSON), false, true, true},
 		{"heartbeat", controlFrame(heartbeatJSON), false, false, true},
 		{"client message", client, false, false, false},
+		{"shell output", shell(`"stdout":{"data":"x"}`), false, false, false},
+		{"shell exit", shell(`"exit":{"aborted":true,"code":4294967295}`), false, false, false},
 	} {
 		assert.Equal(t, tc.final, frames.Final(tc.f), tc.name)
 		assert.Equal(t, tc.closes, frames.Closes(tc.f), tc.name)
 		assert.Equal(t, tc.keep, frames.Keep(tc.f), tc.name)
 	}
+	assert.True(t, frames.ShellExit(shell(`"exit":{}`)))
+	assert.False(t, frames.ShellExit(shell(`"start":{}`)))
+	assert.False(t, frames.ShellExit(controlFrame(closeJSON)))
 }
 
 func TestCanceledFile(t *testing.T) {
