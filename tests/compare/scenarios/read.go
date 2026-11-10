@@ -93,16 +93,16 @@ var read = []Scenario{
 		&agentv1.ReadArgs{Path: "terminals/5.txt", MaxChars: proto.Uint32(40)}),
 
 	// Images.
-	reads("read/png", "G-1", "a small PNG", []File{Bytes("small.png", pngImage(64, 48))}, path("small.png")),
+	reads("read/png", "G-1", "a small PNG", []File{Bytes("small.png", image("small.png"))}, path("small.png")),
 	reads("read/png-large", "G-2", "a PNG larger than the model takes",
-		[]File{Bytes("large.png", pngImage(3000, 2000))}, path("large.png")),
+		[]File{Bytes("large.png", image("large.png"))}, path("large.png")),
 	reads("read/jpeg", "G-3", "JPEG files, small and large",
-		[]File{Bytes("small.jpg", jpegImage(64, 48)), Bytes("big.jpg", jpegImage(4000, 3000))}, path("small.jpg"), path("big.jpg")),
+		[]File{Bytes("small.jpg", image("small.jpg")), Bytes("big.jpg", image("big.jpg"))}, path("small.jpg"), path("big.jpg")),
 	reads("read/gif-webp", "", "GIF and WebP",
-		[]File{Bytes("a.gif", gifImage(64, 48)), Bytes("a.webp", webpImage())}, path("a.gif"), path("a.webp")),
+		[]File{Bytes("a.gif", image("small.gif")), Bytes("a.webp", image("pixel.webp"))}, path("a.gif"), path("a.webp")),
 	reads("read/fake-image", "G-5", "an image is told by its content, not its name",
-		[]File{Text("fake.png", "not a png"), Bytes("image.txt", pngImage(8, 8)), Bytes("cut.png", pngImage(64, 48)[:40])},
+		[]File{Text("fake.png", "not a png"), Bytes("image.txt", image("tiny.png")), Bytes("cut.png", image("small.png")[:40])},
 		path("fake.png"), path("image.txt"), path("cut.png")),
-	reads("read/image-range", "", "a range of an image", []File{Bytes("small.png", pngImage(64, 48))},
+	reads("read/image-range", "", "a range of an image", []File{Bytes("small.png", image("small.png"))},
 		ranged("small.png", 2, 2), &agentv1.ReadArgs{Path: "small.png", DigestOnly: proto.Bool(true)}),
 }
