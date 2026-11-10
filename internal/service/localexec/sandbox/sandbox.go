@@ -18,7 +18,7 @@ const Reason = "Sandbox binary path was not configured"
 
 // Effective returns the policy a command runs under, as the desktop reports
 // it in the start event of a shell command: the requested one, with the
-// fields the desktop keeps of it (its uu and TO), and none if nothing was
+// fields the desktop keeps of it (its Kc and Xk), and none if nothing was
 // requested. Only a command whose approval is skipped and that requests
 // nothing has no policy at all.
 func Effective(requested *agentv1.SandboxPolicy, skipApproval bool) *agentv1.SandboxPolicy {

@@ -51,7 +51,7 @@ func parseConfig(path string, b []byte) ([]member, bool) {
 
 // mcpAndPlugins lists MCP servers and plugins in the order of the
 // configuration files: global servers, the servers of each project, then
-// plugins, like the desktop (CFe).
+// plugins, like the desktop (qJe).
 func (d *scan) mcpAndPlugins() error {
 	if d.source == frames.SourceCodex {
 		b, err := readConfig(d.ctx, d.path("config.toml"))
@@ -89,7 +89,7 @@ func (d *scan) mcpAndPlugins() error {
 }
 
 // addMCP adds Claude Code MCP servers with their transport as the excerpt
-// (IFe, SGt). Fields that are not strings are left out, as zod's catch
+// (GJe, yHt). Fields that are not strings are left out, as zod's catch
 // does.
 func (d *scan) addMCP(raw []byte) {
 	servers, _ := objectMembers(raw)
@@ -176,7 +176,7 @@ func (d *scan) commandDir(dir string, depth int, namespace []string) error {
 }
 
 // history adds recent requests from history.jsonl, skipping slash commands
-// (qFe, MFe). A line needs its text as a string and, if it has one, its time
+// (rqe, WJe). A line needs its text as a string and, if it has one, its time
 // as a number: Codex's ts in seconds (or milliseconds from 10^12 on), Claude
 // Code's timestamp in milliseconds.
 func (d *scan) history() error {
@@ -215,7 +215,7 @@ func (d *scan) history() error {
 	return nil
 }
 
-// isSlashCommand matches /name followed by whitespace or the end (mGt).
+// isSlashCommand matches /name followed by whitespace or the end (gHt).
 func isSlashCommand(text string) bool {
 	loc := slashCommand.FindStringIndex(text)
 	if loc == nil {

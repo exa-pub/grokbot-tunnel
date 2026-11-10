@@ -288,7 +288,7 @@ func TestDiscoveryNeedsPermission(t *testing.T) {
 	}
 }
 
-// L2-1: like the desktop (ult, q9), a root given through a symlink is kept
+// L2-1: like the desktop (wft, n9), a root given through a symlink is kept
 // as it is, in the hello and for relative working directories; a path is
 // checked lexically against it, so the symlink's target is outside it.
 func TestRootThroughSymlink(t *testing.T) {

@@ -1,0 +1,53 @@
+{
+  "scenario": "background/output",
+  "digest": "sha256:cedf2a77aeb056e2224f7e3bd36599e9b8db48fa686eb4e36bdac92cd50cc482",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "backgroundShellSpawnResult": {
+            "success": {
+              "command": "printf 'Привет 🙂\\n'; head -c 100000 /dev/zero | tr '\\0' 'x'; echo",
+              "pid": "<PID>",
+              "shellId": "<SHELL#1>",
+              "workingDirectory": "$ROOT"
+            }
+          },
+          "id": 1,
+          "localExecutionTimeMs": "<MS>"
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "terminals": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "terminals/<SHELL#1>.txt": {
+      "mode": "0644",
+      "text": {
+        "end": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\n---\nexit_code: 0\nelapsed_ms: <MS>\nended_at: <TS>\n---\n",
+        "length": 100254,
+        "sha256": "3192b1f9de1e9f4735c848d8fe5a9ce204b4cc27bc1538fd06fce8f4ea4bf5f9",
+        "start": "---\npid: <PID>\ncwd: \"$ROOT\"\ncommand: \"printf 'Привет 🙂\\\\n'; head -c 100000 /dev/zero | tr '\\\\0' 'x'; echo\"\nstatus: succeeded\nstarted_at: <TS>\nrunning_for_ms: <MS>     \n---\nПривет 🙂\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  }
+}

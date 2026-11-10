@@ -82,7 +82,7 @@ type File struct {
 // desktop's so it can be rewritten in place.
 func StatusField(status string) string { return "status: " + padEnd(status) }
 
-// Header returns the header of cmd with status, as of now (hN).
+// Header returns the header of cmd with status, as of now (HO).
 func Header(cmd Command, status string, now time.Time) string {
 	var b strings.Builder
 	b.WriteString("---\n")

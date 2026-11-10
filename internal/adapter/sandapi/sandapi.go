@@ -22,19 +22,19 @@ import (
 )
 
 // Version is the Sand desktop version whose protocol this client speaks.
-const Version = "0.78.4"
+const Version = "0.79.3"
 
-// AuthUserAgent is the bundled Undici default: n5t selects "undici" when
+// AuthUserAgent is the bundled Undici default: ain selects "undici" when
 // neither __UNDICI_IS_NODE__ nor esbuildDetection is defined. The desktop
 // polls the login with it; requests that set a User-Agent keep theirs.
 const AuthUserAgent = "undici"
 
-// clientVersionPattern is the desktop's sAe: a release version, optionally
+// clientVersionPattern is the desktop's owe: a release version, optionally
 // with a pre-release suffix that is dropped. JavaScript's "." matches
 // anything but line terminators.
 var clientVersionPattern = regexp.MustCompile(`^(\d+\.\d+\.\d+)(?:-[^\n\r\x{2028}\x{2029}]+)?$`)
 
-// ClientVersion normalizes a client version like the desktop's cAe: the
+// ClientVersion normalizes a client version like the desktop's awe: the
 // trimmed release version without a pre-release suffix, or Version if v is
 // not one. The result is always safe in a header.
 func ClientVersion(v string) string {
@@ -166,7 +166,7 @@ type TokenSource interface {
 	Snapshot() entity.Identity
 }
 
-// foreignAuthErrors are the ErrorDetails.Error codes (e8t) of Unauthenticated
+// foreignAuthErrors are the ErrorDetails.Error codes (d3t) of Unauthenticated
 // errors that are not about the user's token: GITHUB_NO_USER_CREDENTIALS,
 // GITHUB_USER_NO_ACCESS, GITHUB_APP_NO_ACCESS and GITHUB_MULTIPLE_OWNERS.
 var foreignAuthErrors = map[uint64]bool{46: true, 47: true, 48: true, 49: true}
@@ -175,7 +175,7 @@ var foreignAuthErrors = map[uint64]bool{46: true, 47: true, 48: true, 49: true}
 const errorDetailsType = "aiserver.v1.ErrorDetails"
 
 // Bearer authenticates unary calls with the user's access token. Like the
-// desktop's mOe, a call the server rejects as Unauthenticated, unless for a
+// desktop's nOe, a call the server rejects as Unauthenticated, unless for a
 // foreign credential, gets the token replaced but is not repeated: its
 // error is returned, or the refresh's if the session is gone.
 func Bearer(s TokenSource) connect.Interceptor {

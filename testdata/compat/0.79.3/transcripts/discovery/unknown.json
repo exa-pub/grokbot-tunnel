@@ -1,0 +1,36 @@
+{
+  "scenario": "discovery/unknown",
+  "digest": "sha256:3fc0e8d5299d0aca4677161255c19b16dabda2838c8e167961213bdbaa64f8d7",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "fileError": {
+          "error": "This computer's local-exec daemon does not understand that request frame; update the desktop app."
+        }
+      }
+    ],
+    "r2": [
+      {
+        "fileError": {
+          "error": "This computer's local-exec daemon does not understand that request frame; update the desktop app."
+        }
+      }
+    ],
+    "r3": [
+      {
+        "fileError": {
+          "error": "This computer's local-exec daemon does not understand that request frame; update the desktop app."
+        }
+      }
+    ]
+  }
+}

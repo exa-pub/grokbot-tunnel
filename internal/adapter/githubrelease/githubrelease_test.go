@@ -15,7 +15,7 @@ import (
 )
 
 func script(version string) []byte {
-	return []byte("#!/bin/sh\necho 'grokbot-tunnel " + version + " (Sand protocol 0.78.4)'\n")
+	return []byte("#!/bin/sh\necho 'grokbot-tunnel " + version + " (Sand protocol 0.79.3)'\n")
 }
 
 type entry struct {

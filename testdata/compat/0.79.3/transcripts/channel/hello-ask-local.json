@@ -1,0 +1,26 @@
+{
+  "scenario": "channel/hello-ask-local",
+  "digest": "sha256:08e3828f86df2a7ebc8331fd6af8a598e510e1a7b7b18c6a3b5eac983ea4260f",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "hello": {
+    "capabilities": {
+      "aiToolSetup": true,
+      "messagesOpGeneration": 4
+    },
+    "label": "compare",
+    "localRoot": "$ROOT",
+    "standing": "ask",
+    "supervised": true,
+    "terminalsFolder": "$ROOT/terminals",
+    "variant": "sand"
+  },
+  "requests": {}
+}

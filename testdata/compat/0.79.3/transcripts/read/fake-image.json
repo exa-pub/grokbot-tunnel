@@ -1,0 +1,85 @@
+{
+  "scenario": "read/fake-image",
+  "digest": "sha256:976d6b7abc006747d45d0276492751aae530e969044a2a1a85fe15e51f310bba",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "success": {
+              "content": "not a png",
+              "fileSize": 9,
+              "path": "$ROOT/fake.png",
+              "totalLines": 1
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "success": {
+              "data": {
+                "height": 8,
+                "image": "png",
+                "width": 8
+              },
+              "fileSize": 89,
+              "path": "$ROOT/image.txt"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ],
+    "r3": [
+      {
+        "client": {
+          "id": 3,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "invalidFile": {
+              "path": "$ROOT/cut.png",
+              "reason": "File is not a valid image: its data could not be decoded (There are some read requests waitng on finished stream). A truncated or hand-copied file does this; write it again from the original bytes with code."
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 3
+          }
+        }
+      }
+    ]
+  }
+}

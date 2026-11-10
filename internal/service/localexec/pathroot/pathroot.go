@@ -46,7 +46,7 @@ func (e *OutsideError) StackTrace() string { return "SandLocalExecPathError: " +
 
 // RootError fails a path below a root directory that cannot be opened, such
 // as one removed while the tunnel runs. The desktop's realpath of the root
-// then fails, the path is used as it is (q9) and opening it fails, so the
+// then fails, the path is used as it is (n9) and opening it fails, so the
 // tools report it as a failure to open Path.
 type RootError struct {
 	Path string // absolute, as requested
@@ -58,7 +58,7 @@ func (e *RootError) Unwrap() error { return e.Err }
 
 // Root is a root directory, opened again whenever its path names another
 // directory: the desktop's root (ult) is a path whose realpath its check
-// takes on every call (q9), so a symlink root that is retargeted, such as a
+// takes on every call (n9), so a symlink root that is retargeted, such as a
 // release directory switched with ln -sfn, and a root removed and created
 // again are followed. A request uses the snapshot of the root taken by its
 // check.
@@ -86,7 +86,7 @@ const openAttempts = 3
 // openSnapshot opens dir and resolves its realpath, which must name the
 // directory opened. If the realpath cannot be resolved, or the root keeps
 // changing, it is left unknown and the realpath check is skipped, like the
-// desktop's q9 when the realpath of the root fails, until a later request
+// desktop's n9 when the realpath of the root fails, until a later request
 // resolves it and opens the root again.
 func openSnapshot(dir string) (*snapshot, error) {
 	var s *snapshot
@@ -211,7 +211,7 @@ func (r *Root) Remove(rel string) error {
 // escapes; os.Root rejects symlink escapes.
 //
 // Like the desktop's read and ls (cr), "~" and file:// URLs are expanded.
-// Unlike the desktop, whose root check (q9) looks at the path before that
+// Unlike the desktop, whose root check (n9) looks at the path before that
 // expansion, the expanded path is checked: there "~/secret" passes as
 // <root>/~/secret and is then read from the home directory, outside a root
 // that does not hold it. Upload and download expand them too, where the
@@ -249,7 +249,7 @@ func (p *Path) Close() { p.snap.release() }
 
 // Check converts path like Relative and also refuses a path whose existing
 // part leads outside the root through a symlink, like the desktop's check
-// of file paths (q9): the realpath of the path against the realpath of the
+// of file paths (n9): the realpath of the path against the realpath of the
 // root, both taken now. A root directory that cannot be opened fails with a
 // *RootError. The caller closes the path.
 func (r *Root) Check(path string) (*Path, error) {
@@ -350,7 +350,7 @@ func (p *Path) OpenRegular() (*os.File, error) {
 // UploadTarget resolves the symlinks in p, so that an upload writes through
 // a symlink to its target instead of replacing it; the target must stay
 // inside the root. The target is returned relative to the root's realpath,
-// for FS. Like the desktop's atomic write (f0), a path that does not
+// for FS. Like the desktop's atomic write (cp), a path that does not
 // resolve, such as a dangling symlink, is used as it is: the upload replaces
 // the dangling symlink with a regular file.
 func (p *Path) UploadTarget() (string, error) {

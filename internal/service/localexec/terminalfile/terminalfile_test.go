@@ -133,7 +133,7 @@ func TestStreamDecodesUTF8(t *testing.T) {
 	assert.Contains(t, string(b), "---\na�世b�\n---\nexit_code: 0\n")
 }
 
-// The header has a title line for a description, as the desktop's hN.
+// The header has a title line for a description, as the desktop's HO.
 func TestHeaderTitle(t *testing.T) {
 	cmd := terminalfile.Command{Cwd: "/w", Command: "make", Title: "Build \"all\"", Started: time.Unix(0, 0)}
 	assert.Contains(t, terminalfile.Header(cmd, terminalfile.Running, time.Unix(0, 0)),

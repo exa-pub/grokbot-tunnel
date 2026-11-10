@@ -151,6 +151,8 @@ type GetMeResponse struct {
 	PublicUserId                             *string                `protobuf:"bytes,19,opt,name=public_user_id,json=publicUserId,proto3,oneof" json:"public_user_id,omitempty"`
 	ScmOnlyRestricted                        *bool                  `protobuf:"varint,20,opt,name=scm_only_restricted,json=scmOnlyRestricted,proto3,oneof" json:"scm_only_restricted,omitempty"`
 	EmailIsSynthetic                         *bool                  `protobuf:"varint,21,opt,name=email_is_synthetic,json=emailIsSynthetic,proto3,oneof" json:"email_is_synthetic,omitempty"`
+	SignupSource                             *string                `protobuf:"bytes,22,opt,name=signup_source,json=signupSource,proto3,oneof" json:"signup_source,omitempty"`
+	AdminSessionManagementEnabled            bool                   `protobuf:"varint,23,opt,name=admin_session_management_enabled,json=adminSessionManagementEnabled,proto3" json:"admin_session_management_enabled,omitempty"`
 	unknownFields                            protoimpl.UnknownFields
 	sizeCache                                protoimpl.SizeCache
 }
@@ -328,6 +330,20 @@ func (x *GetMeResponse) GetScmOnlyRestricted() bool {
 func (x *GetMeResponse) GetEmailIsSynthetic() bool {
 	if x != nil && x.EmailIsSynthetic != nil {
 		return *x.EmailIsSynthetic
+	}
+	return false
+}
+
+func (x *GetMeResponse) GetSignupSource() string {
+	if x != nil && x.SignupSource != nil {
+		return *x.SignupSource
+	}
+	return ""
+}
+
+func (x *GetMeResponse) GetAdminSessionManagementEnabled() bool {
+	if x != nil {
+		return x.AdminSessionManagementEnabled
 	}
 	return false
 }
@@ -3761,8 +3777,7 @@ var File_aiserver_v1_grokbot_proto protoreflect.FileDescriptor
 
 const file_aiserver_v1_grokbot_proto_rawDesc = "" +
 	"\n" +
-	"\x19aiserver/v1/grokbot.proto\x12\vaiserver.v1\"\xaf\n" +
-	"\n" +
+	"\x19aiserver/v1/grokbot.proto\x12\vaiserver.v1\"\xb4\v\n" +
 	"\rGetMeResponse\x12\x17\n" +
 	"\aauth_id\x18\x01 \x01(\tR\x06authId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x05R\x06userId\x12\x19\n" +
@@ -3788,7 +3803,9 @@ const file_aiserver_v1_grokbot_proto_rawDesc = "" +
 	"\x19has_active_mobile_session\x18\x12 \x01(\bH\x0fR\x16hasActiveMobileSession\x88\x01\x01\x12)\n" +
 	"\x0epublic_user_id\x18\x13 \x01(\tH\x10R\fpublicUserId\x88\x01\x01\x123\n" +
 	"\x13scm_only_restricted\x18\x14 \x01(\bH\x11R\x11scmOnlyRestricted\x88\x01\x01\x121\n" +
-	"\x12email_is_synthetic\x18\x15 \x01(\bH\x12R\x10emailIsSynthetic\x88\x01\x01B\b\n" +
+	"\x12email_is_synthetic\x18\x15 \x01(\bH\x12R\x10emailIsSynthetic\x88\x01\x01\x12(\n" +
+	"\rsignup_source\x18\x16 \x01(\tH\x13R\fsignupSource\x88\x01\x01\x12G\n" +
+	" admin_session_management_enabled\x18\x17 \x01(\bR\x1dadminSessionManagementEnabledB\b\n" +
 	"\x06_emailB\r\n" +
 	"\v_first_nameB\f\n" +
 	"\n" +
@@ -3812,7 +3829,8 @@ const file_aiserver_v1_grokbot_proto_rawDesc = "" +
 	"\x1a_has_active_mobile_sessionB\x11\n" +
 	"\x0f_public_user_idB\x16\n" +
 	"\x14_scm_only_restrictedB\x15\n" +
-	"\x13_email_is_synthetic\"\xe6\x01\n" +
+	"\x13_email_is_syntheticB\x10\n" +
+	"\x0e_signup_source\"\xe6\x01\n" +
 	"\fGetMeRequest\x12\x1c\n" +
 	"\ateam_id\x18\x01 \x01(\x05H\x00R\x06teamId\x88\x01\x01\x125\n" +
 	"\x14source_site_hostname\x18\x02 \x01(\tH\x01R\x12sourceSiteHostname\x88\x01\x01\x12>\n" +

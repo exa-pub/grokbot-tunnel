@@ -267,7 +267,7 @@ func TestDetachedCommandState(t *testing.T) {
 	expectStdout(t, e, `printf %s "$KEEP"`, "1")
 }
 
-// Like the desktop's hN, the header has a title line for a description, for
+// Like the desktop's HO, the header has a title line for a description, for
 // spawned and detached commands alike.
 func TestTerminalTitle(t *testing.T) {
 	for _, msg := range []string{

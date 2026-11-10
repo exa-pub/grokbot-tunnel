@@ -126,7 +126,7 @@ func (dd *Discoverer) Discover(ctx context.Context, source string) ([]byte, erro
 	}
 	setup := dedupItems(d.setup)
 	setup = setup[:min(len(setup), maxSetupItems)]
-	// Like the desktop (DFe), a repeated request keeps its first, oldest
+	// Like the desktop (KJe), a repeated request keeps its first, oldest
 	// entry; then the newest come first.
 	sessions := dedupItems(d.sessions)
 	slices.SortStableFunc(sessions, func(a, b discoveryItem) int { return cmp.Compare(b.at(), a.at()) })

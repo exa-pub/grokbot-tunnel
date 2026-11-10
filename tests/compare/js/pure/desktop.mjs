@@ -24,10 +24,10 @@ export function open(dist) {
 
   // applyRange(text, lineCount, args): a read with a line range.
   const ranges = daemon.find('ranges', String.raw`function (ID)\(\w,\w,\w\)\{let \w=ID\(\w,\w==="",\w\);return \w\.applied\?`);
-  // readTextStreaming(ctx, path, args, encoding, ?, size): the reader the
+  // readTextStreaming(ctx, {file, stats}, args, encoding, ?): the reader the
   // Linux read executor uses.
   const reader = daemon.find('streamReader',
-    String.raw`async function (ID)\(\w,\w,\w,\w,\w,\w\)\{let \w=\w\.offset!==void 0\|\|\w\.limit!==void 0,`);
+    String.raw`async function (ID)\(\w,\{file:\w,stats:\w\},\w,\w,\w\)\{let \w=\w\.size,\w=\w\.offset!==void 0\|\|\w\.limit!==void 0,`);
   // What the executor does to the reader's content when max_chars cut it.
   const trim = daemon.find('trimToMaxChars',
     String.raw`function (ID)\(\w,\w,\w\)\{if\(!\w\|\|\w\.maxChars===void 0\|\|\w\.length-1<=\w\.maxChars\)return \w;`);
@@ -93,7 +93,8 @@ export function open(dist) {
     // A read of text as the Linux read executor runs it.
     async stream(text, args) {
       const encoding = {kind: 'strictUtf8', cacheEncoding: 'utf8'};
-      const result = await daemon.callAsync(reader, {signal: undefined}, text, args, encoding, false, Buffer.byteLength(text));
+      const file = {file: text, stats: {size: Buffer.byteLength(text)}};
+      const result = await daemon.callAsync(reader, {signal: undefined}, file, args, encoding, false);
       return {...result, content: daemon.call(trim, result.content, result.truncated, args)};
     },
     mostlyUtf8: lossy => daemon.call(mostlyUtf8, lossy),

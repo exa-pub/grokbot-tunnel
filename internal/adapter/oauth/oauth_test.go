@@ -82,7 +82,7 @@ func pollServer(t *testing.T, body string, statuses ...int) (*httptest.Server, *
 	return s, &calls
 }
 
-// Like the desktop's Ipn, 404 resets the count of failed polls and three
+// Like the desktop's Ddn, 404 resets the count of failed polls and three
 // failures in a row end the login, whatever they are.
 func TestPollFailuresInARow(t *testing.T) {
 	fastPoll(t)

@@ -1,0 +1,48 @@
+{
+  "scenario": "background/cwd",
+  "digest": "sha256:c93c3a754cff6e666fdf9784607c994c648d701de5d684af47b8f82a86e9b87b",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "backgroundShellSpawnResult": {
+            "success": {
+              "command": "pwd",
+              "pid": "<PID>",
+              "shellId": "<SHELL#1>",
+              "workingDirectory": "$ROOT/work"
+            }
+          },
+          "id": 1,
+          "localExecutionTimeMs": "<MS>"
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "terminals": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "terminals/<SHELL#1>.txt": {
+      "mode": "0644",
+      "text": "---\npid: <PID>\ncwd: \"$ROOT/work\"\ncommand: \"pwd\"\nstatus: succeeded\nstarted_at: <TS>\nrunning_for_ms: <MS>     \n---\n$ROOT/work\n\n---\nexit_code: 0\nelapsed_ms: <MS>\nended_at: <TS>\n---\n"
+    }
+  }
+}

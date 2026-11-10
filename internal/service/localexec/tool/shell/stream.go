@@ -99,7 +99,7 @@ func (o *shellOutput) sendErr() error {
 const maxStreamOutput = terminalfile.MaxStream
 
 // streamWriter forwards one stream like the desktop's shell core executor
-// (dS): decoded as UTF-8, with a trailing incomplete sequence held back until
+// (D3): decoded as UTF-8, with a trailing incomplete sequence held back until
 // the rest of it arrives, and cut at maxStreamOutput. The full output, if
 // kept, goes on after the cut.
 type streamWriter struct {

@@ -245,7 +245,7 @@ func TestPrivacyLookupRedirectDoesNotDeadlock(t *testing.T) {
 	}
 }
 
-// Like the desktop's cOe, callers that come during a lookup wait for its
+// Like the desktop's Jxe, callers that come during a lookup wait for its
 // result instead of falling back to ghost mode; one whose context ends
 // first gets ghost mode on.
 func TestPrivacyLookupConcurrentCallersWait(t *testing.T) {

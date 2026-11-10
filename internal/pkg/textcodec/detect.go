@@ -54,7 +54,7 @@ func Detect(head []byte) Format {
 }
 
 // trimIncomplete drops a UTF-8 sequence that the cut at SniffLen leaves
-// incomplete (XKt).
+// incomplete (yQt).
 func trimIncomplete(b []byte) []byte {
 	for i := len(b) - 1; i >= max(0, len(b)-3); i-- {
 		c := b[i]
@@ -81,7 +81,7 @@ func trimIncomplete(b []byte) []byte {
 func printable(c byte) bool { return c >= 32 && c <= 126 || c == '\t' || c == '\n' || c == '\r' }
 
 // utf16Pattern recognizes UTF-16 by its byte order mark or by zero bytes
-// beside ASCII in the first 50 code units (rYt).
+// beside ASCII in the first 50 code units (xQt).
 func utf16Pattern(b []byte) string {
 	switch {
 	case len(b) < 4:
@@ -95,7 +95,7 @@ func utf16Pattern(b []byte) string {
 }
 
 // utf32Pattern recognizes UTF-32 by its byte order mark or by zero bytes
-// beside ASCII in the first 50 code units (sYt).
+// beside ASCII in the first 50 code units (AQt).
 func utf32Pattern(b []byte) string {
 	switch {
 	case len(b) < 8:
@@ -141,7 +141,7 @@ func allZero(b []byte) bool {
 }
 
 // textual reports whether b has no NUL byte and less than 5% control bytes
-// other than tab, newline and carriage return (YKt).
+// other than tab, newline and carriage return (SQt).
 func textual(b []byte) bool {
 	if bytes.IndexByte(b, 0) >= 0 {
 		return false
@@ -156,7 +156,7 @@ func textual(b []byte) bool {
 }
 
 // imageSignature reports the signature of a PNG, JPEG, WEBP or GIF image
-// (ZKt).
+// (_Qt).
 func imageSignature(b []byte) bool {
 	switch {
 	case len(b) < 4:

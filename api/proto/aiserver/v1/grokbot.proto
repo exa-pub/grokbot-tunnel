@@ -23,6 +23,8 @@ message GetMeResponse {
   optional string public_user_id = 19;
   optional bool scm_only_restricted = 20;
   optional bool email_is_synthetic = 21;
+  optional string signup_source = 22;
+  bool admin_session_management_enabled = 23;
 }
 message GetMeRequest {
   optional int32 team_id = 1;

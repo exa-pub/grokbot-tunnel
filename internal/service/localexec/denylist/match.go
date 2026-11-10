@@ -127,7 +127,7 @@ func wildcard(pattern, s string) bool {
 	return re.MatchString(s)
 }
 
-// collapse replaces every run of the whitespace the desktop's m2 knows
+// collapse replaces every run of the whitespace the desktop's Mg knows
 // with one space and drops it at both ends.
 func collapse(s string) string {
 	var b strings.Builder
@@ -146,7 +146,7 @@ func collapse(s string) string {
 	return b.String()
 }
 
-// collapsed reports whether r is whitespace to the desktop's m2.
+// collapsed reports whether r is whitespace to the desktop's Mg.
 func collapsed(r rune) bool {
 	switch r {
 	case ' ', '\t', '\n', '\r', 0xa0, 0x200b, 0x200c, 0x200d, 0xfeff:
@@ -171,7 +171,7 @@ const (
 	ansi
 )
 
-// unquote removes the quoting of a command the way the desktop's WVt does,
+// unquote removes the quoting of a command the way the desktop's mZt does,
 // so that r\m and 'rm' read rm: backslashes, single and double quotes and
 // ANSI-C quoting, without expanding anything. The result is collapsed.
 func unquote(command string) string {

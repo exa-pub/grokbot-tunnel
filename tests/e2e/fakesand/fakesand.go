@@ -248,7 +248,7 @@ func (s *Server) GetMe(
 func (s *Server) GetUserPrivacyMode(
 	context.Context, *connect.Request[aiserverv1.GetUserPrivacyModeRequest],
 ) (*connect.Response[aiserverv1.GetUserPrivacyModeResponse], error) {
-	return connect.NewResponse(&aiserverv1.GetUserPrivacyModeResponse{PrivacyMode: aiserverv1.PrivacyMode_PRIVACY_MODE_NO_STORAGE}), nil
+	return connect.NewResponse(&aiserverv1.GetUserPrivacyModeResponse{PrivacyMode: aiserverv1.PrivacyMode_PRIVACY_MODE_NO_TRAINING}), nil
 }
 
 func (s *Server) RegisterSandMachine(

@@ -1,0 +1,104 @@
+{
+  "scenario": "transfer/upload-paths",
+  "digest": "sha256:20d9aababba3b7ae2be7d19109877e4c348efbc589732e36e4c832ff12724657",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size": 0,
+          "text": ""
+        }
+      }
+    ],
+    "r2": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size": 0,
+          "text": ""
+        }
+      }
+    ],
+    "r3": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size": 0,
+          "text": ""
+        }
+      }
+    ],
+    "r4": [
+      {
+        "fileError": {
+          "error": "EISDIR: illegal operation on a directory, rename '$ROOT.<TMP>' -> '$ROOT'"
+        }
+      }
+    ],
+    "r5": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size": 0,
+          "text": ""
+        }
+      }
+    ]
+  },
+  "files": {
+    "up": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "up/abs.txt": {
+      "mode": "0644",
+      "sha256": "3cef1b245d4b2f37dadddcbadb76017d440ba283601228724c0cb2c07d35bed4",
+      "size": 8,
+      "text": "uploaded"
+    },
+    "up/dot.txt": {
+      "mode": "0644",
+      "sha256": "3cef1b245d4b2f37dadddcbadb76017d440ba283601228724c0cb2c07d35bed4",
+      "size": 8,
+      "text": "uploaded"
+    },
+    "up/empty.txt": {
+      "mode": "0644",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "text": ""
+    },
+    "up/new": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "up/new/dir": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "up/new/dir/hello.txt": {
+      "mode": "0644",
+      "sha256": "3cef1b245d4b2f37dadddcbadb76017d440ba283601228724c0cb2c07d35bed4",
+      "size": 8,
+      "text": "uploaded"
+    }
+  }
+}

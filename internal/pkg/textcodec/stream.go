@@ -34,7 +34,7 @@ var Latin1 = Decoding{encoding: charmap.ISO8859_1}
 var strict = Decoding{Strict: true}
 
 // Resolve chooses the decoding of a file from the read's encoding hint or,
-// without one, the encoding Detect found, like the desktop's Rut: names of
+// without one, the encoding Detect found, like the desktop's Bdt: names of
 // UTF-8 decode strictly, other known encodings with their decoder, unknown
 // names as strict UTF-8.
 func Resolve(hint *string, detected string) Decoding {
@@ -100,7 +100,7 @@ func named(name string) encoding.Encoding {
 }
 
 // Fallback decides how to read a file that is not valid UTF-8 from its first
-// bytes, as the desktop's Cut does: lossy UTF-8 when they are mostly UTF-8 or
+// bytes, as the desktop's Udt does: lossy UTF-8 when they are mostly UTF-8 or
 // are the whole file and valid, Latin-1 otherwise. head is the first
 // min(size, FallbackSniff) bytes, or FallbackSniff bytes when the size is
 // unknown (0).

@@ -161,7 +161,7 @@ func TestShellParallelCommands(t *testing.T) {
 	}
 }
 
-// Like the desktop's dS, with fileOutputThresholdBytes an output above the
+// Like the desktop's D3, with fileOutputThresholdBytes an output above the
 // threshold also goes to <root>/agent-tools/<uuid>.txt, stdout and stderr as
 // they arrive, which the exit reports; the agent still gets at most 1 MiB of
 // each stream. A smaller output goes nowhere.

@@ -1,0 +1,26 @@
+{
+  "scenario": "discovery/titles",
+  "digest": "sha256:102e5354daa834dafd14cf4b6508b398b5c65e8ed1e9db4589a4a9663b325203",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "e7df2cf30a04594d3bf96c988e544f0afbda79138ab4f56d6ac1f68b11ffb858",
+          "size": 950,
+          "text": "{\"source\":\"codex\",\"found\":true,\"sessionCount\":11,\"lastActiveAtMs\":1700000000500,\"items\":[{\"kind\":\"session\",\"title\":\"fraction\",\"occurredAtMs\":1700000000500},{\"kind\":\"session\",\"title\":\"seconds\",\"occurredAtMs\":1700000000000},{\"kind\":\"session\",\"title\":\"millis\",\"occurredAtMs\":1700000000000},{\"kind\":\"session\",\"title\":\"same\",\"occurredAtMs\":6000},{\"kind\":\"session\",\"title\":\"see [link] and [path]\",\"occurredAtMs\":5000},{\"kind\":\"session\",\"title\":\"mail [email] and key [redacted] done\",\"occurredAtMs\":4000},{\"kind\":\"session\",\"title\":\"spaces and tabs and lines\",\"occurredAtMs\":3000},{\"kind\":\"session\",\"title\":\"build src/main/java and [path]\",\"occurredAtMs\":2000},{\"kind\":\"session\",\"title\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\",\"occurredAtMs\":1000},{\"kind\":\"session\",\"title\":\"none\"},{\"kind\":\"session\",\"title\":\"zero\",\"occurredAtMs\":0}]}"
+        }
+      }
+    ]
+  }
+}

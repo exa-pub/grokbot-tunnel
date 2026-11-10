@@ -61,15 +61,15 @@ func Connect(ctx context.Context, opts cli.ConnectOptions) error {
 	// On every way out, e.g. Register timing out while its refresh is still
 	// waiting for the server's answer, or a stop in the middle of a refresh.
 	defer awaitRefresh(ctx, u.tokens)
-	// Known difference: the desktop registers only when the account's privacy
-	// mode allows storage (isSandMachineStorageAllowed: NO_TRAINING or a
-	// training-allowed mode); we register always, since without a check of
-	// the server we cannot tell whether the computer works unregistered.
-	if err = computer.Register(ctx, u.dashboard, e.machine.Label, entity.Mode(opts.Permission)); err != nil {
+	registered, err := computer.Register(ctx, u.dashboard, e.machine.Label, entity.Mode(opts.Permission), identity.TeamID)
+	if err != nil {
 		if ctx.Err() != nil {
 			return nil // stopped while starting, e.g. by systemctl stop
 		}
 		return err
+	}
+	if !registered {
+		log.Print("the account's privacy mode does not allow storage: this computer is not registered with Grok Bot, which may refuse it")
 	}
 	var serverPermission entity.Mode
 	if opts.PermissionSet {
