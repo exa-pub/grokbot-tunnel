@@ -1,0 +1,86 @@
+{
+  "scenario": "ls/unreadable",
+  "digest": "sha256:ad1abb97dfa0d626015d547b665d7691d8b38353544f63fddd10dcc0c8756070",
+  "subject": "desktop-0.78.4",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "lsResult": {
+            "success": {
+              "directoryTreeRoot": {
+                "absPath": "$ROOT",
+                "childrenDirs": [
+                  {
+                    "absPath": "$ROOT/locked",
+                    "childrenFiles": [
+                      {
+                        "name": "b.txt"
+                      }
+                    ],
+                    "childrenWereProcessed": true
+                  },
+                  {
+                    "absPath": "$ROOT/ok",
+                    "childrenFiles": [
+                      {
+                        "name": "a.txt"
+                      }
+                    ],
+                    "childrenWereProcessed": true
+                  }
+                ],
+                "childrenWereProcessed": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "lsResult": {
+            "success": {
+              "directoryTreeRoot": {
+                "absPath": "$ROOT/locked",
+                "childrenFiles": [
+                  {
+                    "name": "b.txt"
+                  }
+                ],
+                "childrenWereProcessed": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ]
+  }
+}

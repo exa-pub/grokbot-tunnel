@@ -1,0 +1,106 @@
+{
+  "scenario": "channel/headers",
+  "digest": "sha256:13a7c0a1eaaaaf8eb11f407f0511c8ec99c564e05dcc331b19093b4b94780132",
+  "subject": "desktop-0.78.4",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stdout": {
+              "data": "hello\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "cwd": "$ROOT",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  },
+  "headers": {
+    "Poll": {
+      "accept-encoding": "gzip,br",
+      "connect-protocol-version": "1",
+      "content-type": "application/proto",
+      "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Sand/0.78.4 Safari/537.36",
+      "x-cursor-client-os": "linux",
+      "x-cursor-client-source": "sand-desktop",
+      "x-cursor-client-type": "sand",
+      "x-cursor-client-version": "0.78.4",
+      "x-sand-box-namespace": "prod"
+    },
+    "Submit": {
+      "accept-encoding": "gzip,br",
+      "connect-protocol-version": "1",
+      "content-type": "application/proto",
+      "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Sand/0.78.4 Safari/537.36",
+      "x-cursor-client-os": "linux",
+      "x-cursor-client-source": "sand-desktop",
+      "x-cursor-client-type": "sand",
+      "x-cursor-client-version": "0.78.4",
+      "x-sand-box-namespace": "prod"
+    },
+    "Watch": {
+      "connect-accept-encoding": "gzip,br",
+      "connect-protocol-version": "1",
+      "content-type": "application/connect+proto",
+      "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Sand/0.78.4 Safari/537.36",
+      "x-cursor-client-os": "linux",
+      "x-cursor-client-source": "sand-desktop",
+      "x-cursor-client-type": "sand",
+      "x-cursor-client-version": "0.78.4",
+      "x-sand-box-namespace": "prod"
+    },
+    "Withdraw": {
+      "accept-encoding": "gzip,br",
+      "connect-protocol-version": "1",
+      "content-type": "application/proto",
+      "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Sand/0.78.4 Safari/537.36",
+      "x-cursor-client-os": "linux",
+      "x-cursor-client-source": "sand-desktop",
+      "x-cursor-client-type": "sand",
+      "x-cursor-client-version": "0.78.4",
+      "x-sand-box-namespace": "prod"
+    }
+  }
+}

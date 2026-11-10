@@ -1,0 +1,53 @@
+{
+  "scenario": "dispatch/other-frames",
+  "digest": "sha256:e011a144647ab158858e8a2eb926ffabcde1f8200077721f26aae0b046dc399b",
+  "subject": "desktop-0.78.4",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "messagesError": {
+          "error": "This computer's local-exec daemon does not understand that request frame; update the desktop app."
+        }
+      }
+    ],
+    "r2": [
+      {
+        "localToolResult": {
+          "error": "This computer has no \"computer_use\" tool.",
+          "status": "failed"
+        }
+      }
+    ],
+    "r3": [
+      {
+        "control": {
+          "throw": {
+            "error": "This computer's local-exec daemon does not understand that request frame; update the desktop app."
+          }
+        }
+      }
+    ],
+    "r4": [
+      {
+        "control": {
+          "throw": {
+            "error": "This computer's local-exec daemon does not understand that request frame; update the desktop app."
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "b.txt": {
+      "missing": true
+    }
+  }
+}

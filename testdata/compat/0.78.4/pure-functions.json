@@ -3,17 +3,7 @@
     "version": "0.78.4",
     "platform": "linux",
     "method": "isolated pure functions from source; not desktop traffic",
-    "source": "local-exec-daemon/main.cjs",
-    "markers": [
-      "QSr",
-      "Rye",
-      "lfe",
-      "hN",
-      "Sut",
-      "Eye",
-      "ZO",
-      "zct"
-    ]
+    "source": "local-exec-daemon/main.cjs"
   },
   "ranges": [
     {

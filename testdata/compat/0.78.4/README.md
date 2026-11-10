@@ -1,18 +1,26 @@
 # Grok Bot 0.78.4 reference data
 
-`pure-functions.json` holds outputs of pure functions from the desktop
-client's Linux bundle: read ranges, the streaming text reader the Linux read
-executor uses (including `max_chars`), the choice between lossy UTF-8 and
-Latin-1 for invalid UTF-8, the missing-setup discovery result, the terminal
-header, how the start of a file is classified (`format`: UTF-16/UTF-32,
-binary, image; inputs that would reach jschardet are left out) and the size an
-image is scaled to (`imageFit`). `scripts/compat-reference.mjs` runs only these
-functions, feeding the reader its 64 KiB file chunks from memory; the
-application itself is not executed. Go tests read the file and need neither Node nor the client.
+What the desktop client's Linux bundle does, for tests that need neither the
+client nor Node. `make compare-record` regenerates all of it but the TLS
+probe; `tests/compare/README.md` says how the comparison works.
 
-```sh
-node scripts/compat-reference.mjs ai.tmp/grok-bot/0.78.4/app/dist > testdata/compat/0.78.4/pure-functions.json
-```
+`pure-functions.json` holds outputs of pure functions of the bundle: read
+ranges, the streaming text reader the Linux read executor uses (including
+`max_chars`), the choice between lossy UTF-8 and Latin-1 for invalid UTF-8,
+the missing-setup discovery result, the terminal header, how the start of a
+file is classified (`format`: UTF-16/UTF-32, binary, image; inputs that would
+reach jschardet are left out) and the size an image is scaled to (`imageFit`).
+`tests/compare/js/pure/reference.mjs` runs only these functions, in a `vm`
+context, feeding the reader its 64 KiB file chunks from memory; the
+application is not started. `symbols.json` lists the minified names the
+functions have in this release.
+
+`transcripts/` holds what the client's local-exec daemon answered to the
+requests of the comparison scenarios (`tests/compare/scenarios`), one file a
+scenario. For these the daemon itself ran, in a container without network,
+against the fake backend of `tests/e2e/fakesand`, with the files and requests
+of the scenario and nothing else. `known-diffs.json` lists where
+grokbot-tunnel differs from these answers and why.
 
 `tls-runtime-probe.json` compares, on loopback, the TLS ClientHello of the Go
 transport with Node's `https.Agent` from the client's Electron runtime. It was

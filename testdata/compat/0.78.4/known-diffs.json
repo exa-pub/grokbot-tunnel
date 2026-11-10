@@ -1,0 +1,217 @@
+[
+  {
+    "scenario": "*/*",
+    "path": "files/terminals/mode",
+    "reason": "grokbot-tunnel creates terminal files and output files for their owner only (0700 and 0600); the desktop leaves the mode to the umask (0755 and 0644)."
+  },
+  {
+    "scenario": "*/*",
+    "path": "files/terminals/*/mode",
+    "reason": "grokbot-tunnel creates terminal files and output files for their owner only (0700 and 0600); the desktop leaves the mode to the umask (0755 and 0644)."
+  },
+  {
+    "scenario": "*/*",
+    "path": "files/agent-tools/mode",
+    "reason": "grokbot-tunnel creates terminal files and output files for their owner only (0700 and 0600); the desktop leaves the mode to the umask (0755 and 0644)."
+  },
+  {
+    "scenario": "*/*",
+    "path": "files/agent-tools/*/mode",
+    "reason": "grokbot-tunnel creates terminal files and output files for their owner only (0700 and 0600); the desktop leaves the mode to the umask (0755 and 0644)."
+  },
+  {
+    "scenario": "ls/as-released",
+    "path": "requests/r1/0/client/lsResult/*",
+    "reason": "The released desktop never sets the path of its ripgrep, so every listing ends in this error; grokbot-tunnel lists. The other ls scenarios give the desktop the path (js/preload.cjs)."
+  },
+  {
+    "scenario": "read/paths",
+    "path": "requests/r8/**",
+    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads.",
+    "ref": "ai.tmp/TEST-PLAN.md J-3"
+  },
+  {
+    "scenario": "root/read",
+    "path": "requests/r3/**",
+    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads.",
+    "ref": "ai.tmp/TEST-PLAN.md J-3"
+  },
+  {
+    "scenario": "root/transfer",
+    "path": "requests/r8/**",
+    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads.",
+    "ref": "ai.tmp/TEST-PLAN.md I-1"
+  },
+  {
+    "scenario": "root/transfer",
+    "path": "files/~",
+    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads.",
+    "ref": "ai.tmp/TEST-PLAN.md I-1"
+  },
+  {
+    "scenario": "root/transfer",
+    "path": "files/~/*",
+    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads.",
+    "ref": "ai.tmp/TEST-PLAN.md I-1"
+  },
+  {
+    "scenario": "root/linked",
+    "path": "requests/r1/**",
+    "reason": "A root that is a symbolic link: the desktop's shell starts in the directory the link points to, grokbot-tunnel's in the link. Not decided which to keep.",
+    "ref": "ai.tmp/TEST-PLAN.md J-11"
+  },
+  {
+    "scenario": "root/links",
+    "path": "requests/r6/**",
+    "reason": "A symbolic link that loops: the desktop fails the request with a throw from realpath, grokbot-tunnel answers with a read error from stat. Not decided."
+  },
+  {
+    "scenario": "dispatch/duplicate-id",
+    "path": "requests/r1/*",
+    "reason": "A request with the ID of one already answered: the desktop runs it, grokbot-tunnel drops it. Not decided."
+  },
+  {
+    "scenario": "dispatch/invalid",
+    "path": "requests/*/0/control/throw/error",
+    "reason": "The text of a JSON decoding error is that of each client's protobuf library."
+  },
+  {
+    "scenario": "shell/env-names",
+    "path": "requests/r1/1/client/shellStream/stdout/data",
+    "reason": "A command of the desktop also sees variables of the desktop's own processes: NODE_PATH, SAND_PACKAGED, SAND_LAB and __CURSOR_SANDBOX_ENV_RESTORE."
+  },
+  {
+    "scenario": "shell/invalid-utf8",
+    "path": "requests/r1/1/client/shellStream/stdout/data",
+    "reason": "Output that starts with the bytes FF FE: the desktop decodes all of it as UTF-16, grokbot-tunnel as UTF-8 with replacement characters. Not decided."
+  },
+  {
+    "scenario": "background/output-bom",
+    "path": "files/terminals/*/text",
+    "reason": "Output that starts with the bytes FF FE: the desktop decodes all of it as UTF-16, grokbot-tunnel as UTF-8 with replacement characters. Not decided."
+  },
+  {
+    "scenario": "shell/not-found",
+    "path": "requests/*/*/client/shellStream/stderr/data",
+    "reason": "bash calls itself -- in the messages of the desktop's shell and grokbot-shell in grokbot-tunnel's. Not decided."
+  },
+  {
+    "scenario": "shell/session-failed-cd",
+    "path": "requests/*/*/client/shellStream/stderr/data",
+    "reason": "bash calls itself -- in the messages of the desktop's shell and grokbot-shell in grokbot-tunnel's. Not decided."
+  },
+  {
+    "scenario": "shell/syntax-error",
+    "path": "requests/*/*/client/shellStream/stderr/data",
+    "reason": "bash calls itself -- in the messages of the desktop's shell and grokbot-shell in grokbot-tunnel's. Not decided."
+  },
+  {
+    "scenario": "shell/session-alias",
+    "path": "requests/r2/*",
+    "reason": "An alias defined by one command works in the next on the desktop; grokbot-tunnel keeps alias expansion off.",
+    "ref": "ai.tmp/TEST-PLAN.md B-4"
+  },
+  {
+    "scenario": "shell/session-alias",
+    "path": "requests/r2/*/client/shellStream/stdout/data",
+    "reason": "An alias defined by one command works in the next on the desktop; grokbot-tunnel keeps alias expansion off.",
+    "ref": "ai.tmp/TEST-PLAN.md B-4"
+  },
+  {
+    "scenario": "shell/session-shellopts",
+    "path": "requests/r2/*",
+    "reason": "After export SHELLOPTS the desktop's restore of the session prints \"declare: SHELLOPTS: readonly variable\" to the next command's stderr; grokbot-tunnel's does not.",
+    "ref": "ai.tmp/TEST-PLAN.md B-13"
+  },
+  {
+    "scenario": "shell/zsh-options",
+    "path": "requests/r2/1/client/shellStream/stdout/data",
+    "reason": "zsh: an option set by one command is set in the next with grokbot-tunnel and not with the desktop. Not decided.",
+    "ref": "ai.tmp/TEST-PLAN.md B-5"
+  },
+  {
+    "scenario": "shell/zsh-options",
+    "path": "requests/r2/2/client/shellStream/exit/code",
+    "reason": "zsh: an option set by one command is set in the next with grokbot-tunnel and not with the desktop. Not decided.",
+    "ref": "ai.tmp/TEST-PLAN.md B-5"
+  },
+  {
+    "scenario": "read/big",
+    "path": "requests/r1/0/client/readResult/success/content/*",
+    "reason": "A read of a file too large for one answer: the desktop cuts the text at 8 MiB, grokbot-tunnel earlier (7.2 MB of this file). Not decided."
+  },
+  {
+    "scenario": "read/fake-image",
+    "path": "requests/r3/0/client/readResult/invalidFile/reason",
+    "reason": "The reason an image cannot be decoded quotes each client's decoder."
+  },
+  {
+    "scenario": "discovery/claude",
+    "path": "requests/r1/0/file/*",
+    "reason": "A word of 40 letters in a request text: grokbot-tunnel replaces it with [redacted] as if it were a key, the desktop keeps it. Not decided."
+  },
+  {
+    "scenario": "discovery/codex",
+    "path": "requests/r1/0/file/*",
+    "reason": "A word of 40 letters in a request text: grokbot-tunnel replaces it with [redacted] as if it were a key, the desktop keeps it. Not decided."
+  },
+  {
+    "scenario": "transfer/upload-errors",
+    "path": "requests/*/0/fileError/error",
+    "reason": "An upload that fails: the desktop's error names the temporary file it writes and both paths of the rename, and a path below a file fails in realpath instead of mkdir. Not decided."
+  },
+  {
+    "scenario": "transfer/upload-paths",
+    "path": "requests/r4/0/fileError/error",
+    "reason": "An upload that fails: the desktop's error names the temporary file it writes and both paths of the rename, and a path below a file fails in realpath instead of mkdir. Not decided."
+  },
+  {
+    "scenario": "channel/*",
+    "path": "calls/0",
+    "reason": "grokbot-tunnel polls once before it opens the watch stream; the desktop opens the stream first. Not decided."
+  },
+  {
+    "scenario": "channel/hello-*",
+    "path": "hello/supervised",
+    "reason": "The desktop's daemon says it is supervised while the desktop app that started it is alive; grokbot-tunnel has no app above it and says nothing."
+  },
+  {
+    "scenario": "channel/headers",
+    "path": "headers/*/accept-encoding",
+    "reason": "Both clients accept gzip and Brotli but name them in another order; grokbot-tunnel also sends its deadline as Connect-Timeout-Ms and asks for an uncompressed watch stream. Not decided."
+  },
+  {
+    "scenario": "channel/headers",
+    "path": "headers/*/connect-accept-encoding",
+    "reason": "Both clients accept gzip and Brotli but name them in another order; grokbot-tunnel also sends its deadline as Connect-Timeout-Ms and asks for an uncompressed watch stream. Not decided."
+  },
+  {
+    "scenario": "channel/headers",
+    "path": "headers/*/connect-timeout-ms",
+    "reason": "Both clients accept gzip and Brotli but name them in another order; grokbot-tunnel also sends its deadline as Connect-Timeout-Ms and asks for an uncompressed watch stream. Not decided."
+  },
+  {
+    "scenario": "channel/keep-alive",
+    "path": "requests/*/*",
+    "reason": "Both clients send exec heartbeats for a request that runs. Besides them, the desktop sends messages_accepted for a request that waits for its turn and not for one that runs; grokbot-tunnel does the opposite.",
+    "ref": "internal/service/computer/replies/keepalive.go"
+  },
+  {
+    "scenario": "channel/keep-alive-waiting",
+    "path": "requests/*/*",
+    "reason": "Both clients send exec heartbeats for a request that runs. Besides them, the desktop sends messages_accepted for a request that waits for its turn and not for one that runs; grokbot-tunnel does the opposite.",
+    "ref": "internal/service/computer/replies/keepalive.go"
+  },
+  {
+    "scenario": "channel/keep-alive-waiting",
+    "path": "requests/*/*/client",
+    "reason": "Both clients send exec heartbeats for a request that runs. Besides them, the desktop sends messages_accepted for a request that waits for its turn and not for one that runs; grokbot-tunnel does the opposite.",
+    "ref": "internal/service/computer/replies/keepalive.go"
+  },
+  {
+    "scenario": "channel/keep-alive-waiting",
+    "path": "requests/*/*/messagesAccepted",
+    "reason": "Both clients send exec heartbeats for a request that runs. Besides them, the desktop sends messages_accepted for a request that waits for its turn and not for one that runs; grokbot-tunnel does the opposite.",
+    "ref": "internal/service/computer/replies/keepalive.go"
+  }
+]

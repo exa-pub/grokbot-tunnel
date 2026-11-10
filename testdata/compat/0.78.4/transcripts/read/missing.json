@@ -1,0 +1,55 @@
+{
+  "scenario": "read/missing",
+  "digest": "sha256:2ae5336ff29e295be6c981d78f4654a6d952d027cd7bdd5d015236cf57f102e4",
+  "subject": "desktop-0.78.4",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "fileNotFound": {
+              "path": "$ROOT/does-not-exist.txt"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "fileNotFound": {
+              "path": "$ROOT/no/such/dir/file.txt"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ]
+  }
+}
