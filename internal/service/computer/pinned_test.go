@@ -2,7 +2,7 @@ package computer
 
 // Characterization tests from phase 0 of the refactor: they pin the observable
 // behavior of the session, including where it knowingly differs from the
-// desktop. Invariant numbers refer to grok-bot-map.md §4. Invariant 11 (which
+// desktop. The invariant numbers only tell the pinned behaviors apart. Invariant 11 (which
 // requests are kept alive, and when) is pinned by replies.TestKeepAlive and
 // TestKeepAliveSubmit.
 

@@ -8,7 +8,8 @@
 #   run.sh oracle [args]     single Go functions against the desktop's, on random inputs
 #
 # args go to the test binary, e.g. -test.run TestLive/shell. Reports and the
-# transcripts of the run are written to COMPARE_OUT (ai.tmp/compare/<version>).
+# transcripts of the run are written to COMPARE_OUT (tests/compare/out/<version>).
+# The desktop's AppImage is looked for in DESKTOP_DIR (tests/compare/desktop).
 # Needs docker; set DOCKER="sudo docker" if your user may not use it directly.
 set -eu
 docker=${DOCKER:-docker}
@@ -28,7 +29,7 @@ build_desktop() {
 	entry=$(grep "^$version " "$lock") || { echo "run.sh: $lock has no entry for $version" >&2; exit 1; }
 	sha=$(echo "$entry" | cut -d' ' -f2)
 	url=$(echo "$entry" | cut -d' ' -f3)
-	dir=ai.tmp/grok-bot/$version
+	dir=${DESKTOP_DIR:-tests/compare/desktop}
 	appimage=$dir/Grok_Bot_$version.AppImage
 	if [ ! -f "$appimage" ]; then
 		[ "$url" != - ] || { echo "run.sh: $appimage is missing and $lock has no URL for it" >&2; exit 1; }
@@ -67,7 +68,7 @@ golden)
 	;;
 esac
 
-out=${COMPARE_OUT:-ai.tmp/compare/$version}
+out=${COMPARE_OUT:-tests/compare/out/$version}
 stage=$(mktemp -d)
 cid=
 # shellcheck disable=SC2317 # called by the trap

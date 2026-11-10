@@ -21,8 +21,8 @@ import (
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 )
 
-// Tests in this file pin current behavior before the refactor. Invariant
-// numbers refer to ai.tmp/refactor-plan/grok-bot-map.md §4; "≠" marks a known
+// Tests in this file pin current behavior before the refactor. The
+// invariant numbers only tell the pinned behaviors apart; "≠" marks a known
 // difference from the desktop that a later alignment PR changes on purpose.
 
 // pinnedFrame is a response frame decoded for assertions.

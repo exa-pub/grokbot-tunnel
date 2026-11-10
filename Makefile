@@ -49,8 +49,8 @@ systemd-test:
 # docker (DOCKER="sudo docker" if your user may not use it directly). See
 # tests/compare/README.md.
 #
-# All but compare-golden need the desktop's AppImage, in ai.tmp/grok-bot/<version>/
-# or at the URL of tests/compare/docker/desktop.lock; DESKTOP_VERSION picks
+# All but compare-golden need the desktop's AppImage, in tests/compare/desktop/
+# (or DESKTOP_DIR) or at the URL of tests/compare/docker/desktop.lock; DESKTOP_VERSION picks
 # another release than the one the recordings are of. ARGS go to the test
 # binary, e.g. ARGS='-test.run TestLive/shell'.
 compare-image:

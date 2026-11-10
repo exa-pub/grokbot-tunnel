@@ -1,7 +1,7 @@
 # Desktop releases the comparison image can be built for:
 #   <version> <sha256 of the AppImage> <download URL, or - if not known>
-# The AppImage is taken from ai.tmp/grok-bot/<version>/ if it is there,
-# otherwise downloaded. The update feed gives the URL and hash of a release
+# The AppImage is taken from tests/compare/desktop/ (or DESKTOP_DIR) if it
+# is there, otherwise downloaded. The update feed gives the URL and hash of a release
 # (.claude/commands/update-protocol.md).
 0.78.4 27cc7e91da8fca465a850a66c06f1378e30800266c4422438c58583cad8d5b50 -
 0.79.2 ed521811c57aeaac4f33033661448da49dfdd9f2c3f8a01ab57f2bbf9262706e -

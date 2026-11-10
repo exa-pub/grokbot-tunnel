@@ -10,7 +10,8 @@ import fs from 'node:fs';
 import util from 'node:util';
 import {open} from './desktop.mjs';
 
-const desktop = open(process.argv[2] ?? 'ai.tmp/grok-bot/0.78.4/app/dist');
+if (process.argv[2] === undefined) throw new Error('usage: node reference.mjs <app/dist> [symbols.json]');
+const desktop = open(process.argv[2]);
 
 const cases = [
   {text: '', args: {}}, {text: 'one\ntwo\nthree\n', args: {offset: 2, limit: 1}},

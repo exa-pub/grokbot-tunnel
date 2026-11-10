@@ -27,38 +27,32 @@
   {
     "scenario": "read/paths",
     "path": "requests/r8/**",
-    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads.",
-    "ref": "ai.tmp/TEST-PLAN.md J-3"
+    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads."
   },
   {
     "scenario": "root/read",
     "path": "requests/r3/**",
-    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads.",
-    "ref": "ai.tmp/TEST-PLAN.md J-3"
+    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads."
   },
   {
     "scenario": "root/transfer",
     "path": "requests/r8/**",
-    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads.",
-    "ref": "ai.tmp/TEST-PLAN.md I-1"
+    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads."
   },
   {
     "scenario": "root/transfer",
     "path": "files/~",
-    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads.",
-    "ref": "ai.tmp/TEST-PLAN.md I-1"
+    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads."
   },
   {
     "scenario": "root/transfer",
     "path": "files/~/*",
-    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads.",
-    "ref": "ai.tmp/TEST-PLAN.md I-1"
+    "reason": "A path that starts with ~: grokbot-tunnel expands it and refuses it when it is outside the root. The desktop expands it for reads and listings without checking the root, and takes it as a directory named ~ for uploads."
   },
   {
     "scenario": "root/linked",
     "path": "requests/r1/**",
-    "reason": "A root that is a symbolic link: the desktop's shell starts in the directory the link points to, grokbot-tunnel's in the link. Not decided which to keep.",
-    "ref": "ai.tmp/TEST-PLAN.md J-11"
+    "reason": "A root that is a symbolic link: the desktop's shell starts in the directory the link points to, grokbot-tunnel's in the link. Not decided which to keep."
   },
   {
     "scenario": "root/links",
@@ -109,20 +103,17 @@
   {
     "scenario": "shell/session-shellopts",
     "path": "requests/r2/*",
-    "reason": "After export SHELLOPTS the desktop's restore of the session prints \"declare: SHELLOPTS: readonly variable\" to the next command's stderr; grokbot-tunnel's does not.",
-    "ref": "ai.tmp/TEST-PLAN.md B-13"
+    "reason": "After export SHELLOPTS the desktop's restore of the session prints \"declare: SHELLOPTS: readonly variable\" to the next command's stderr; grokbot-tunnel's does not."
   },
   {
     "scenario": "shell/zsh-options",
     "path": "requests/r2/1/client/shellStream/stdout/data",
-    "reason": "zsh: an option set by one command is set in the next with grokbot-tunnel and not with the desktop. Not decided.",
-    "ref": "ai.tmp/TEST-PLAN.md B-5"
+    "reason": "zsh: an option set by one command is set in the next with grokbot-tunnel and not with the desktop. Not decided."
   },
   {
     "scenario": "shell/zsh-options",
     "path": "requests/r2/2/client/shellStream/exit/code",
-    "reason": "zsh: an option set by one command is set in the next with grokbot-tunnel and not with the desktop. Not decided.",
-    "ref": "ai.tmp/TEST-PLAN.md B-5"
+    "reason": "zsh: an option set by one command is set in the next with grokbot-tunnel and not with the desktop. Not decided."
   },
   {
     "scenario": "read/big",

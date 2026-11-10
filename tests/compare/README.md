@@ -23,8 +23,9 @@ Needs docker; set `DOCKER="sudo docker"` if your user may not use it directly.
 | `make compare-image` | builds the image with the desktop's bundle | yes |
 
 CI runs `compare-golden`. The others are for a machine that has the desktop's
-AppImage: in `ai.tmp/grok-bot/<version>/Grok_Bot_<version>.AppImage`, or at
-the URL `docker/desktop.lock` gives for the version. The image built from it
+AppImage: `Grok_Bot_<version>.AppImage` in `tests/compare/desktop/`, or in
+the directory `DESKTOP_DIR` names, or at the URL `docker/desktop.lock` gives
+for the version. Git ignores that directory. The image built from it
 holds the desktop's bundle, which is not ours to publish: do not push it.
 
 `ARGS` go to the test binary and `DESKTOP_VERSION` picks a release other than
@@ -36,8 +37,9 @@ make compare DESKTOP_VERSION=0.79.2
 COMPARE_KEEP=1 make compare ARGS='-test.run TestLive/background/output$'
 ```
 
-A run writes `ai.tmp/compare/<version>/report.md` and the transcripts of both
-clients next to it (`desktop/`, `go/`). With `COMPARE_KEEP=1` it also keeps
+A run writes `tests/compare/out/<version>/report.md` (`COMPARE_OUT` names
+another directory) and the transcripts of both clients next to it
+(`desktop/`, `go/`). With `COMPARE_KEEP=1` it also keeps
 what each client left in its root (`raw/`).
 
 ## How a scenario is compared
