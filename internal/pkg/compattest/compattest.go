@@ -28,6 +28,7 @@ type PureFunctions struct {
 	DiscoveryMissing json.RawMessage
 	DiscoveryTitles  []DiscoveryTitle
 	CommandTitles    []CommandTitle
+	Denylist         []Denylist
 	TerminalHeader   string
 }
 
@@ -35,6 +36,15 @@ type PureFunctions struct {
 // to the desktop's limit, Whole is not.
 type DiscoveryTitle struct {
 	Text, Title, Whole string
+}
+
+// Denylist is a command checked against the rules of an administrator's
+// denylist: the simple commands found in it and, if it is refused, why.
+type Denylist struct {
+	Command  string
+	Rules    []string
+	Reason   *string
+	Commands []string
 }
 
 // CommandTitle is the title of a command with a namespace.

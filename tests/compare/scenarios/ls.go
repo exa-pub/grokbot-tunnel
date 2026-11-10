@@ -40,6 +40,15 @@ var tree = []File{
 
 var ls = []Scenario{
 	{
+		ID: "ls/sandbox", About: "a listing with a sandbox policy, which is refused",
+		Files: []File{Text("dir/a.txt", "a")}, Patches: ripgrep,
+		Steps: []Step{
+			Do(ExecJSON("r1", `{"id":7,"lsArgs":{"path":"$ROOT/dir","toolCallId":"tool-1",`+
+				`"sandboxPolicy":{"type":"TYPE_WORKSPACE_READONLY"}}}`)),
+			Do(ExecJSON("r2", `{"id":7,"readArgs":{"path":"$ROOT/dir/a.txt","toolCallId":"tool-2"}}`)),
+		},
+	},
+	{
 		ID: "ls/as-released", About: "the released desktop cannot list: its ripgrep path is never set",
 		Files: []File{Text("a.md", "a")},
 		Steps: []Step{Do(Ls("r1", "."))},

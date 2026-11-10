@@ -571,6 +571,431 @@
       "title": "a b:[email]"
     }
   ],
+  "denylist": [
+    {
+      "command": "rm -f x; echo one",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm -f x",
+        "echo one"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo ok",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "echo ok"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "r\\m -f x",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "r\\m -f x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "'rm' -f x",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "'rm' -f x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "/bin/rm -rf x",
+      "rules": [
+        "rm -rf"
+      ],
+      "reason": null,
+      "commands": [
+        "/bin/rm -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "sudo rm -rf /",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "sudo rm -rf /"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "sudo rm -rf /",
+      "rules": [
+        "*rm*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: *rm*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "sudo rm -rf /"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "git push --force origin main",
+      "rules": [
+        "git:*--force*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: git:*--force*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "git push --force origin main"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "git push origin main",
+      "rules": [
+        "git:*--force*"
+      ],
+      "reason": null,
+      "commands": [
+        "git push origin main"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "aws s3 rm s3://b --recursive",
+      "rules": [
+        "aws:*s3 rm*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: aws:*s3 rm*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "aws s3 rm s3://b --recursive"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [
+        "*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: *) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [
+        ":x"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: :x) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [
+        "  ",
+        ""
+      ],
+      "reason": null,
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [],
+      "reason": null,
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command could not be conclusively analyzed against your team's administrator command denylist, so it was blocked (fail-closed) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [],
+      "parsingFailed": false
+    },
+    {
+      "command": "A=1 B=2",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command could not be conclusively analyzed against your team's administrator command denylist, so it was blocked (fail-closed) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [],
+      "parsingFailed": false
+    },
+    {
+      "command": "ls | xargs rm",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "ls",
+        "xargs rm"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "ls | xargs rm",
+      "rules": [
+        "xargs:rm*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: xargs:rm*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "ls",
+        "xargs rm"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo \"$(rm x)\"",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo \"$(rm x)\"",
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "cat <<EOF\nbody $(rm x)\nEOF",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "cat",
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "if [ -f x ]; then rm x; fi",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "for f in *; do echo $f; done",
+      "rules": [
+        "rm",
+        "echo"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: echo) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo $f"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "time rm x",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "time rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "time rm x",
+      "rules": [
+        "time"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: time) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "time rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "FOO=1 rm x > out y",
+      "rules": [
+        "rm x y"
+      ],
+      "reason": null,
+      "commands": [
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "FOO=1 rm x > out y",
+      "rules": [
+        "rm x"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm x) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "unset A; export B=1; [ -f x ] && local c=2",
+      "rules": [
+        "unset",
+        "export",
+        "local",
+        "["
+      ],
+      "reason": "Denied: this command could not be conclusively analyzed against your team's administrator command denylist, so it was blocked (fail-closed) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [],
+      "parsingFailed": false
+    },
+    {
+      "command": "! unset A",
+      "rules": [
+        "unset"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: unset) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "unset A"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "let x=1+2",
+      "rules": [
+        "let"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: let) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "let x=1+2"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "rm    -rf\t x",
+      "rules": [
+        "rm -rf"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm -rf) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "RM -rf x",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "RM -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo rm",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "echo rm"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "$'r\\x6d' -rf x",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "$'r\\x6d' -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "f() { rm x; }; f",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm x",
+        "f"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "( cd /tmp && rm x ) &",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "cd /tmp",
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "git commit -m \"rm old files\"",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "git commit -m \"rm old files\""
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo a\nrm b",
+      "rules": [
+        "e*b"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: e*b) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo a",
+        "rm b"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo a b",
+      "rules": [
+        "e*b"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: e*b) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo a b"
+      ],
+      "parsingFailed": false
+    }
+  ],
   "terminalHeader": "---\npid: 42\ncwd: \"/workspace\"\ncommand: \"printf hello\"\nstatus: running  \nstarted_at: 2026-01-01T00:00:00.000Z\nrunning_for_ms: 0        \n---\n",
   "format": [
     {

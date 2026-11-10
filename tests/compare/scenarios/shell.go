@@ -177,6 +177,74 @@ var shell = []Scenario{
 		},
 		Watch: []string{"terminals"},
 	},
+	// Fields of the requests that grokbot-tunnel's schema leaves out,
+	// written as JSON.
+	{
+		ID: "shell/fields", About: "fields of a shell command that say what it is",
+		Steps: []Step{
+			Do(ExecJSON("r1", `{"id":7,`+
+				`"shellStreamArgs":{"command":"env | grep -i -c -E 'tool|secret|scope|trace|span' ; echo one > out.txt",`+
+				`"toolCallId":"tool-1","simpleCommands":["env","grep","echo"],"hasInputRedirect":true,"hasOutputRedirect":true,`+
+				`"parsingResult":{"parsingFailed":true},"classifierResult":{"classificationFailed":true,`+
+				`"suggestedSandboxMode":"SUGGESTED_SANDBOX_MODE_SANDBOX"},`+
+				`"secretScopeId":"scope-1","outputNotification":{"pattern":"one","reason":"because"},`+
+				`"hookApprovalRequirement":{"kind":"KIND_FORCE_PROMPT","reason":"hook"},"description":"what it does"}}`)),
+			Do(ExecJSON("r2", `{"id":7,"shellStreamArgs":{"command":"echo two","smartModeApproval":{"requestId":"s1","reason":"smart"}}}`)),
+			Do(ExecJSON("r3", `{"id":7,"spanContext":{"traceId":"0123456789abcdef0123456789abcdef",`+
+				`"spanId":"0123456789abcdef","traceFlags":1},`+
+				`"acceptHookAdditionalContexts":true,"machineId":"another-machine","shellStreamArgs":{"command":"echo three"}}`)),
+		},
+		Watch: []string{"out.txt"},
+	},
+	{
+		ID: "shell/denylist", About: "an administrator's command denylist",
+		Steps: []Step{
+			Do(ExecJSON("r1", `{"id":7,"shellStreamArgs":{"command":"rm -f ran1.txt; echo one > ran1.txt",`+
+				`"adminCommandDenylist":["rm"]}}`)),
+			Do(ExecJSON("r2", `{"id":7,"shellStreamArgs":{"command":"echo two > ran2.txt","adminCommandDenylist":["rm"]}}`)),
+			Do(ExecJSON("r3", `{"id":7,"shellStreamArgs":{"command":"echo three > ran3.txt; r\\m -f x","adminCommandDenylist":["rm"]}}`)),
+			Do(ExecJSON("r4", `{"id":7,"shellStreamArgs":{"command":"/bin/rm -rf x; echo four > ran4.txt",`+
+				`"adminCommandDenylist":["rm -rf"]}}`)),
+			Do(ExecJSON("r5", `{"id":7,"backgroundShellSpawnArgs":{"command":"rm -f x; echo five > ran5.txt",`+
+				`"adminCommandDenylist":["rm"]}}`)),
+			Do(ExecJSON("r6", `{"id":7,"shellStreamArgs":{"command":"echo six > ran6.txt","adminCommandDenylist":[]}}`)),
+			Sleep(time.Second),
+		},
+		Watch: []string{"ran1.txt", "ran2.txt", "ran3.txt", "ran4.txt", "ran5.txt", "ran6.txt", "terminals"},
+	},
+	{
+		ID: "shell/stdin", About: "the standard input of a command is empty",
+		Steps: []Step{
+			Do(ExecJSON("r1", `{"id":7,"shellStreamArgs":{"command":"cat; echo rc=$?"}}`)),
+			Do(ExecJSON("r2", `{"id":7,"shellStreamArgs":{"command":"cat; echo rc=$?","closeStdin":true}}`)),
+			Do(ExecJSON("r3", `{"id":7,"shellStreamArgs":{"command":"cat; echo rc=$?","timeout":2000,`+
+				`"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND","toolCallId":"tool-3","closeStdin":true}}`)),
+			Do(ExecJSON("r4", `{"id":7,"shellStreamArgs":{"command":"cat; echo rc=$?","timeout":2000,`+
+				`"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND","smartModeApproval":{"requestId":"s1","reason":"smart"}}}`)),
+			Do(ExecJSON("r5", `{"id":7,"backgroundShellSpawnArgs":{"command":"cat; echo rc=$? > rc5.txt"}}`)),
+			Sleep(time.Second),
+		},
+		Watch: []string{"rc5.txt", "terminals"},
+	},
+	{
+		ID: "shell/stdin-open", About: "the standard input of a command that may go to the background",
+		Steps: []Step{
+			Do(ExecJSON("r1", `{"id":7,"shellStreamArgs":{"command":"cat; echo rc=$? > rc1.txt","timeout":1000,`+
+				`"timeoutBehavior":"TIMEOUT_BEHAVIOR_BACKGROUND"}}`)),
+			Sleep(time.Second),
+		},
+		Watch: []string{"rc1.txt", "terminals"},
+	},
+	{
+		ID: "shell/stdin-tool", About: "the standard input of a background command that may be written to",
+		Steps: []Step{
+			Do(ExecJSON("r1", `{"id":7,"backgroundShellSpawnArgs":{"command":"cat; echo rc=$? > rc1.txt","enableWriteShellStdinTool":true,`+
+				`"suppressStdinLogging":true,"toolCallId":"tool-6",`+
+				`"outputNotification":{"pattern":"x","reason":"y"},"secretScopeId":"s"}}`)),
+			Sleep(time.Second),
+		},
+		Watch: []string{"rc1.txt", "terminals"},
+	},
 	// A sandbox the server asks for.
 	{
 		ID: "shell/sandbox-requested", About: "a command with a requested sandbox policy",

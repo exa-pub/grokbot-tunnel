@@ -180,5 +180,30 @@
     "scenario": "channel/headers",
     "path": "headers/*/connect-timeout-ms",
     "reason": "Both clients accept gzip and Brotli but name them in another order; grokbot-tunnel also sends its deadline as Connect-Timeout-Ms and asks for an uncompressed watch stream. Not decided."
+  },
+  {
+    "scenario": "shell/stdin-open",
+    "path": "requests/r1/**",
+    "reason": "A command that may go to the background on its timeout, or a background command that may be written to: the desktop leaves its standard input open, and since its daemon has nothing that writes there, a command that reads it waits forever; grokbot-tunnel's commands read an empty input and go on. Not decided."
+  },
+  {
+    "scenario": "shell/stdin-open",
+    "path": "files/rc1.txt/*",
+    "reason": "A command that may go to the background on its timeout, or a background command that may be written to: the desktop leaves its standard input open, and since its daemon has nothing that writes there, a command that reads it waits forever; grokbot-tunnel's commands read an empty input and go on. Not decided."
+  },
+  {
+    "scenario": "shell/stdin-open",
+    "path": "files/terminals/*",
+    "reason": "A command that may go to the background on its timeout, or a background command that may be written to: the desktop leaves its standard input open, and since its daemon has nothing that writes there, a command that reads it waits forever; grokbot-tunnel's commands read an empty input and go on. Not decided."
+  },
+  {
+    "scenario": "shell/stdin-tool",
+    "path": "files/rc1.txt/*",
+    "reason": "A command that may go to the background on its timeout, or a background command that may be written to: the desktop leaves its standard input open, and since its daemon has nothing that writes there, a command that reads it waits forever; grokbot-tunnel's commands read an empty input and go on. Not decided."
+  },
+  {
+    "scenario": "shell/stdin-tool",
+    "path": "files/terminals/*/text",
+    "reason": "A command that may go to the background on its timeout, or a background command that may be written to: the desktop leaves its standard input open, and since its daemon has nothing that writes there, a command that reads it waits forever; grokbot-tunnel's commands read an empty input and go on. Not decided."
   }
 ]

@@ -291,6 +291,7 @@ message BackgroundShellSpawnArgs {
   optional string description = 7;
   bool skip_approval = 12;
   optional string conversation_id = 13;
+  repeated string admin_command_denylist = 14;
   optional string request_id = 15;
 }
 message ShellArgs {
@@ -305,6 +306,7 @@ message ShellArgs {
   optional int32 hard_timeout = 14;
   optional string description = 15;
   optional string conversation_id = 21;
+  repeated string admin_command_denylist = 22;
   optional string request_id = 23;
 }
 enum TimeoutBehavior {
@@ -315,6 +317,7 @@ enum TimeoutBehavior {
 message LsArgs {
   string path = 1;
   repeated string ignore = 2;
+  optional .agent.v1.SandboxPolicy sandbox_policy = 4;
   optional uint32 timeout_ms = 5;
 }
 message ReadArgs {

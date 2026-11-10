@@ -20,6 +20,7 @@ const functions = {
   discoveryMissing: source => desktop.discoveryMissing(source),
   discoveryTitle: (text, limit) => desktop.discoveryTitle(text, limit),
   commandTitle: parts => desktop.commandTitle(parts),
+  denylist: (command, rules) => desktop.denylist(command, rules),
   version: () => desktop.version,
 };
 const decode = value => (value !== null && typeof value === 'object' && typeof value.hex === 'string' ? Buffer.from(value.hex, 'hex') : value);

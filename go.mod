@@ -17,6 +17,7 @@ require (
 	golang.org/x/mod v0.30.0
 	golang.org/x/sys v0.31.0
 	golang.org/x/text v0.31.0
+	mvdan.cc/sh/v3 v3.11.0
 )
 
 require (

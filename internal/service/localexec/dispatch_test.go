@@ -219,8 +219,53 @@ func TestShellSandboxRefused(t *testing.T) {
 		t.Fatal(string(b), err)
 	}
 
+	// A listing is refused too, in the error of its result.
+	frames = collect(t, e, execFrame(`{"lsArgs":{"path":".","sandboxPolicy":`+policy+`}}`))
+	messages = clientMessages(t, frames)
+	if len(messages) != 1 || !strings.HasPrefix(messages[0].GetLsResult().GetError().GetError(), "Sandbox policy 'workspace_readonly' is not") {
+		t.Fatal(frames)
+	}
+	frames = collect(t, e, execFrame(`{"lsArgs":{"path":".","sandboxPolicy":{"type":"TYPE_INSECURE_NONE"}}}`))
+	if clientMessages(t, frames)[0].GetLsResult().GetSuccess() == nil {
+		t.Fatal(frames)
+	}
+
 	// Without a sandbox both run.
 	collect(t, e, execFrame(`{"shellStreamArgs":{"command":"echo ran > ran.txt","requestedSandboxPolicy":{"type":"TYPE_INSECURE_NONE"}}}`))
+	if _, err := os.Stat(filepath.Join(e.Root, "ran.txt")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Like the desktop, a command that an administrator's denylist blocks is
+// refused before anything of it starts, and so is a background command,
+// which leaves no terminal file.
+func TestShellDenylist(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
+	e := setup(t)
+	frames := collect(t, e, execFrame(`{"shellStreamArgs":{"command":"echo ok > ran.txt; r\\m -f x","adminCommandDenylist":["rm"]}}`))
+	messages := clientMessages(t, frames)
+	if len(messages) != 1 {
+		t.Fatal(frames)
+	}
+	rejected := messages[0].GetShellStream().GetRejected()
+	if rejected.GetCommand() != `echo ok > ran.txt; r\m -f x` || rejected.GetWorkingDirectory() != e.Root ||
+		!strings.Contains(rejected.GetReason(), "blocked by administrator policy (denylist rule: rm)") {
+		t.Fatal(messages[0])
+	}
+	frames = collect(t, e, execFrame(`{"backgroundShellSpawnArgs":{"command":"rm -f x; echo ok > ran.txt","adminCommandDenylist":["rm"]}}`))
+	messages = clientMessages(t, frames)
+	if len(messages) != 1 || !strings.Contains(messages[0].GetBackgroundShellSpawnResult().GetRejected().GetReason(), "denylist rule: rm") {
+		t.Fatal(frames)
+	}
+	if _, err := os.Stat(filepath.Join(e.Root, "ran.txt")); !os.IsNotExist(err) {
+		t.Fatal("a blocked command ran", err)
+	}
+	if terminals, _ := filepath.Glob(filepath.Join(e.Root, "terminals", "*.txt")); len(terminals) != 0 {
+		t.Fatal(terminals)
+	}
+	// A command the list does not block runs.
+	collect(t, e, execFrame(`{"shellStreamArgs":{"command":"echo ok > ran.txt","adminCommandDenylist":["rm"]}}`))
 	if _, err := os.Stat(filepath.Join(e.Root, "ran.txt")); err != nil {
 		t.Fatal(err)
 	}

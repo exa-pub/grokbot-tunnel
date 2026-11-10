@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import util from 'node:util';
+import Module, {createRequire} from 'node:module';
 import {Bundle} from './bundle.mjs';
 
 // The read stream of node:fs, from memory: a "file" is its text, read in
@@ -40,6 +41,24 @@ export function open(dist) {
     String.raw`function (ID)\(\w,\w=ID\)\{let \w=\w\.replace\(/\\s\+/g," "\)\.trim\(\);for\(let \w of ID\)\w=\w\.replace\(\w,"\[redacted\]"\);`);
   const commandTitle = daemon.find('commandTitle',
     String.raw`function (ID)\(\w\)\{return ID\(\w\.map\(\w=>${title.replaceAll('$', '\\$')}\(\w,Number\.POSITIVE_INFINITY\)\)\.join\(":"\),ID\)\}`);
+  // parseCommand(command): what a shell command consists of, by the
+  // desktop's bash grammar; and denylist({command, parsingResult,
+  // blockedCommands}): why an administrator's denylist refuses it, if it does.
+  const parse = daemon.find('parseCommand', String.raw`=new ID\((ID)\(\w\)\.structured\),`);
+  const denylist = daemon.find('denylist',
+    String.raw`function (ID)\(\{command:\w,parsingResult:\w,blockedCommands:\w\}\)\{if\(\w\.length===0\)return;`);
+  // The grammar is a native module of the client; node-gyp-build, which it
+  // loads itself with, is found through NODE_PATH.
+  const deps = path.join(dist, 'deps');
+  const depsRequire = name => {
+    if (!(process.env.NODE_PATH ?? '').split(path.delimiter).includes(deps)) {
+      process.env.NODE_PATH = [deps, process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
+      Module._initPaths();
+    }
+    return createRequire(path.join(deps, 'index.js'))(name);
+  };
+  daemon.module('tree-sitter', () => depsRequire('tree-sitter'));
+  daemon.module('tree-sitter-bash', () => depsRequire('tree-sitter-bash'));
   const header = daemon.find('terminalHeader', String.raw`function (ID)\(\w\)\{let \w=String\(\w\.runningForMs\)\.padEnd\(`);
   // getFormatForFile's classifier of the start of a file, and the function
   // that cuts a chunk at a character boundary first.
@@ -85,6 +104,16 @@ export function open(dist) {
     discoveryTitle: (text, limit) => (limit === undefined ? daemon.call(title, text)
       : daemon.call(title, text, limit ?? Number.POSITIVE_INFINITY)),
     commandTitle: parts => daemon.call(commandTitle, parts),
+    // Whether an administrator's denylist refuses command: the reason, or
+    // null, with the commands the desktop found in it.
+    denylist(command, rules) {
+      const parsed = daemon.call(parse, command).structured;
+      return {
+        reason: daemon.call(denylist, {command, parsingResult: parsed, blockedCommands: rules}) ?? null,
+        commands: parsed.executableCommands.map(c => c.fullText),
+        parsingFailed: parsed.parsingFailed,
+      };
+    },
     // The classification of the start of a file, or null if it would take
     // jschardet to tell.
     format(bytes) {

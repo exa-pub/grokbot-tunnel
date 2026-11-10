@@ -27,9 +27,13 @@ export class Bundle {
     this.source = fs.readFileSync(file, 'utf8');
     // Logical name → minified name, for symbols.json.
     this.symbols = {};
+    // Modules of the desktop client a function may need, loaded on first
+    // use; see module.
+    this.modules = new Map();
     this.context = vm.createContext({
       Buffer, Math, TextDecoder: util.TextDecoder, TextEncoder: util.TextEncoder, process: {platform: 'linux', env: {}},
       require: name => {
+        if (this.modules.has(name)) return this.modules.get(name)();
         if (!allowed.has(name)) throw new Error(`the bundle requires ${name}: give a stub for what uses it`);
         return nodeRequire(name);
       },
@@ -90,6 +94,13 @@ export class Bundle {
       }
     }
     return null;
+  }
+
+  // module lets the bundle require `name`, which load returns: a module
+  // that neither reads files nor starts anything, such as a parser.
+  module(name, load) {
+    let loaded;
+    this.modules.set(name, () => (loaded ??= load()));
   }
 
   // stub gives `name` a value instead of what the bundle defines.

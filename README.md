@@ -168,6 +168,9 @@ tunnel runs per user at a time, so stop the service first
 - There is no sandbox. A command that Grok Bot asks to run in one (no network,
   or writes only below a directory) is refused, not run without it; the
   desktop app on Linux does the same.
+- A command that an administrator's denylist blocks, if Grok Bot sends one
+  with it, is refused as by the desktop app. A command written in a way that
+  cannot be checked against the list is refused too.
 - Tokens are stored unencrypted in `~/.grok/bot-tunnel/`, readable only by you.
 - `--debug` logs requests in full, including commands and file contents; for
   the service they go to the journal.

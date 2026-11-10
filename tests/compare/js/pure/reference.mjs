@@ -112,6 +112,22 @@ const discoveryTitles = titleTexts.map(text => ({text, title: desktop.discoveryT
 const commandTitles = [['ns', '/home/me/x', 'cmd'], ['review'], ['a', `k=${key}`, 'x'.repeat(170)], ['  a  b ', 'me@example.com']]
   .map(parts => ({parts, title: desktop.commandTitle(parts)}));
 
+// An administrator's denylist: the simple commands the desktop finds in a
+// command, and whether rules block it. The parser is a native module of the
+// client, so this part needs the Node of the comparison image.
+const denylistCases = [
+  ['rm -f x; echo one', ['rm']], ['echo ok', ['rm']], ['r\\m -f x', ['rm']], ["'rm' -f x", ['rm']], ['/bin/rm -rf x', ['rm -rf']],
+  ['sudo rm -rf /', ['rm']], ['sudo rm -rf /', ['*rm*']], ['git push --force origin main', ['git:*--force*']], ['git push origin main', ['git:*--force*']],
+  ['aws s3 rm s3://b --recursive', ['aws:*s3 rm*']], ['echo hi', ['*']], ['echo hi', [':x']], ['echo hi', ['  ', '']], ['echo hi', []],
+  ['', ['rm']], ['A=1 B=2', ['rm']], ['ls | xargs rm', ['rm']], ['ls | xargs rm', ['xargs:rm*']], ['echo "$(rm x)"', ['rm']],
+  ['cat <<EOF\nbody $(rm x)\nEOF', ['rm']], ['if [ -f x ]; then rm x; fi', ['rm']], ['for f in *; do echo $f; done', ['rm', 'echo']],
+  ['time rm x', ['rm']], ['time rm x', ['time']], ['FOO=1 rm x > out y', ['rm x y']], ['FOO=1 rm x > out y', ['rm x']],
+  ['unset A; export B=1; [ -f x ] && local c=2', ['unset', 'export', 'local', '[']], ['! unset A', ['unset']], ['let x=1+2', ['let']],
+  ['rm    -rf\t x', ['rm -rf']], ['RM -rf x', ['rm']], ['echo rm', ['rm']], ["$'r\\x6d' -rf x", ['rm']], ['f() { rm x; }; f', ['rm']],
+  ['( cd /tmp && rm x ) &', ['rm']], ['git commit -m "rm old files"', ['rm']], ['echo a\nrm b', ['e*b']], ['echo a b', ['e*b']],
+];
+const denylist = denylistCases.map(([command, rules]) => ({command, rules, ...desktop.denylist(command, rules)}));
+
 const output = {
   provenance: {
     version: desktop.version, platform: 'linux', method: 'isolated pure functions from source; not desktop traffic',
@@ -120,7 +136,7 @@ const output = {
   ranges: cases.map(c => ({...c, result: desktop.ranges(c.text, c.args)})),
   streaming, fallback,
   discoveryMissing: desktop.discoveryMissing('codex'),
-  discoveryTitles, commandTitles,
+  discoveryTitles, commandTitles, denylist,
   terminalHeader: desktop.terminalHeader({
     pid: 42, cwd: '/workspace', command: 'printf hello', status: 'running', startedAt: '2026-01-01T00:00:00.000Z', runningForMs: 0,
   }),

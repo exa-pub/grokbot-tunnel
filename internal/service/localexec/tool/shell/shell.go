@@ -13,6 +13,7 @@ import (
 	"time"
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/denylist"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/sandbox"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/shellsession"
@@ -48,7 +49,8 @@ func New(session *shellsession.Session, background *background.Executor) *Execut
 // with its output going to a terminal file. isBackground only changes the
 // soft timeout, as on the desktop. Without a working directory, a command
 // whose session cwd no longer exists does not run, as on the desktop, and
-// neither does a command that is to run in a sandbox (see sandbox).
+// neither does a command that an administrator's denylist blocks (see
+// denylist) or one that is to run in a sandbox (see sandbox).
 func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send execstream.Send) error {
 	if err := ex.session.Init(ctx); err != nil {
 		return err
@@ -59,6 +61,12 @@ func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send exec
 		if err := send(shellMessage(stderrEvent(warning))); err != nil {
 			return err
 		}
+	}
+	// Like the desktop, which checks an administrator's denylist before
+	// anything else.
+	if reason := denylist.Refusal(x.Command, x.AdminCommandDenylist); reason != "" {
+		rejected := &agentv1.ShellRejected{Command: x.Command, WorkingDirectory: cwd, Reason: reason}
+		return send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_Rejected{Rejected: rejected}}))
 	}
 	// Like the desktop's after local approval: no command, and the sandbox
 	// that was asked for, which is none unless the request names one.

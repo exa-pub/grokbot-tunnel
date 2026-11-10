@@ -8,14 +8,17 @@ probe; `tests/compare/README.md` says how the comparison works.
 ranges, the streaming text reader the Linux read executor uses (including
 `max_chars`), the choice between lossy UTF-8 and Latin-1 for invalid UTF-8,
 the missing-setup discovery result, the titles of discovered items with
-what is replaced in them (`discoveryTitles`, `commandTitles`), the terminal
-header, how the start of a
+what is replaced in them (`discoveryTitles`, `commandTitles`), the simple
+commands found in a shell command and what an administrator's denylist says
+of it (`denylist`), the terminal header, how the start of a
 file is classified (`format`: UTF-16/UTF-32, binary, image; inputs that would
 reach jschardet are left out) and the size an image is scaled to (`imageFit`).
 `tests/compare/js/pure/reference.mjs` runs only these functions, in a `vm`
 context, feeding the reader its 64 KiB file chunks from memory; the
-application is not started. `symbols.json` lists the minified names the
-functions have in this release.
+application is not started. The denylist cases alone load a native module
+of the client, its bash grammar, which needs the Node of the comparison
+image. `symbols.json` lists the minified names the functions have in this
+release.
 
 `transcripts/` holds what the client's local-exec daemon answered to the
 requests of the comparison scenarios (`tests/compare/scenarios`), one file a

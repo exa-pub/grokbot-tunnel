@@ -19,6 +19,7 @@ import (
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/proc"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/denylist"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/pathroot"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/sandbox"
@@ -59,14 +60,24 @@ func New(root *pathroot.Root, session *shellsession.Session) *Executor {
 	}
 }
 
-// Execute starts args.Command and sends its shell ID, or, like the desktop
-// on Linux, the refusal of a command that is to run in a sandbox.
+// Execute starts args.Command and sends its shell ID, or, like the desktop,
+// the refusal of a command that an administrator's denylist blocks or, on
+// Linux, of one that is to run in a sandbox.
 func (bg *Executor) Execute(ctx context.Context, args *agentv1.BackgroundShellSpawnArgs, send execstream.Send) error {
 	result := &agentv1.BackgroundShellSpawnResult{}
-	refusal, err := bg.sandboxed(ctx, args)
+	rejected, err := bg.denied(ctx, args)
+	if err != nil {
+		return err
+	}
+	var refusal *agentv1.ShellSandboxUnsupported
+	if rejected == nil {
+		refusal, err = bg.sandboxed(ctx, args)
+	}
 	switch {
 	case err != nil:
 		return err
+	case rejected != nil:
+		result.Result = &agentv1.BackgroundShellSpawnResult_Rejected{Rejected: rejected}
 	case refusal != nil:
 		result.Result = &agentv1.BackgroundShellSpawnResult_SandboxUnsupported{SandboxUnsupported: refusal}
 	default:
@@ -215,6 +226,21 @@ func (bg *Executor) Release(n uint32) {
 func (bg *Executor) Remove(n uint32) error {
 	defer bg.Release(n)
 	return bg.root.Remove(fmt.Sprintf("%s/%d.txt", terminalfile.Dir, n))
+}
+
+// denied returns the refusal of a command that the denylist of its request
+// blocks (see denylist), like the desktop's: before anything is started or
+// written.
+func (bg *Executor) denied(ctx context.Context, args *agentv1.BackgroundShellSpawnArgs) (*agentv1.ShellRejected, error) {
+	reason := denylist.Refusal(args.Command, args.AdminCommandDenylist)
+	if reason == "" {
+		return nil, nil //nolint:nilnil // no refusal
+	}
+	if err := bg.session.Init(ctx); err != nil {
+		return nil, err
+	}
+	cwd, _ := bg.session.Cwd(args.WorkingDirectory, bg.session.State())
+	return &agentv1.ShellRejected{Command: args.Command, WorkingDirectory: cwd, Reason: reason}, nil
 }
 
 // sandboxed returns the refusal of a command whose request asks for a
