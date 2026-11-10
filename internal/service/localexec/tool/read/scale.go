@@ -11,7 +11,7 @@ import (
 )
 
 // boxScaler scales an image down row by row, as the desktop's streaming PNG
-// scaling does (Mct): source column x goes to column x·w/sw, row y to row
+// scaling does (Jlt): source column x goes to column x·w/sw, row y to row
 // y·h/sh, and each target pixel averages its source pixels weighted by
 // their alpha. It holds only the target image and one row of sums.
 type boxScaler struct {
@@ -160,14 +160,14 @@ func orient(img *image.NRGBA, orientation int) *image.NRGBA {
 
 // pngRows is an 8- or 16-bit PNG without palette, transparency chunk or
 // interlacing, which can be scaled as it is inflated. The desktop scales
-// 8-bit ones so (P3r, Mct) and decodes 16-bit ones whole.
+// 8-bit ones so (J_r, Jlt) and decodes 16-bit ones whole.
 type pngRows struct {
 	w, h, channels, depth int
 	idat                  [][]byte
 }
 
 // streamablePNG returns the rows of a PNG that can be scaled as it is
-// inflated (P3r).
+// inflated (J_r).
 func streamablePNG(b []byte) (pngRows, bool) {
 	var p pngRows
 	header := false

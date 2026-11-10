@@ -1,0 +1,115 @@
+{
+  "scenario": "shell/sandbox-background",
+  "digest": "sha256:22eac4935c40fd31c42d07623a127becc6c7c3a2cfaeb2077be19f55fbff104d",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "backgroundShellSpawnResult": {
+            "sandboxUnsupported": {
+              "command": "echo ran > ran1.txt; echo one",
+              "isReadonly": true,
+              "reason": "Sandbox binary path was not configured",
+              "sandboxPolicyType": "workspace_readonly",
+              "workingDirectory": "$ROOT"
+            }
+          },
+          "id": 1,
+          "localExecutionTimeMs": "<MS>"
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "backgroundShellSpawnResult": {
+            "sandboxUnsupported": {
+              "command": "echo ran > ran2.txt; echo two",
+              "reason": "Sandbox binary path was not configured",
+              "sandboxPolicyType": "workspace_readwrite",
+              "workingDirectory": "$ROOT"
+            }
+          },
+          "id": 2,
+          "localExecutionTimeMs": "<MS>"
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ],
+    "r3": [
+      {
+        "client": {
+          "backgroundShellSpawnResult": {
+            "success": {
+              "command": "echo ran > ran3.txt; echo three",
+              "pid": "<PID>",
+              "shellId": "<SHELL#1>",
+              "workingDirectory": "$ROOT"
+            }
+          },
+          "id": 3,
+          "localExecutionTimeMs": "<MS>"
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 3
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "ran1.txt": {
+      "missing": true
+    },
+    "ran2.txt": {
+      "missing": true
+    },
+    "ran3.txt": {
+      "mode": "0644",
+      "sha256": "f4472a14b6160e58b35bfeb710d23d240ab59402cc84bc7b5a579c7373849295",
+      "size": 4,
+      "text": "ran\n"
+    },
+    "terminals": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "terminals/<SHELL#1>.txt": {
+      "mode": "0644",
+      "text": "---\npid: <PID>\ncwd: \"$ROOT\"\ncommand: \"echo ran > ran3.txt; echo three\"\nstatus: succeeded\nstarted_at: <TS>\nrunning_for_ms: <MS>     \n---\nthree\n\n---\nexit_code: 0\nelapsed_ms: <MS>\nended_at: <TS>\n---\n"
+    },
+    "terminals/<SHELL#2>.txt": {
+      "mode": "0644",
+      "text": "---\ncwd: \"$ROOT\"\ncommand: \"echo ran > ran1.txt; echo one\"\nstatus: failed   \nstarted_at: <TS>\nrunning_for_ms: <MS>     \n---\n\n---\nerror: \"Sandbox policy 'workspace_readonly' is not supported on this system. Ensure the sandbox helper binary is available, or use 'insecure_none'. Reason: Sandbox binary path was not configured\"\nelapsed_ms: <MS>\nended_at: <TS>\n---\n"
+    },
+    "terminals/<SHELL#3>.txt": {
+      "mode": "0644",
+      "text": "---\ncwd: \"$ROOT\"\ncommand: \"echo ran > ran2.txt; echo two\"\nstatus: failed   \nstarted_at: <TS>\nrunning_for_ms: <MS>     \n---\n\n---\nerror: \"Sandbox policy 'workspace_readwrite' is not supported on this system. Ensure the sandbox helper binary is available, or use 'insecure_none'. Reason: Sandbox binary path was not configured\"\nelapsed_ms: <MS>\nended_at: <TS>\n---\n"
+    }
+  }
+}

@@ -104,7 +104,7 @@ func redact(text string) string {
 }
 
 // redactDesktop normalizes whitespace and replaces secrets, links, emails
-// and paths exactly as the desktop's Bp does before shortening; the oracle
+// and paths exactly as the desktop's bp does before shortening; the oracle
 // test compares the two on random texts.
 func redactDesktop(text string) string {
 	text = collapseSpace(text)
@@ -193,10 +193,10 @@ func pathNeighbor(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '.' || c == ':' || c == '-'
 }
 
-// discoveryTitle redacts and shortens text (Bp).
+// discoveryTitle redacts and shortens text (bp).
 func discoveryTitle(text string) string { return shorten(redact(text)) }
 
-// commandTitle names a command by its redacted namespace and name (eFe).
+// commandTitle names a command by its redacted namespace and name (mJe).
 func commandTitle(parts []string) string { return joinTitle(parts, redact) }
 
 // joinTitle joins parts, each redacted on its own, and shortens the result.
@@ -209,7 +209,7 @@ func joinTitle(parts []string, redact func(string) string) string {
 }
 
 // shorten cuts text longer than maxTitleUnits UTF-16 code units to one less,
-// trims trailing whitespace and appends an ellipsis (tFe). A surrogate pair
+// trims trailing whitespace and appends an ellipsis (hJe). A surrogate pair
 // is not split.
 func shorten(text string) string {
 	units := utf16.Encode([]rune(text))
@@ -229,10 +229,10 @@ func nodeBase(path string) string {
 	return path[strings.LastIndexByte(path, '/')+1:]
 }
 
-// commandExcerpt describes an MCP server started by command (LFe).
+// commandExcerpt describes an MCP server started by command (YJe).
 func commandExcerpt(command string) string { return discoveryTitle("stdio · " + nodeBase(command)) }
 
-// dedupItems drops untitled and repeated items, keeping the first (PFe).
+// dedupItems drops untitled and repeated items, keeping the first (zJe).
 func dedupItems(items []discoveryItem) []discoveryItem {
 	seen := map[string]bool{}
 	out := []discoveryItem{}
@@ -247,7 +247,7 @@ func dedupItems(items []discoveryItem) []discoveryItem {
 }
 
 // codexMCP lists the MCP servers in a Codex config.toml with their transport
-// (xGt). It understands just enough TOML for [mcp_servers.<name>] tables.
+// (AHt). It understands just enough TOML for [mcp_servers.<name>] tables.
 func codexMCP(text string) []discoveryItem {
 	var order []string
 	transport := map[string]string{}

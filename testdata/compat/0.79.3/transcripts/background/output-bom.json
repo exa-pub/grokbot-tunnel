@@ -1,0 +1,48 @@
+{
+  "scenario": "background/output-bom",
+  "digest": "sha256:bf08dad210d97eb490c395b05a4edf287c0b1583fe739c671588da375fab8175",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "backgroundShellSpawnResult": {
+            "success": {
+              "command": "printf '\\xff\\xfe raw\\n'; echo next",
+              "pid": "<PID>",
+              "shellId": "<SHELL#1>",
+              "workingDirectory": "$ROOT"
+            }
+          },
+          "id": 1,
+          "localExecutionTimeMs": "<MS>"
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "terminals": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "terminals/<SHELL#1>.txt": {
+      "mode": "0644",
+      "text": "---\npid: <PID>\ncwd: \"$ROOT\"\ncommand: \"printf '\\\\xff\\\\xfe raw\\\\n'; echo next\"\nstatus: succeeded\nstarted_at: <TS>\nrunning_for_ms: <MS>     \n---\n爠睡渊硥ੴ\n---\nexit_code: 0\nelapsed_ms: <MS>\nended_at: <TS>\n---\n"
+    }
+  }
+}

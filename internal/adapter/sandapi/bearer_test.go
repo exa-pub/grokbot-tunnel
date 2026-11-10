@@ -59,7 +59,7 @@ func unauthenticated(t *testing.T, code uint64, calls *atomic.Int32, headers *ht
 	return s
 }
 
-// Like the desktop's mOe, a rejected call reports the token but is not
+// Like the desktop's nOe, a rejected call reports the token but is not
 // repeated, and errors about foreign credentials report nothing.
 func TestBearerRejectedNotRepeated(t *testing.T) {
 	for _, tc := range []struct {

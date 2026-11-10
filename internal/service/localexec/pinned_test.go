@@ -339,7 +339,7 @@ func TestPinnedShellStartAndExit(t *testing.T) {
 	assert.NotNil(t, events[len(events)-1].GetExit().LocalExecutionTimeMs, "aborted")
 }
 
-// S5, aligned with the desktop's dS: without a working directory, a session
+// S5, aligned with the desktop's D3: without a working directory, a session
 // cwd that no longer exists gives start, the desktop's stderr and exit 1 with
 // that cwd; the command does not run.
 func TestPinnedShellGoneCwd(t *testing.T) {
@@ -438,7 +438,7 @@ func largeWebP(t *testing.T, animated bool, w, h int) []byte {
 	return b
 }
 
-// ≠: the desktop 0.78.4 does not decode a WEBP larger than 1280 pixels or
+// ≠: the desktop 0.79.3 does not decode a WEBP larger than 1280 pixels or
 // 1 MiB and answers with an error, "webp codec not registered…"; we encode
 // it again as JPEG, or PNG when it has transparency. One that Go cannot
 // decode either (animated) gets the desktop's error.
@@ -462,7 +462,7 @@ func TestPinnedReadLargeWebP(t *testing.T) {
 
 // N1 (aligned with the desktop for read and ls, cr): "~" and file:// URLs in
 // file paths are expanded and the expanded path is checked against Root. ≠:
-// the desktop's q9 checks the unexpanded path, so "~/secret" passes as
+// the desktop's n9 checks the unexpanded path, so "~/secret" passes as
 // <Root>/~/secret and read then leaves a Root without the home directory;
 // and its upload and download do not expand, writing below a directory named
 // "~" in Root. Both are refused or expanded here on purpose.

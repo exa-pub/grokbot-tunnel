@@ -1,0 +1,61 @@
+{
+  "scenario": "shell/syntax-error",
+  "digest": "sha256:c9e93a4a100faf98511fa347fc915a271758a09810cb80b93eb632fc2e04241a",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stderr": {
+              "data": "--: eval: line 1: syntax error near unexpected token `then'\n--: eval: line 1: `if then fi ('\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "code": 2,
+              "cwd": "$ROOT",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  }
+}

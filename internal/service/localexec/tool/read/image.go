@@ -97,7 +97,7 @@ type imageHeader struct {
 	rows *pngRows
 }
 
-// prepareImage prepares an image for the model like the desktop's Wct: an
+// prepareImage prepares an image for the model like the desktop's tdt: an
 // image within 1024 pixels (WEBP: 1280) and 1 MiB is passed on as it is once
 // it decodes; a larger one is scaled down and encoded again in its format,
 // smaller by a fifth until it fits 1 MiB. A JPEG is turned by its EXIF
@@ -146,7 +146,7 @@ func prepareImage(ctx context.Context, data []byte) ([]byte, error) {
 }
 
 // webpAsIs reports a WEBP the desktop passes on as it is by its header
-// (Y3r): of a kept size or within 1280 pixels, and within 1 MiB.
+// (ayr): of a kept size or within 1280 pixels, and within 1 MiB.
 func webpAsIs(b []byte) bool {
 	size, ok := webpSize(b)
 	if !ok || len(b) > maxImageBytes {
@@ -287,7 +287,7 @@ func (hdr imageHeader) fit(kind imageKind) (int, int, bool) {
 }
 
 // pixels returns the pixels to scale: a PNG that can be is scaled to the
-// target size as it is inflated, as the desktop does (Mct); other images,
+// target size as it is inflated, as the desktop does (Jlt); other images,
 // and one whose rows do not inflate, are decoded.
 func pixels(ctx context.Context, data []byte, kind imageKind, hdr imageHeader) (image.Image, error) {
 	if hdr.rows != nil {
@@ -504,7 +504,7 @@ func zlibError(err error) error {
 }
 
 // pngPixelBytes is the size of the decompressed pixel data of a PNG header
-// (F3r), or -1 for a header the check does not know.
+// (Y_r), or -1 for a header the check does not know.
 func pngPixelBytes(ihdr []byte) int64 {
 	channels := map[byte]int64{0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[ihdr[9]]
 	depth := int64(ihdr[8])

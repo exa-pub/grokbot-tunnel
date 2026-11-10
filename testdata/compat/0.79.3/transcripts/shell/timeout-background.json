@@ -1,0 +1,108 @@
+{
+  "scenario": "shell/timeout-background",
+  "digest": "sha256:bb70c7ecd8be4bec24f07765d1d19e3a752c49650a384c61d0838046ea4882aa",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "backgrounded": {
+              "command": "sleep 4; echo late",
+              "msToWait": 1000,
+              "pid": "<PID>",
+              "reason": "SHELL_BACKGROUND_REASON_TIMEOUT",
+              "shellId": "<SHELL#1>",
+              "workingDirectory": "$ROOT"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stdout": {
+              "data": "ok\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "cwd": "$ROOT",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "terminals": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "terminals/<SHELL#1>.txt": {
+      "mode": "0644",
+      "text": "---\npid: <PID>\ncwd: \"$ROOT\"\ncommand: \"sleep 4; echo late\"\nstatus: succeeded\nstarted_at: <TS>\nrunning_for_ms: <MS>     \n---\nlate\n\n---\nexit_code: 0\nelapsed_ms: <MS>\nended_at: <TS>\n---\n"
+    }
+  }
+}

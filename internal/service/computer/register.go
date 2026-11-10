@@ -12,7 +12,7 @@ import (
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
 )
 
-// registerTimeout bounds RegisterSandMachine, like the desktop's Wie.
+// registerTimeout bounds RegisterSandMachine, like the desktop's zae.
 const registerTimeout = 10 * time.Second
 
 // Register announces this machine to the user's account under label, with

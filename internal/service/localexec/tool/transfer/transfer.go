@@ -31,7 +31,7 @@ type Transfer struct {
 func New(root *pathroot.Root) *Transfer { return &Transfer{root: root} }
 
 // Upload writes data to path, following symlinks inside the root, as the
-// desktop's atomic write (f0) does: uploads to one file run one at a time;
+// desktop's atomic write (cp) does: uploads to one file run one at a time;
 // an existing file keeps its mode, a new one gets 0666 and new directories
 // 0777, less the umask. Readers never see partial data, except in a file
 // with other hard links, which is written in place to keep them (bug B7).

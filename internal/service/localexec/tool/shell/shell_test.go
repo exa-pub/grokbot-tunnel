@@ -79,7 +79,7 @@ func TestStreamWriterKeepsUTF8Whole(t *testing.T) {
 	}
 }
 
-// Like the desktop's dS, the full output stops at 49 MiB, flushing a cut
+// Like the desktop's D3, the full output stops at 49 MiB, flushing a cut
 // sequence, and its file ends with a note that counts towards its size and
 // lines; the agent's stream is not affected.
 func TestFullOutputTruncated(t *testing.T) {

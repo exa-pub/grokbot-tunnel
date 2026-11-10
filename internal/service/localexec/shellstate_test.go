@@ -452,7 +452,7 @@ func TestShellProfileCdIgnored(t *testing.T) {
 	})
 }
 
-// Like the desktop's dS, commands get AGENT_TRANSCRIPTS and the request's
+// Like the desktop's D3, commands get AGENT_TRANSCRIPTS and the request's
 // CURSOR_CONVERSATION_ID and CURSOR_REQUEST_ID; the latter are not carried
 // over, nor are proxy settings, as in the desktop's dump.
 func TestShellRequestEnvAndScopedVariables(t *testing.T) {

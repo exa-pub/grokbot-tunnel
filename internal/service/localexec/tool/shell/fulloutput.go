@@ -15,7 +15,7 @@ import (
 
 const (
 	// fullOutputDir is the desktop's directory of full outputs below the
-	// project, which on local-exec is the root (oN).
+	// project, which on local-exec is the root (LO).
 	fullOutputDir = "agent-tools"
 	// maxFullOutput is how many bytes of output a full output keeps, like the
 	// desktop's 50 MiB less 1 MiB (YE).

@@ -18,7 +18,7 @@ func policy(t *testing.T, json string) *agentv1.SandboxPolicy {
 	return p
 }
 
-// The policy of the start event, as the desktop 0.78.4 answered in the
+// The policy of the start event, as the desktop 0.79.3 answered in the
 // comparison scenarios shell/sandbox-*.
 func TestEffective(t *testing.T) {
 	for _, tc := range []struct {

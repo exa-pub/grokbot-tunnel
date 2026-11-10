@@ -18,9 +18,9 @@ const (
 	ghostOff = "false"
 )
 
-// As in the desktop's cOe: lookups time out after privacyTimeout (W9t), a
-// result is kept for privacyCacheTTL ($9t) and a failure for
-// privacyRetryTTL (j9t).
+// As in the desktop's Jxe: lookups time out after privacyTimeout (n3t), a
+// result is kept for privacyCacheTTL (e3t) and a failure for
+// privacyRetryTTL (t3t).
 const (
 	privacyTimeout  = 3 * time.Second
 	privacyCacheTTL = 5 * time.Minute

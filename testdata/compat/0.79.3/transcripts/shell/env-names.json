@@ -1,0 +1,60 @@
+{
+  "scenario": "shell/env-names",
+  "digest": "sha256:6307a148b69aa059a6be3589c41d0ccb5cd1f15db63672b12281abd66b285ec9",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stdout": {
+              "data": "AGENT_TRANSCRIPTS\nCURSOR_AGENT\nFORCE_COLOR\nGIT_CONFIG_COUNT\nGIT_CONFIG_KEY_0\nGIT_CONFIG_VALUE_0\nHOME\nLANG\nLOGNAME\nNODE_PATH\nNO_COLOR\nPATH\nPWD\nSAND_AGENT\nSAND_LAB\nSAND_PACKAGED\nSHELL\nSHLVL\nTERM\nUSER\n_\n_ZO_DOCTOR\n__CURSOR_SANDBOX_ENV_RESTORE\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "cwd": "$ROOT",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  }
+}

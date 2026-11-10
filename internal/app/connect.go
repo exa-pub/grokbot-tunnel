@@ -63,8 +63,9 @@ func Connect(ctx context.Context, opts cli.ConnectOptions) error {
 	defer awaitRefresh(ctx, u.tokens)
 	// Known difference: the desktop registers only when the account's privacy
 	// mode allows storage (isSandMachineStorageAllowed: NO_TRAINING or a
-	// training-allowed mode); we register always, since without a check of
-	// the server we cannot tell whether the computer works unregistered.
+	// training-allowed mode, asked for the selected team since 0.79.3); we
+	// register always, since without a check of the server we cannot tell
+	// whether the computer works unregistered.
 	if err = computer.Register(ctx, u.dashboard, e.machine.Label, entity.Mode(opts.Permission)); err != nil {
 		if ctx.Err() != nil {
 			return nil // stopped while starting, e.g. by systemctl stop

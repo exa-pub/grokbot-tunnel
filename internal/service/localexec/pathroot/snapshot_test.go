@@ -16,7 +16,7 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/pathroot"
 )
 
-// L3-1: like the desktop's q9, a symlink inside the root whose target is
+// L3-1: like the desktop's n9, a symlink inside the root whose target is
 // inside it passes, also absolute (ln -s "$HOME/dotfiles/vimrc" ~/.vimrc)
 // or through ".." above the root, which os.Root refuses to follow: Real is
 // the path with them resolved. Also with a root given through a symlink.
@@ -108,7 +108,7 @@ func readPath(t *testing.T, r *pathroot.Root, path string) string {
 }
 
 // L3-2: like the desktop, whose root is a path it takes the realpath of on
-// every call (q9), the root follows its symlink when it is retargeted; a
+// every call (n9), the root follows its symlink when it is retargeted; a
 // path checked before keeps the directory it was checked in until it is
 // closed.
 func TestRootFollowsRetarget(t *testing.T) {

@@ -1,0 +1,119 @@
+{
+  "scenario": "root/transfer",
+  "digest": "sha256:7e34e6dd1f640ee4c288242dba612af82615fa1230036e84e60f866ba21bed72",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "fileError": {
+          "error": "Path is outside the allowed local-exec root and was refused: $HOME/outside/up.txt"
+        }
+      }
+    ],
+    "r2": [
+      {
+        "fileError": {
+          "error": "Path is outside the allowed local-exec root and was refused: ../home/outside/up2.txt"
+        }
+      }
+    ],
+    "r3": [
+      {
+        "fileError": {
+          "error": "Path resolves through a symlink to outside the allowed local-exec root and was refused: escdir/up3.txt"
+        }
+      }
+    ],
+    "r4": [
+      {
+        "fileError": {
+          "error": "Path resolves through a symlink to outside the allowed local-exec root and was refused: esc.txt"
+        }
+      }
+    ],
+    "r5": [
+      {
+        "fileError": {
+          "error": "Path is outside the allowed local-exec root and was refused: $HOME/outside/s.txt"
+        }
+      }
+    ],
+    "r6": [
+      {
+        "fileError": {
+          "error": "Path resolves through a symlink to outside the allowed local-exec root and was refused: esc.txt"
+        }
+      }
+    ],
+    "r7": [
+      {
+        "fileError": {
+          "error": "Path resolves through a symlink to outside the allowed local-exec root and was refused: escdir/s.txt"
+        }
+      }
+    ],
+    "r8": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size": 0,
+          "text": ""
+        }
+      }
+    ]
+  },
+  "files": {
+    ".": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "abs.txt": {
+      "link": "$ROOT/inner/i.txt"
+    },
+    "esc.txt": {
+      "link": "$ROOT/../home/outside/s.txt"
+    },
+    "escdir": {
+      "link": "$ROOT/../home/outside"
+    },
+    "inner": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "inner/i.txt": {
+      "mode": "0644",
+      "sha256": "ab5080369a968a3638a5a5e0df9932a3656766bec904667f72438fd49cd515b0",
+      "size": 3,
+      "text": "in\n"
+    },
+    "innerlink": {
+      "link": "inner"
+    },
+    "loop": {
+      "link": "loop"
+    },
+    "rel.txt": {
+      "link": "../root/inner/i.txt"
+    },
+    "~": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "~/tilde.txt": {
+      "mode": "0644",
+      "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+      "size": 1,
+      "text": "x"
+    }
+  }
+}

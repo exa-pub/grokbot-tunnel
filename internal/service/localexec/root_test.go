@@ -66,7 +66,7 @@ func readContent(t *testing.T, e *Executor, path string) string {
 	return "throw: " + frames[0].control.GetThrow().GetError()
 }
 
-// L3-1: like the desktop's q9, a symlink inside the root whose target is
+// L3-1: like the desktop's n9, a symlink inside the root whose target is
 // inside it is followed by read, ls, download and upload, also when it is
 // absolute (~/.vimrc -> $HOME/dotfiles/vimrc, the usual dotfiles link) or
 // leaves the root on the way (rel -> ../real/...), which os.Root does not
@@ -151,7 +151,7 @@ func TestSymlinksInsideRoot(t *testing.T) {
 }
 
 // L3-2: like the desktop, whose root is a path it takes the realpath of on
-// every call (q9), the file tools follow a symlink root that is retargeted
+// every call (n9), the file tools follow a symlink root that is retargeted
 // (/srv/app/current -> releases/vN), as the shell does.
 func TestRootRetargeted(t *testing.T) {
 	base := t.TempDir()
@@ -186,7 +186,7 @@ func TestRootRetargeted(t *testing.T) {
 // L3-2: a root removed and created again (rm -rf proj && git clone) is
 // opened again, instead of reading the removed directory. While it is
 // missing, the file tools fail as the desktop's do on a path under a root
-// whose realpath fails (q9): read finds no file, ls no directory, download
+// whose realpath fails (n9): read finds no file, ls no directory, download
 // fails to open it, and upload creates the root, like the desktop's
 // recursive mkdir.
 func TestRootRecreated(t *testing.T) {
@@ -290,7 +290,7 @@ func TestRootRetargetedConcurrently(t *testing.T) {
 // do upload and download, where the desktop takes "~" as a directory of
 // that name in the root (pinned difference). Results name the expanded
 // path. A home directory outside a narrower root is refused, where the
-// desktop's q9 checks the unexpanded path and reads it anyway.
+// desktop's n9 checks the unexpanded path and reads it anyway.
 func TestFileToolsExpandHome(t *testing.T) {
 	root := t.TempDir()
 	e := newAt(t, root)

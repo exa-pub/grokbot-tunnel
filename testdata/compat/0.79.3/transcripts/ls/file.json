@@ -1,0 +1,36 @@
+{
+  "scenario": "ls/file",
+  "digest": "sha256:3ec8942cbce6acc1b20732d564f59e887183d01a27dcac684dfb88ed1be98b1e",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "lsResult": {
+            "error": {
+              "error": "Path is not a directory: $ROOT/tree/c/f3.go",
+              "path": "$ROOT/tree/c/f3.go"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  }
+}

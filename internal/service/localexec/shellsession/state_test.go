@@ -139,7 +139,7 @@ func TestShellStartupEnvReplayed(t *testing.T) {
 	}
 }
 
-// The desktop's dS: AGENT_TRANSCRIPTS below the root, the conversation ID
+// The desktop's D3: AGENT_TRANSCRIPTS below the root, the conversation ID
 // encoded like aoe and the request ID of an evaluation run hashed like DVe.
 func TestRequestEnv(t *testing.T) {
 	long := strings.Repeat("é", 40) // 240 characters encoded

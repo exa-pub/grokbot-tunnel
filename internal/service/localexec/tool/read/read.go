@@ -157,7 +157,7 @@ func dataResult(path string, success *agentv1.ReadSuccess, data []byte) *agentv1
 	return &agentv1.ReadResult{Result: &agentv1.ReadResult_Success{Success: success}}
 }
 
-// readText reads text as the desktop's streaming reader does (m_r): with the
+// readText reads text as the desktop's streaming reader does (v4r): with the
 // hinted or detected encoding, and again as lossy UTF-8 or Latin-1 if strict
 // UTF-8 meets invalid data.
 func readText(ctx context.Context, f *os.File, size int64, encoding string, x *agentv1.ReadArgs) (textResult, error) {

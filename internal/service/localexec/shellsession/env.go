@@ -19,7 +19,7 @@ const transcriptsDir = "agent-transcripts"
 // evalMarkers make the desktop hash a request ID (GZt).
 var evalMarkers = []string{"eval-cursorbench", "cursorbench", "sand-eval", "eval-harness"}
 
-// RequestEnv returns the variables the desktop's shell core executor (dS)
+// RequestEnv returns the variables the desktop's shell core executor (D3)
 // adds for a command of a request: CURSOR_CONVERSATION_ID and
 // CURSOR_REQUEST_ID when given, and AGENT_TRANSCRIPTS below root.
 func RequestEnv(root, conversationID, requestID string) []string {

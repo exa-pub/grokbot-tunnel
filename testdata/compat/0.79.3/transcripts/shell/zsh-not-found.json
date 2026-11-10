@@ -1,0 +1,61 @@
+{
+  "scenario": "shell/zsh-not-found",
+  "digest": "sha256:cdaae098992deadd2fee40f8c4345f7702f850f907895c63aae55756dd63d473",
+  "subject": "desktop-0.79.3",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.19.0",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stderr": {
+              "data": "(eval):1: command not found: command_that_does_not_exist_xyz\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "code": 127,
+              "cwd": "$ROOT",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  }
+}

@@ -133,7 +133,7 @@ func TestPNGRowsScaleLikeDecoded(t *testing.T) {
 }
 
 // A 7000×7000 PNG of 190–380 KB is scaled as it is inflated, as the
-// desktop's Mct does, instead of being decoded into 200–400 MiB of pixels
+// desktop's Jlt does, instead of being decoded into 200–400 MiB of pixels
 // (F2-3).
 func TestImageBombIsStreamed(t *testing.T) {
 	if raceEnabled {
