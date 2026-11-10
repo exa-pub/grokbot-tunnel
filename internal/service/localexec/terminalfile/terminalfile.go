@@ -225,6 +225,31 @@ func (t *File) Exit(code string, aborted bool) error {
 	return t.writeHeader(now)
 }
 
+// Fail writes the footer for a command that could not be started, with the
+// reason as the desktop's "error" field, sets the status to failed and
+// closes the file.
+func (t *File) Fail(reason string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.end()
+	defer func() {
+		if err := t.f.Close(); err != nil {
+			log.Printf("terminal file: %v", err)
+		}
+	}()
+	t.status = Failed
+	now := time.Now()
+	footer := fmt.Sprintf("\n---\nerror: %s\nelapsed_ms: %d\nended_at: %s\n---\n",
+		quote(reason), now.Sub(t.cmd.Started).Milliseconds(), now.UTC().Format(timestampFormat))
+	if _, err := t.f.Seek(0, io.SeekEnd); err != nil {
+		return err
+	}
+	if _, err := t.f.WriteString(footer); err != nil {
+		return err
+	}
+	return t.writeHeader(now)
+}
+
 // Stop stops writing to a file whose command never ran; the caller closes it.
 func (t *File) Stop() {
 	t.mu.Lock()

@@ -99,7 +99,7 @@ func Frame(f *aiserverv1.GrokBotUserComputerResponseFrame) map[string]any {
 func Blob(data []byte) map[string]any {
 	sum := sha256.Sum256(data)
 	out := map[string]any{"size": json.Number(fmt.Sprint(len(data))), "sha256": hex.EncodeToString(sum[:])}
-	if utf8.Valid(data) && (len(data) < longText || bytes.HasPrefix(data, []byte(terminalHeader))) {
+	if utf8.Valid(data) && (len(data) < longText || terminalHeader.Match(data)) {
 		out["text"] = string(data)
 	}
 	return out

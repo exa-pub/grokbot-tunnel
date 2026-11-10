@@ -287,7 +287,9 @@ message ExecServerMessage {
 message BackgroundShellSpawnArgs {
   string command = 1;
   string working_directory = 2;
+  optional .agent.v1.SandboxPolicy sandbox_policy = 5;
   optional string description = 7;
+  bool skip_approval = 12;
   optional string conversation_id = 13;
   optional string request_id = 15;
 }
@@ -295,8 +297,10 @@ message ShellArgs {
   string command = 1;
   string working_directory = 2;
   int32 timeout = 3;
+  optional .agent.v1.SandboxPolicy requested_sandbox_policy = 9;
   optional uint64 file_output_threshold_bytes = 10;
   bool is_background = 11;
+  bool skip_approval = 12;
   .agent.v1.TimeoutBehavior timeout_behavior = 13;
   optional int32 hard_timeout = 14;
   optional string description = 15;

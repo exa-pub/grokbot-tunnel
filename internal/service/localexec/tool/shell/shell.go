@@ -14,6 +14,7 @@ import (
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/sandbox"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/shellsession"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/tool/background"
 )
@@ -46,7 +47,8 @@ func New(session *shellsession.Session, background *background.Executor) *Execut
 // command is either killed or, with TIMEOUT_BEHAVIOR_BACKGROUND, left running
 // with its output going to a terminal file. isBackground only changes the
 // soft timeout, as on the desktop. Without a working directory, a command
-// whose session cwd no longer exists does not run, as on the desktop.
+// whose session cwd no longer exists does not run, as on the desktop, and
+// neither does a command that is to run in a sandbox (see sandbox).
 func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send execstream.Send) error {
 	if err := ex.session.Init(ctx); err != nil {
 		return err
@@ -58,10 +60,10 @@ func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send exec
 			return err
 		}
 	}
-	// Like the desktop's after local approval: no command, no sandbox.
-	start := &agentv1.ShellStream_Start{Start: &agentv1.ShellStreamStart{
-		SandboxPolicy: &agentv1.SandboxPolicy{Type: agentv1.SandboxPolicy_TYPE_INSECURE_NONE},
-	}}
+	// Like the desktop's after local approval: no command, and the sandbox
+	// that was asked for, which is none unless the request names one.
+	policy := sandbox.Effective(x.RequestedSandboxPolicy, x.SkipApproval)
+	start := &agentv1.ShellStream_Start{Start: &agentv1.ShellStreamStart{SandboxPolicy: policy}}
 	if err := send(shellMessage(&agentv1.ShellStream{Event: start})); err != nil {
 		return err
 	}
@@ -78,6 +80,10 @@ func (ex *Executor) Execute(ctx context.Context, x *agentv1.ShellArgs, send exec
 			exit := &agentv1.ShellStreamExit{Code: 1, Cwd: ex.session.CurrentCwd(), LocalExecutionTimeMs: elapsedMs(started)}
 			return send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_Exit{Exit: exit}}))
 		}
+	}
+	// Like the desktop on Linux, which has no sandbox to run it in.
+	if refusal := sandbox.Unsupported(policy, x.Command, cwd); refusal != nil {
+		return send(shellMessage(&agentv1.ShellStream{Event: &agentv1.ShellStream_SandboxUnsupported{SandboxUnsupported: refusal}}))
 	}
 	sh, err := ex.startShell(x, cwd, st, started, send)
 	if err != nil {

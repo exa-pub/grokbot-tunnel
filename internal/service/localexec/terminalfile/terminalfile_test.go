@@ -71,6 +71,21 @@ func TestExit(t *testing.T) {
 	}
 }
 
+// A command that could not be started: no pid, status failed and the
+// desktop's error footer.
+func TestFail(t *testing.T) {
+	f, err := os.Create(filepath.Join(t.TempDir(), "1000.txt"))
+	require.NoError(t, err)
+	cmd := terminalfile.Command{Cwd: "/w", Command: "cmd", Started: time.Now().Add(-time.Second)}
+	tf, err := terminalfile.Start(f, cmd, "")
+	require.NoError(t, err)
+	require.NoError(t, tf.Fail(`no "sandbox" here`))
+	b, err := os.ReadFile(f.Name())
+	require.NoError(t, err)
+	assert.Regexp(t, `^---\ncwd: "/w"\ncommand: "cmd"\nstatus: failed   \nstarted_at: \S+Z\nrunning_for_ms: \d+ +\n---\n`+
+		`\n---\nerror: "no \\"sandbox\\" here"\nelapsed_ms: \d+\nended_at: \S+Z\n---\n$`, string(b))
+}
+
 // Each stream keeps MaxStream bytes; the write that would exceed them becomes
 // the desktop's marker, once, after the held-back bytes of a cut sequence.
 func TestStreamTrimmed(t *testing.T) {

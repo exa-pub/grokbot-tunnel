@@ -76,12 +76,16 @@ func (ids *identifiers) replace(v any) any {
 
 // Lines of a terminal file's header and footer that differ from run to run.
 var (
-	terminalHeader  = "---\npid: "
+	terminalHeader  = regexp.MustCompile(`\A---\n(pid: \d+\n)?cwd: `)
 	terminalPid     = regexp.MustCompile(`(?m)^pid: \d+$`)
 	terminalRunning = regexp.MustCompile(`(?m)^running_for_ms: \d+ *$`)
 	terminalElapsed = regexp.MustCompile(`(?m)^elapsed_ms: \d+$`)
 	terminalTime    = regexp.MustCompile(`(?m)^(started_at|ended_at): \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$`)
 )
+
+// isTerminal reports whether s is the content of a terminal file: it starts
+// with the header, which has no pid when the command never started.
+func isTerminal(s string) bool { return terminalHeader.MatchString(s) }
 
 // terminalText replaces the process ID, times and durations of a terminal
 // file. The running time keeps its width: the field is padded so that it can
@@ -105,7 +109,7 @@ func terminals(v any) any {
 		out := make(map[string]any, len(x))
 		text, isText := x["text"].(string)
 		for k, e := range x {
-			if isText && strings.HasPrefix(text, terminalHeader) && (k == "size" || k == "sha256") {
+			if isText && isTerminal(text) && (k == "size" || k == "sha256") {
 				continue
 			}
 			out[k] = terminals(e)
@@ -118,7 +122,7 @@ func terminals(v any) any {
 		}
 		return out
 	case string:
-		if strings.HasPrefix(x, terminalHeader) {
+		if isTerminal(x) {
 			return terminalText(x)
 		}
 	}

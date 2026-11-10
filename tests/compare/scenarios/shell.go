@@ -1,6 +1,7 @@
 package scenarios
 
 import (
+	"fmt"
 	"regexp"
 	"time"
 
@@ -16,6 +17,16 @@ const zsh = "/bin/zsh"
 // timed is a shell command with a timeout in milliseconds.
 func timed(id, command string, timeout int32, behavior agentv1.TimeoutBehavior) Frame {
 	return ShellArgs(id, &agentv1.ShellArgs{Command: command, Timeout: timeout, TimeoutBehavior: behavior})
+}
+
+// sandboxed is a shell command with a requested sandbox policy, given as the
+// JSON of agent.v1.SandboxPolicy.
+func sandboxed(id, command string, skipApproval bool, policy string) Frame {
+	args := fmt.Sprintf(`"command":%q,"requestedSandboxPolicy":%s`, command, policy)
+	if skipApproval {
+		args += `,"skipApproval":true`
+	}
+	return ExecJSON(id, `{"id":7,"shellStreamArgs":{`+args+`}}`)
 }
 
 // session is a scenario of shell commands sent one after the other, each a
@@ -165,6 +176,68 @@ var shell = []Scenario{
 			Sleep(5 * time.Second),
 		},
 		Watch: []string{"terminals"},
+	},
+	// A sandbox the server asks for.
+	{
+		ID: "shell/sandbox-requested", About: "a command with a requested sandbox policy",
+		Steps: []Step{
+			Do(sandboxed("r1", "echo ran > ran1.txt; echo one", false, `{"type":"TYPE_WORKSPACE_READONLY","networkAccess":false}`)),
+			Do(sandboxed("r2", "echo ran > ran2.txt; echo two", false, `{"type":"TYPE_WORKSPACE_READWRITE","networkAccess":false}`)),
+			Do(sandboxed("r3", "echo ran > ran3.txt; echo three", false, `{"type":"TYPE_INSECURE_NONE"}`)),
+			Do(sandboxed("r4", "echo ran > ran4.txt; echo four", false, `{}`)),
+		},
+		Watch: []string{"ran1.txt", "ran2.txt", "ran3.txt", "ran4.txt"},
+	},
+	{
+		ID: "shell/sandbox-skip-approval", About: "a requested sandbox policy with the approval skipped",
+		Steps: []Step{
+			Do(sandboxed("r1", "echo ran > ran1.txt; echo one", true, `{"type":"TYPE_WORKSPACE_READONLY","networkAccess":false}`)),
+			Do(ExecJSON("r2", `{"id":7,"shellStreamArgs":{"command":"echo ran > ran2.txt; echo two","skipApproval":true}}`)),
+			Do(sandboxed("r3", "echo ran > ran3.txt; echo three", true, `{"type":"TYPE_INSECURE_NONE"}`)),
+		},
+		Watch: []string{"ran1.txt", "ran2.txt", "ran3.txt"},
+	},
+	{
+		ID: "shell/sandbox-policy", About: "what the start event says of a requested sandbox policy",
+		Steps: []Step{
+			Do(sandboxed("r1", "echo one", false, `{"type":"TYPE_WORKSPACE_READWRITE","networkAccess":true,`+
+				`"additionalReadwritePaths":["/tmp/rw"],"additionalReadonlyPaths":["/tmp/ro"],"debugOutputDir":"/tmp/debug",`+
+				`"disableTmpWrite":true,"allowlistEscalated":true,"enableSharedBuildCache":false,"networkPolicyStrict":false,`+
+				`"captureDenies":true,"skipStatsigDefaults":true,"readBoundary":"READ_BOUNDARY_MODE_WORKSPACE",`+
+				`"additionalReadPaths":["/tmp/read"],"allowUserOverrideReadPaths":true}`)),
+			Do(sandboxed("r2", "echo two", false, `{"type":"TYPE_WORKSPACE_READONLY","networkAccess":true,`+
+				`"additionalReadwritePaths":["/tmp/rw"],"additionalReadonlyPaths":["/tmp/ro"],"readBoundary":"READ_BOUNDARY_MODE_SYSTEM",`+
+				`"additionalReadPaths":["/tmp/read"],"networkPolicy":{"version":2,"defaultAction":"DEFAULT_ACTION_DENY",`+
+				`"deny":["bad.example"],"allow":["good.example"],"logging":{"decisionLogPath":"/tmp/log","logFormat":"text"}}}`)),
+			Do(sandboxed("r3", "echo three", false, `{"type":"TYPE_WORKSPACE_READONLY","networkAccess":true,"networkPolicy":{}}`)),
+			Do(sandboxed("r4", "echo four", false, `{"type":"TYPE_WORKSPACE_READONLY",`+
+				`"networkPolicy":{"version":1,"defaultAction":"DEFAULT_ACTION_ALLOW","logging":{"logFormat":"jsonl"}}}`)),
+			Do(sandboxed("r5", "echo five", false, `{"type":"TYPE_INSECURE_NONE","networkAccess":true,"allowlistEscalated":true,`+
+				`"enableSharedBuildCache":true,"debugOutputDir":"/tmp/debug","captureDenies":true,"additionalReadonlyPaths":["/tmp/ro"]}`)),
+		},
+	},
+	{
+		ID: "shell/sandbox-cwd", About: "a requested sandbox policy and a working directory that is missing or gone",
+		Steps: []Step{
+			Do(ExecJSON("r1", `{"id":7,"shellStreamArgs":{"command":"echo one","workingDirectory":"$ROOT/missing",`+
+				`"requestedSandboxPolicy":{"type":"TYPE_WORKSPACE_READONLY"}}}`)),
+			Do(Shell("r2", "mkdir gone && cd gone")),
+			Do(Shell("r3", "rmdir ../gone")),
+			Do(sandboxed("r4", "echo four", false, `{"type":"TYPE_WORKSPACE_READONLY"}`)),
+		},
+	},
+	{
+		ID: "shell/sandbox-background", About: "a background command with a sandbox policy",
+		Steps: []Step{
+			Do(ExecJSON("r1", `{"id":7,"backgroundShellSpawnArgs":{"command":"echo ran > ran1.txt; echo one",`+
+				`"sandboxPolicy":{"type":"TYPE_WORKSPACE_READONLY","networkAccess":false}}}`)),
+			Do(ExecJSON("r2", `{"id":7,"backgroundShellSpawnArgs":{"command":"echo ran > ran2.txt; echo two","skipApproval":true,`+
+				`"sandboxPolicy":{"type":"TYPE_WORKSPACE_READWRITE"}}}`)),
+			Do(ExecJSON("r3", `{"id":7,"backgroundShellSpawnArgs":{"command":"echo ran > ran3.txt; echo three",`+
+				`"sandboxPolicy":{"type":"TYPE_INSECURE_NONE"}}}`)),
+			Sleep(time.Second),
+		},
+		Watch: []string{"ran1.txt", "ran2.txt", "ran3.txt", "terminals"},
 	},
 	{
 		ID: "shell/timeout-background-cancel", About: "a command that went to the background is canceled: it runs on",

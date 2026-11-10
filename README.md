@@ -165,6 +165,9 @@ tunnel runs per user at a time, so stop the service first
   commands start in it unless the agent asks for another directory, and can
   access anything you can. Codex and Claude Code
   settings are read from the home directory even if it is outside `--root`.
+- There is no sandbox. A command that Grok Bot asks to run in one (no network,
+  or writes only below a directory) is refused, not run without it; the
+  desktop app on Linux does the same.
 - Tokens are stored unencrypted in `~/.grok/bot-tunnel/`, readable only by you.
 - `--debug` logs requests in full, including commands and file contents; for
   the service they go to the journal.
