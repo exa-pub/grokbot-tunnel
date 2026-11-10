@@ -71,7 +71,7 @@ esac
 out=${COMPARE_OUT:-tests/compare/out/$version}
 stage=$(mktemp -d)
 cid=
-# shellcheck disable=SC2317 # called by the trap
+# shellcheck disable=SC2317,SC2329 # called by the trap
 cleanup() {
 	[ -z "$cid" ] || $docker rm -f "$cid" >/dev/null
 	rm -rf "$stage"
