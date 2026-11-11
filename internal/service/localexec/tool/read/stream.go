@@ -75,7 +75,7 @@ func (c *collection) push(line *text, hasNewline bool, lineNo int) {
 	}
 }
 
-// textReader follows the desktop's streaming read (Rdt): it takes decoded
+// textReader follows the desktop's streaming read (W$e): it takes decoded
 // chunks and keeps only the lines the read returns, so memory does not grow
 // with the file.
 type textReader struct {

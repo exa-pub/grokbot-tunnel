@@ -1,0 +1,190 @@
+{
+  "scenario": "permission/ask-server-approval",
+  "digest": "sha256:091f6b0bf22ae42656d2fb7dcabdb753835b4434e19e2ba06201d0206ca3cf49",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stdout": {
+              "data": "hello\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "cwd": "$ROOT",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "success": {
+              "content": "secret\n",
+              "fileSize": 7,
+              "path": "$ROOT/notes.txt",
+              "totalLines": 2
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ],
+    "r3": [
+      {
+        "client": {
+          "id": 3,
+          "localExecutionTimeMs": "<MS>",
+          "lsResult": {
+            "success": {
+              "directoryTreeRoot": {
+                "absPath": "$ROOT",
+                "childrenFiles": [
+                  {
+                    "name": "notes.txt"
+                  },
+                  {
+                    "name": "ran.txt"
+                  }
+                ],
+                "childrenWereProcessed": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 3
+          }
+        }
+      }
+    ],
+    "r4": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size": 0,
+          "text": ""
+        }
+      }
+    ],
+    "r5": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "b37e50cedcd3e3f1ff64f4afc0422084ae694253cf399326868e07a35f4a45fb",
+          "size": 7,
+          "text": "secret\n"
+        }
+      }
+    ],
+    "r6": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "806653de9cd7cecf12579d5b9103a55b258dc501fe9787f39a5892e296b85734",
+          "size": 60,
+          "text": "{\"source\":\"codex\",\"found\":false,\"sessionCount\":0,\"items\":[]}"
+        }
+      }
+    ],
+    "r7": [
+      {
+        "client": {
+          "backgroundShellSpawnResult": {
+            "success": {
+              "command": "echo bg > bg.txt",
+              "pid": "<PID>",
+              "shellId": "<SHELL#1>",
+              "workingDirectory": "$ROOT"
+            }
+          },
+          "id": 4,
+          "localExecutionTimeMs": "<MS>"
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 4
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "bg.txt": {
+      "mode": "0644",
+      "sha256": "74f2358f3a6bf5c662666e0217833f5e9d92e44e9885e0243428bc4e1a6c0f88",
+      "size": 3,
+      "text": "bg\n"
+    },
+    "new.txt": {
+      "mode": "0644",
+      "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+      "size": 1,
+      "text": "x"
+    },
+    "ran.txt": {
+      "mode": "0644",
+      "sha256": "f4472a14b6160e58b35bfeb710d23d240ab59402cc84bc7b5a579c7373849295",
+      "size": 4,
+      "text": "ran\n"
+    }
+  }
+}

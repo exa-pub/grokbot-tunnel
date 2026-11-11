@@ -46,8 +46,9 @@ type runningShell struct {
 	fallback *os.File    // receives the state from the EXIT trap; linked until the shell exits
 	killed   atomic.Bool // a detached command was killed by the hard timeout
 
-	exitMu sync.Mutex // guards gone
-	gone   bool       // the shell has exited and been reaped
+	exitMu  sync.Mutex // guards gone and stopped
+	gone    bool       // the shell has exited and been reaped
+	stopped bool       // kill signaled the shell: it was aborted
 }
 
 // start launches the command with its output pipes and their drainers.
@@ -94,6 +95,9 @@ func (sh *runningShell) reap() {
 	proc.Wait(sh.cmd)
 	sh.exitMu.Lock()
 	sh.gone = true
+	if !sh.stopped {
+		proc.Forward(sh.cmd)
+	}
 	sh.exitMu.Unlock()
 	sh.ex.session.Exited(sh.cmd, sh.snapshot, sh.fallback)
 	proc.RemoveLogged(sh.fallback.Name())
@@ -137,6 +141,7 @@ func (sh *runningShell) kill(marked *atomic.Bool) {
 	if marked != nil {
 		marked.Store(true)
 	}
+	sh.stopped = true
 	proc.Kill(sh.cmd)
 }
 

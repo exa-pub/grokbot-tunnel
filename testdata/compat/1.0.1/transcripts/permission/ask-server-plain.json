@@ -1,0 +1,83 @@
+{
+  "scenario": "permission/ask-server-plain",
+  "digest": "sha256:2b0e94b5c32059617f5d2fb3df85e2541f8b4951db0286437020d3e7c199de7e",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "control": {
+          "throw": {
+            "error": "That action was not approved on the user's computer, so nothing ran. Ask the user to approve it (or to set Settings → Bot → Execution on Local Computer to \"Always allow\"), and use your own computer (Shell, Read, AwaitShell) in the meantime."
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "control": {
+          "throw": {
+            "error": "That action was not approved on the user's computer, so nothing ran. Ask the user to approve it (or to set Settings → Bot → Execution on Local Computer to \"Always allow\"), and use your own computer (Shell, Read, AwaitShell) in the meantime."
+          }
+        }
+      }
+    ],
+    "r3": [
+      {
+        "control": {
+          "throw": {
+            "error": "That action was not approved on the user's computer, so nothing ran. Ask the user to approve it (or to set Settings → Bot → Execution on Local Computer to \"Always allow\"), and use your own computer (Shell, Read, AwaitShell) in the meantime."
+          }
+        }
+      }
+    ],
+    "r4": [
+      {
+        "fileError": {
+          "error": "That action was not approved on the user's computer, so nothing ran. Ask the user to approve it (or to set Settings → Bot → Execution on Local Computer to \"Always allow\"), and use your own computer (Shell, Read, AwaitShell) in the meantime."
+        }
+      }
+    ],
+    "r5": [
+      {
+        "fileError": {
+          "error": "That action was not approved on the user's computer, so nothing ran. Ask the user to approve it (or to set Settings → Bot → Execution on Local Computer to \"Always allow\"), and use your own computer (Shell, Read, AwaitShell) in the meantime."
+        }
+      }
+    ],
+    "r6": [
+      {
+        "fileError": {
+          "error": "That action was not approved on the user's computer, so nothing ran. Ask the user to approve it (or to set Settings → Bot → Execution on Local Computer to \"Always allow\"), and use your own computer (Shell, Read, AwaitShell) in the meantime."
+        }
+      }
+    ],
+    "r7": [
+      {
+        "control": {
+          "throw": {
+            "error": "That action was not approved on the user's computer, so nothing ran. Ask the user to approve it (or to set Settings → Bot → Execution on Local Computer to \"Always allow\"), and use your own computer (Shell, Read, AwaitShell) in the meantime."
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "bg.txt": {
+      "missing": true
+    },
+    "new.txt": {
+      "missing": true
+    },
+    "ran.txt": {
+      "missing": true
+    }
+  }
+}

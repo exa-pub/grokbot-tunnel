@@ -22,7 +22,7 @@ import (
 )
 
 // Version is the Sand desktop version whose protocol this client speaks.
-const Version = "0.79.3"
+const Version = "1.0.1"
 
 // AuthUserAgent is the bundled Undici default: ain selects "undici" when
 // neither __UNDICI_IS_NODE__ nor esbuildDetection is defined. The desktop

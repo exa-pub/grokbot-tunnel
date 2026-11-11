@@ -35,13 +35,10 @@ func New(root *pathroot.Root) *Executor { return &Executor{root: root} }
 
 // Execute reads args.Path and sends the read result. A path outside the root
 // fails the request instead of producing a result, as on the desktop; below
-// a root directory that cannot be opened, the path fails to open.
+// a root directory that cannot be opened, the path fails to open. Like the
+// desktop since 1.0.1, whose executor gets the path its root check resolved
+// (_5), an empty path is the root and a blank one a name of blanks in it.
 func (rd *Executor) Execute(ctx context.Context, x *agentv1.ReadArgs, send execstream.Send) error {
-	if isBlank(x.Path) {
-		return send(readMessage(&agentv1.ReadResult{Result: &agentv1.ReadResult_Error{
-			Error: &agentv1.ReadError{Path: x.Path, Error: msgEmptyPath},
-		}}))
-	}
 	p, err := rd.root.Check(x.Path)
 	var unavailable *pathroot.RootError
 	if errors.As(err, &unavailable) {
@@ -87,14 +84,8 @@ func (rd *Executor) result(ctx context.Context, p *pathroot.Path, x *agentv1.Rea
 	switch {
 	case format.Image:
 		return rd.image(ctx, f, path, success)
-	case extname(path) == ".pdf", format.Binary && isVideo(path):
-		data, err := readAll(f)
-		if err != nil {
-			return readError(path, err), nil
-		}
-		return dataResult(path, success, data), nil
-	case format.Binary:
-		return invalidFile(path, msgBinaryFile), nil
+	case extname(path) == ".pdf", format.Binary:
+		return binaryResult(f, path, success, format.Binary, x), nil
 	}
 	res, err := readText(ctx, f, st.Size(), format.Encoding, x)
 	if ctxErr := ctx.Err(); ctxErr != nil {
@@ -109,6 +100,25 @@ func (rd *Executor) result(ctx context.Context, p *pathroot.Path, x *agentv1.Rea
 	success.Truncated = truncated
 	success.RangeApplied = res.rangeApplied
 	return &agentv1.ReadResult{Result: &agentv1.ReadResult_Success{Success: success}}, nil
+}
+
+// binaryResult answers for a PDF or binary file: a PDF or a video as data,
+// a video over max_video_bytes without it, as truncated, and other binary
+// data as an invalid file.
+func binaryResult(f *os.File, path string, success *agentv1.ReadSuccess, binary bool, x *agentv1.ReadArgs) *agentv1.ReadResult {
+	video := binary && isVideo(path)
+	switch {
+	case video && overVideoLimit(success.FileSize, x):
+		success.Truncated = true
+		return &agentv1.ReadResult{Result: &agentv1.ReadResult_Success{Success: success}}
+	case extname(path) != ".pdf" && !video:
+		return invalidFile(path, msgBinaryFile)
+	}
+	data, err := readAll(f)
+	if err != nil {
+		return readError(path, err)
+	}
+	return dataResult(path, success, data)
 }
 
 // check returns the result for a path that is not a readable file by its
@@ -157,7 +167,7 @@ func dataResult(path string, success *agentv1.ReadSuccess, data []byte) *agentv1
 	return &agentv1.ReadResult{Result: &agentv1.ReadResult_Success{Success: success}}
 }
 
-// readText reads text as the desktop's streaming reader does (v4r): with the
+// readText reads text as the desktop's streaming reader does (hLt): with the
 // hinted or detected encoding, and again as lossy UTF-8 or Latin-1 if strict
 // UTF-8 meets invalid data.
 func readText(ctx context.Context, f *os.File, size int64, encoding string, x *agentv1.ReadArgs) (textResult, error) {

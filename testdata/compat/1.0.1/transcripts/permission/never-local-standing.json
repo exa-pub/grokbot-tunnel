@@ -1,0 +1,83 @@
+{
+  "scenario": "permission/never-local-standing",
+  "digest": "sha256:9e81a6611fa4b9ce73787a618a2846dd6a67d539f86cdd165c6fcf6d0e27dfc6",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "control": {
+          "throw": {
+            "error": "Local tools are turned off. The user has set local tool access to \"Never\", so Shell, Read, and AwaitShell with machineId, plus CopyToBox and CopyFromBox, cannot run on their computer. Do not retry them while this setting remains \"Never\". Use your own computer instead by omitting machineId, or ask the user to change the setting in Settings → Bot → Execution on Local Computer. If they change it away from \"Never\", you may try again."
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "control": {
+          "throw": {
+            "error": "Local tools are turned off. The user has set local tool access to \"Never\", so Shell, Read, and AwaitShell with machineId, plus CopyToBox and CopyFromBox, cannot run on their computer. Do not retry them while this setting remains \"Never\". Use your own computer instead by omitting machineId, or ask the user to change the setting in Settings → Bot → Execution on Local Computer. If they change it away from \"Never\", you may try again."
+          }
+        }
+      }
+    ],
+    "r3": [
+      {
+        "control": {
+          "throw": {
+            "error": "Local tools are turned off. The user has set local tool access to \"Never\", so Shell, Read, and AwaitShell with machineId, plus CopyToBox and CopyFromBox, cannot run on their computer. Do not retry them while this setting remains \"Never\". Use your own computer instead by omitting machineId, or ask the user to change the setting in Settings → Bot → Execution on Local Computer. If they change it away from \"Never\", you may try again."
+          }
+        }
+      }
+    ],
+    "r4": [
+      {
+        "fileError": {
+          "error": "Local tools are turned off. The user has set local tool access to \"Never\", so Shell, Read, and AwaitShell with machineId, plus CopyToBox and CopyFromBox, cannot run on their computer. Do not retry them while this setting remains \"Never\". Use your own computer instead by omitting machineId, or ask the user to change the setting in Settings → Bot → Execution on Local Computer. If they change it away from \"Never\", you may try again."
+        }
+      }
+    ],
+    "r5": [
+      {
+        "fileError": {
+          "error": "Local tools are turned off. The user has set local tool access to \"Never\", so Shell, Read, and AwaitShell with machineId, plus CopyToBox and CopyFromBox, cannot run on their computer. Do not retry them while this setting remains \"Never\". Use your own computer instead by omitting machineId, or ask the user to change the setting in Settings → Bot → Execution on Local Computer. If they change it away from \"Never\", you may try again."
+        }
+      }
+    ],
+    "r6": [
+      {
+        "fileError": {
+          "error": "Local tools are turned off. The user has set local tool access to \"Never\", so Shell, Read, and AwaitShell with machineId, plus CopyToBox and CopyFromBox, cannot run on their computer. Do not retry them while this setting remains \"Never\". Use your own computer instead by omitting machineId, or ask the user to change the setting in Settings → Bot → Execution on Local Computer. If they change it away from \"Never\", you may try again."
+        }
+      }
+    ],
+    "r7": [
+      {
+        "control": {
+          "throw": {
+            "error": "Local tools are turned off. The user has set local tool access to \"Never\", so Shell, Read, and AwaitShell with machineId, plus CopyToBox and CopyFromBox, cannot run on their computer. Do not retry them while this setting remains \"Never\". Use your own computer instead by omitting machineId, or ask the user to change the setting in Settings → Bot → Execution on Local Computer. If they change it away from \"Never\", you may try again."
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "bg.txt": {
+      "missing": true
+    },
+    "new.txt": {
+      "missing": true
+    },
+    "ran.txt": {
+      "missing": true
+    }
+  }
+}

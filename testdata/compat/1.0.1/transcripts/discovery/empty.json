@@ -1,0 +1,37 @@
+{
+  "scenario": "discovery/empty",
+  "digest": "sha256:f76d8b1ff203ddd6b14cfc6b2ab0ea69073090d6855a1d76062cf4c73c32575c",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "021209e8bea540ea1ce5e52e5d760331a1d0341ad7786ffd339a1b4a1d70c290",
+          "size": 65,
+          "text": "{\"source\":\"claude_code\",\"found\":true,\"sessionCount\":0,\"items\":[]}"
+        }
+      }
+    ],
+    "r2": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "0132b0b97442f587076233f1dd09b1526478275f459a3e70c2c7ce3ba2de0e82",
+          "size": 59,
+          "text": "{\"source\":\"codex\",\"found\":true,\"sessionCount\":0,\"items\":[]}"
+        }
+      }
+    ]
+  }
+}

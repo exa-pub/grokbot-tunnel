@@ -298,6 +298,7 @@ func (bg *Executor) finish(
 	c *exec.Cmd, n uint32, tf *terminalfile.File, out *output, started shellsession.State, snapshot, fallback *os.File,
 ) {
 	proc.Wait(c)
+	proc.Forward(c) // nothing aborts a background command here
 	bg.session.Exited(c, snapshot, fallback)
 	out.wait(waitDelay)
 	bg.session.Commit(snapshot, fallback, started)

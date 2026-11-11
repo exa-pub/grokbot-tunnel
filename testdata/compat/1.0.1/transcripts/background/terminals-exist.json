@@ -1,0 +1,60 @@
+{
+  "scenario": "background/terminals-exist",
+  "digest": "sha256:52235af1640863eec0e308c09c5e62dcba3e7b7e23e3561120c49c698271e887",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "backgroundShellSpawnResult": {
+            "success": {
+              "command": "echo new",
+              "pid": "<PID>",
+              "shellId": "<SHELL#1>",
+              "workingDirectory": "$ROOT"
+            }
+          },
+          "id": 1,
+          "localExecutionTimeMs": "<MS>"
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "terminals": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "terminals/<SHELL#1>.txt": {
+      "mode": "0644",
+      "text": "---\npid: <PID>\ncwd: \"$ROOT\"\ncommand: \"echo new\"\nstatus: succeeded\nstarted_at: <TS>\nrunning_for_ms: <MS>     \n---\nnew\n\n---\nexit_code: 0\nelapsed_ms: <MS>\nended_at: <TS>\n---\n"
+    },
+    "terminals/<SHELL#2>.txt": {
+      "mode": "0644",
+      "sha256": "01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee",
+      "size": 4,
+      "text": "old\n"
+    },
+    "terminals/notes.md": {
+      "mode": "0644",
+      "sha256": "f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85",
+      "size": 5,
+      "text": "keep\n"
+    }
+  }
+}

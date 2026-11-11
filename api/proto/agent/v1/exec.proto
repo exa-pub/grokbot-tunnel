@@ -328,4 +328,5 @@ message ReadArgs {
   optional string encoding_hint = 6;
   optional bool digest_only = 7;
   optional uint32 max_chars = 8;
+  optional uint32 max_video_bytes = 9;
 }

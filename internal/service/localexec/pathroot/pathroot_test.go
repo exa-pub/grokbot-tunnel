@@ -45,7 +45,7 @@ func uploadTarget(t *testing.T, r *pathroot.Root, rel string) (string, error) {
 	return check(t, r, rel).UploadTarget()
 }
 
-// L2-1: like the desktop (wft, n9), a root given through a symlink is kept
+// L2-1: like the desktop (dqe, _5), a root given through a symlink is kept
 // as it is: paths are checked lexically against it, and only their realpath
 // against its realpath. Its target is outside the root.
 func TestOpenKeepsSymlinks(t *testing.T) {
@@ -303,10 +303,9 @@ func TestCheck(t *testing.T) {
 	}
 }
 
-// N1: like the desktop's read and ls (cr: kOe, FNt), "~" and file:// URLs are
-// expanded; "~user" and a URL with a host stay as they are. The expanded
-// path is checked against the root, unlike the desktop's n9, which checks
-// <root>/~/secret and so lets read leave a root without the home directory.
+// N1: like the desktop's root check (_5 with Ir: Nye, l4t), "~" and file://
+// URLs are expanded; "~user" and a URL with a host stay as they are. The
+// expanded path is checked against the root.
 func TestRelativeExpandsHome(t *testing.T) {
 	r := open(t)
 	t.Setenv("HOME", r.Dir())

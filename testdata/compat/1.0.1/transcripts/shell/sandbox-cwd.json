@@ -1,0 +1,187 @@
+{
+  "scenario": "shell/sandbox-cwd",
+  "digest": "sha256:5fb70a2147653b020d7942f327645fecbd24b667977c6ccf0deb809717921f3d",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stderr": {
+              "data": "working directory $ROOT/missing does not exist on this machine; running in $ROOT instead\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "networkAccess": false,
+                "networkPolicy": {
+                  "defaultAction": "DEFAULT_ACTION_DENY",
+                  "version": 1
+                },
+                "type": "TYPE_WORKSPACE_READONLY"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "sandboxUnsupported": {
+              "command": "echo one",
+              "isReadonly": true,
+              "reason": "Sandbox binary path was not configured",
+              "sandboxPolicyType": "workspace_readonly",
+              "workingDirectory": "$ROOT"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "cwd": "$ROOT/gone",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ],
+    "r3": [
+      {
+        "client": {
+          "id": 3,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 3,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "cwd": "$ROOT/gone",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 3
+          }
+        }
+      }
+    ],
+    "r4": [
+      {
+        "client": {
+          "id": 4,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "networkAccess": false,
+                "networkPolicy": {
+                  "defaultAction": "DEFAULT_ACTION_DENY",
+                  "version": 1
+                },
+                "type": "TYPE_WORKSPACE_READONLY"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 4,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stderr": {
+              "data": "The shell's working directory no longer exists: $ROOT/gone. The command did not run. Re-run it with working_directory set to an existing directory.\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 4,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "code": 1,
+              "cwd": "$ROOT/gone",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 4
+          }
+        }
+      }
+    ]
+  }
+}

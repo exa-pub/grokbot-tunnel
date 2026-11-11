@@ -372,15 +372,15 @@ func TestPinnedBackgroundStdin(t *testing.T) {
 	assert.NotNil(t, events[len(events)-1].GetExit())
 }
 
-// D9: the desktop's read texts for an empty path and a binary file.
+// D9: the desktop's read answers for a blank path, a name of blanks in the
+// root since 1.0.1, and its text for a binary file.
 func TestPinnedReadTexts(t *testing.T) {
 	e := setup(t)
 	frames := pinnedExec(t, e, `{"readArgs":{"path":"  "}}`)
 	require.NotEmpty(t, frames)
-	readErr := frames[0].client.GetReadResult().GetError()
-	require.NotNil(t, readErr)
-	assert.Equal(t, "  ", readErr.GetPath())
-	assert.Equal(t, "path is empty or only whitespace", readErr.GetError())
+	notFound := frames[0].client.GetReadResult().GetFileNotFound()
+	require.NotNil(t, notFound)
+	assert.Equal(t, filepath.Join(e.Root, "  "), notFound.GetPath())
 
 	require.NoError(t, os.WriteFile(filepath.Join(e.Root, "blob.bin"), []byte{0, 1, 2, 0xff, 0}, 0o600))
 	frames = pinnedExec(t, e, `{"readArgs":{"path":"blob.bin"}}`)
@@ -438,7 +438,7 @@ func largeWebP(t *testing.T, animated bool, w, h int) []byte {
 	return b
 }
 
-// ≠: the desktop 0.79.3 does not decode a WEBP larger than 1280 pixels or
+// ≠: the desktop 1.0.1 does not decode a WEBP larger than 1280 pixels or
 // 1 MiB and answers with an error, "webp codec not registered…"; we encode
 // it again as JPEG, or PNG when it has transparency. One that Go cannot
 // decode either (animated) gets the desktop's error.
@@ -460,12 +460,9 @@ func TestPinnedReadLargeWebP(t *testing.T) {
 		frames[0].client.GetReadResult().GetError().GetError())
 }
 
-// N1 (aligned with the desktop for read and ls, cr): "~" and file:// URLs in
-// file paths are expanded and the expanded path is checked against Root. ≠:
-// the desktop's n9 checks the unexpanded path, so "~/secret" passes as
-// <Root>/~/secret and read then leaves a Root without the home directory;
-// and its upload and download do not expand, writing below a directory named
-// "~" in Root. Both are refused or expanded here on purpose.
+// N1 (aligned with the desktop since 1.0.1, _5 with Ir): "~" and file:// URLs
+// in file paths are expanded and the expanded path is checked against Root,
+// for read, ls, upload and download alike.
 func TestPinnedHomeInFilePaths(t *testing.T) {
 	root := t.TempDir()
 	e := newAt(t, root)

@@ -1,0 +1,153 @@
+{
+  "scenario": "channel/calls",
+  "digest": "sha256:964db4dcbea3c3bc7edf344a996807ff10e993ef28267c5d3647c011f7d40cd8",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stdout": {
+              "data": "one\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "cwd": "$ROOT",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stdout": {
+              "data": "two\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "cwd": "$ROOT",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ]
+  },
+  "calls": [
+    {
+      "request": {
+        "credential": "fixture-credential",
+        "machineId": "<MACHINE>",
+        "presenceToken": "<TOKEN>"
+      },
+      "rpc": "Watch"
+    },
+    {
+      "request": {
+        "credential": "fixture-credential",
+        "limit": 64,
+        "machineId": "<MACHINE>"
+      },
+      "rpc": "Poll"
+    },
+    {
+      "request": {
+        "ackIds": [
+          "q1-r1"
+        ],
+        "credential": "fixture-credential",
+        "limit": 64,
+        "machineId": "<MACHINE>"
+      },
+      "rpc": "Poll"
+    },
+    {
+      "request": {
+        "ackIds": [
+          "q2-r2"
+        ],
+        "credential": "fixture-credential",
+        "limit": 64,
+        "machineId": "<MACHINE>"
+      },
+      "rpc": "Poll"
+    },
+    {
+      "request": {
+        "credential": "fixture-credential",
+        "machineId": "<MACHINE>",
+        "presenceToken": "<TOKEN>"
+      },
+      "rpc": "Withdraw"
+    }
+  ]
+}

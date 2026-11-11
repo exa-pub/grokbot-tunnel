@@ -13,7 +13,7 @@ import (
 )
 
 // Version is the desktop release the reference data comes from.
-const Version = "0.79.3"
+const Version = "1.0.1"
 
 // PureFunctions is pure-functions.json.
 type PureFunctions struct {

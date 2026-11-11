@@ -96,7 +96,7 @@ func Header(cmd Command, status string, now time.Time) string {
 	}
 	b.WriteString(StatusField(status) + "\n")
 	fmt.Fprintf(&b, "started_at: %s\n", cmd.Started.UTC().Format(timestampFormat))
-	fmt.Fprintf(&b, "running_for_ms: %s\n", padEnd(fmt.Sprint(now.Sub(cmd.Started).Milliseconds())))
+	fmt.Fprintf(&b, "running_for_ms: %s\n", padEnd(fmt.Sprint(elapsedMs(cmd.Started, now))))
 	b.WriteString("---\n")
 	return b.String()
 }
@@ -215,7 +215,7 @@ func (t *File) Exit(code string, aborted bool) error {
 	}
 	now := time.Now()
 	footer := fmt.Sprintf("\n---\nexit_code: %s\nelapsed_ms: %d\nended_at: %s\n---\n",
-		code, now.Sub(t.cmd.Started).Milliseconds(), now.UTC().Format(timestampFormat))
+		code, elapsedMs(t.cmd.Started, now), now.UTC().Format(timestampFormat))
 	if _, err := t.f.Seek(0, io.SeekEnd); err != nil {
 		return err
 	}
@@ -240,7 +240,7 @@ func (t *File) Fail(reason string) error {
 	t.status = Failed
 	now := time.Now()
 	footer := fmt.Sprintf("\n---\nerror: %s\nelapsed_ms: %d\nended_at: %s\n---\n",
-		quote(reason), now.Sub(t.cmd.Started).Milliseconds(), now.UTC().Format(timestampFormat))
+		quote(reason), elapsedMs(t.cmd.Started, now), now.UTC().Format(timestampFormat))
 	if _, err := t.f.Seek(0, io.SeekEnd); err != nil {
 		return err
 	}
@@ -315,3 +315,9 @@ func truncated(name string) string {
 
 // padEnd pads s to the desktop's field width of 9.
 func padEnd(s string) string { return fmt.Sprintf("%-9s", s) }
+
+// elapsedMs is the time from started to now in whole milliseconds, rounded
+// like the desktop's running_for_ms and elapsed_ms since 1.0.1 (Su).
+func elapsedMs(started, now time.Time) int64 {
+	return now.Sub(started).Round(time.Millisecond).Milliseconds()
+}

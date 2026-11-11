@@ -1,0 +1,63 @@
+{
+  "scenario": "root/ls",
+  "digest": "sha256:485afcfe72ef37034cb11d4a589bcad8e0db4043fe076b588d08f5b693573a66",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "control": {
+          "throw": {
+            "error": "Path is outside the allowed local-exec root and was refused: $HOME/outside",
+            "id": 1,
+            "stackTrace": "SandLocalExecPathError: Path is outside the allowed local-exec root and was refused: $HOME/outside"
+          }
+        },
+        "cwdState": "unset"
+      }
+    ],
+    "r2": [
+      {
+        "control": {
+          "throw": {
+            "error": "Path is outside the allowed local-exec root and was refused: ..",
+            "id": 2,
+            "stackTrace": "SandLocalExecPathError: Path is outside the allowed local-exec root and was refused: .."
+          }
+        },
+        "cwdState": "unset"
+      }
+    ],
+    "r3": [
+      {
+        "control": {
+          "throw": {
+            "error": "Path resolves through a symlink to outside the allowed local-exec root and was refused: escdir",
+            "id": 3,
+            "stackTrace": "SandLocalExecPathError: Path resolves through a symlink to outside the allowed local-exec root and was refused: escdir"
+          }
+        },
+        "cwdState": "unset"
+      }
+    ],
+    "r4": [
+      {
+        "control": {
+          "throw": {
+            "error": "Path is outside the allowed local-exec root and was refused: /",
+            "id": 4,
+            "stackTrace": "SandLocalExecPathError: Path is outside the allowed local-exec root and was refused: /"
+          }
+        },
+        "cwdState": "unset"
+      }
+    ]
+  }
+}

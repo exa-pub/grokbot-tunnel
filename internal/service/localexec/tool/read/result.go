@@ -11,26 +11,20 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/nodeerr"
 )
 
-// videoExtensions are returned as data when the file is binary (YO).
+// videoExtensions are returned as data when the file is binary (Oke).
 var videoExtensions = []string{".mp4", ".webm", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".m4v"}
 
-// Messages shown to the agent, matching the desktop (dut, Kpe, X_).
+// Messages shown to the agent, matching the desktop's read executor.
 const (
 	msgBinaryFile = "File content is binary data, not text"
 	msgDirectory  = "Path is a directory, not a file"
 	msgNotFile    = "Path is neither a file nor a directory"
-	msgEmptyPath  = "path is empty or only whitespace"
 )
 
-// isBlank reports a path of JavaScript whitespace only (trim).
-func isBlank(s string) bool {
-	return strings.TrimFunc(s, func(r rune) bool {
-		switch r {
-		case '\t', '\n', '\v', '\f', '\r', ' ', 0xa0, 0x1680, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff:
-			return true
-		}
-		return r >= 0x2000 && r <= 0x200a
-	}) == ""
+// overVideoLimit reports a video larger than the request's max_video_bytes,
+// which the desktop answers without its data, as truncated (1.0.1).
+func overVideoLimit(size int64, x *agentv1.ReadArgs) bool {
+	return x.MaxVideoBytes != nil && size > int64(x.GetMaxVideoBytes())
 }
 
 // extname is Node's path.extname, lowercased: a dotfile such as ".pdf" has
@@ -44,7 +38,7 @@ func extname(path string) string {
 }
 
 // isVideo matches a video extension after the last dot of the path, as the
-// desktop does (zKt), dotfiles included.
+// desktop does (LT), dotfiles included.
 func isVideo(path string) bool {
 	path = strings.ToLower(path)
 	i := strings.LastIndexByte(path, '.')

@@ -99,7 +99,9 @@ const readCommand = `IFS= builtin read -r -d '' __grok_cmd <&5 2>/dev/null || { 
 // The aliases of a startup file ($BASH_ENV, .zshenv) are removed and the
 // replay runs without alias expansion, so that no alias changes how the
 // replayed functions parse. The command then runs with the session's aliases
-// expanded, as on the desktop (State.aliases).
+// expanded, as on the desktop (State.aliases), and without Node's module
+// compile cache, as on the desktop since 1.0.1 (e1); the state dump keeps
+// the variable like any other.
 func (s shell) prepare(piped bool) string {
 	clearAliases := `builtin shopt -u expand_aliases 2>/dev/null; builtin unalias -a 2>/dev/null; `
 	expand := `builtin shopt -s expand_aliases 2>/dev/null; `
@@ -114,8 +116,12 @@ func (s shell) prepare(piped bool) string {
 	}
 	return read + `{ __grok_replay=$(</dev/fd/3); } 2>/dev/null || __grok_replay=; ` +
 		`exec 3<&- 5<&-; ` +
-		clearAliases + `builtin eval -- "$__grok_replay"; builtin unset __grok_replay; ` + expand
+		clearAliases + `builtin eval -- "$__grok_replay"; builtin unset __grok_replay; ` +
+		noCompileCache + expand
 }
+
+// noCompileCache turns off Node's module compile cache for the command.
+const noCompileCache = `builtin export NODE_DISABLE_COMPILE_CACHE=1; builtin unset NODE_COMPILE_CACHE; `
 
 // aliasesOff starts the EXIT trap. The trap is parsed when it runs, with the
 // aliases the command defined; the quoted words are not expanded, and what

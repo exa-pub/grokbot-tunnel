@@ -1,0 +1,37 @@
+{
+  "scenario": "transfer/upload-large",
+  "digest": "sha256:34a11107497600cf5991fb8be4ffaff54993123dd295a053ec64f24e0c7d1f09",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size": 0,
+          "text": ""
+        }
+      }
+    ]
+  },
+  "files": {
+    "up": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "up/5m.bin": {
+      "mode": "0644",
+      "sha256": "5055f6addbc5fbd5accb276727b362240b8058fc51f71030fed241d6c7710def",
+      "size": 5242880
+    }
+  }
+}

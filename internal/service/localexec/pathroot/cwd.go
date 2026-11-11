@@ -162,7 +162,7 @@ func (r *Root) expand(path string) string {
 }
 
 // expandHome expands the forms of a path that the desktop resolves before
-// using it (cr: kOe, FNt): "~" and "~/…" become the home directory, and a
+// using it (Ir: Nye, l4t): "~" and "~/…" become the home directory, and a
 // file:// URL its path; a URL that names a host, which Node's fileURLToPath
 // refuses, and any other path stay as they are.
 func expandHome(p string) string {

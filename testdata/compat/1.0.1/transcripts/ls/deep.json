@@ -1,0 +1,148 @@
+{
+  "scenario": "ls/deep",
+  "digest": "sha256:712a73d0d9c86538ac20e031b8d7c1573b45cb8368924c653e4a06c5f7a96a50",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "lsResult": {
+            "success": {
+              "directoryTreeRoot": {
+                "absPath": "$ROOT",
+                "childrenDirs": [
+                  {
+                    "absPath": "$ROOT/d1",
+                    "childrenDirs": [
+                      {
+                        "absPath": "$ROOT/d1/d2",
+                        "childrenDirs": [
+                          {
+                            "absPath": "$ROOT/d1/d2/d3",
+                            "childrenDirs": [
+                              {
+                                "absPath": "$ROOT/d1/d2/d3/d4",
+                                "childrenDirs": [
+                                  {
+                                    "absPath": "$ROOT/d1/d2/d3/d4/d5",
+                                    "childrenDirs": [
+                                      {
+                                        "absPath": "$ROOT/d1/d2/d3/d4/d5/d6",
+                                        "childrenDirs": [
+                                          {
+                                            "absPath": "$ROOT/d1/d2/d3/d4/d5/d6/d7",
+                                            "childrenDirs": [
+                                              {
+                                                "absPath": "$ROOT/d1/d2/d3/d4/d5/d6/d7/d8",
+                                                "childrenFiles": [
+                                                  {
+                                                    "name": "leaf.txt"
+                                                  }
+                                                ],
+                                                "childrenWereProcessed": true
+                                              }
+                                            ],
+                                            "childrenWereProcessed": true
+                                          }
+                                        ],
+                                        "childrenWereProcessed": true
+                                      }
+                                    ],
+                                    "childrenWereProcessed": true
+                                  }
+                                ],
+                                "childrenWereProcessed": true
+                              }
+                            ],
+                            "childrenWereProcessed": true
+                          }
+                        ],
+                        "childrenWereProcessed": true
+                      }
+                    ],
+                    "childrenFiles": [
+                      {
+                        "name": "top.txt"
+                      }
+                    ],
+                    "childrenWereProcessed": true
+                  }
+                ],
+                "childrenWereProcessed": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "lsResult": {
+            "success": {
+              "directoryTreeRoot": {
+                "absPath": "$ROOT/d1/d2/d3/d4",
+                "childrenDirs": [
+                  {
+                    "absPath": "$ROOT/d1/d2/d3/d4/d5",
+                    "childrenDirs": [
+                      {
+                        "absPath": "$ROOT/d1/d2/d3/d4/d5/d6",
+                        "childrenDirs": [
+                          {
+                            "absPath": "$ROOT/d1/d2/d3/d4/d5/d6/d7",
+                            "childrenDirs": [
+                              {
+                                "absPath": "$ROOT/d1/d2/d3/d4/d5/d6/d7/d8",
+                                "childrenFiles": [
+                                  {
+                                    "name": "leaf.txt"
+                                  }
+                                ],
+                                "childrenWereProcessed": true
+                              }
+                            ],
+                            "childrenWereProcessed": true
+                          }
+                        ],
+                        "childrenWereProcessed": true
+                      }
+                    ],
+                    "childrenWereProcessed": true
+                  }
+                ],
+                "childrenWereProcessed": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ]
+  }
+}
