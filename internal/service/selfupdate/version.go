@@ -12,8 +12,9 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/adapter/githubrelease"
 )
 
-// devSuffix marks versions from git describe between or after tags.
-var devSuffix = regexp.MustCompile(`-[0-9]+-g[0-9a-f]+(-dirty)?$|-dirty$`)
+// devSuffix marks development builds: versions from git describe between or
+// after tags (-3-gabc1234, -dirty) and CI builds of pull requests (-gabc1234).
+var devSuffix = regexp.MustCompile(`(-[0-9]+)?-g[0-9a-f]+(-dirty)?$|-dirty$`)
 
 // IsRelease reports whether version is a release tag rather than a
 // development build.

@@ -76,21 +76,17 @@ Further rules:
 
 ## Releases
 
-Push a tag to publish a release:
-
-```sh
-git tag v0.1.0
-```
-
-```sh
-git push origin v0.1.0
-```
-
-CI builds linux/amd64 and linux/arm64 archives and publishes them to a GitHub
-Release with `checksums.txt`. Tags with a hyphen (`v0.2.0-rc1`) become
-pre-releases. `grokbot-tunnel update` and the update timer installed by
-`grokbot-tunnel install` download these archives, so keep their names and the
-`checksums.txt` format.
+Every push to `main` is released once CI passes: there is no tag to push.
+The first job of `.github/workflows/ci.yml` computes the version from the
+latest `vX.Y.Z` tag and the conventional commits since then: `type!:` or a
+`BREAKING CHANGE:` footer bumps the major version, `feat:` the minor one,
+anything else the patch. Pull requests are built as that version with a
+`-g<sha>` suffix, which `grokbot-tunnel update` treats as a development build.
+The release job creates the tag and a GitHub Release with the linux/amd64 and
+linux/arm64 archives and `checksums.txt`; a re-run of a released commit keeps
+its version and skips the release. `grokbot-tunnel update` and the update
+timer installed by `grokbot-tunnel install` download these archives, so keep
+their names and the `checksums.txt` format.
 
 Package builds should pass
 `-X github.com/exa-pub/grokbot-tunnel/internal/api/cli.packager=<name>` in
