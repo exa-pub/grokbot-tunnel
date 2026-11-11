@@ -272,7 +272,7 @@ func (r *Root) Check(path string) (*Path, error) {
 	// s.real has no symlinks, so the path resolves from it as from the
 	// root's path, and in the directory that s.fs has open.
 	resolved, ok := within(s.real, resolveExisting(filepath.Join(s.real, rel)))
-	if !ok {
+	if !ok || danglingOut(s.real, filepath.Join(s.real, rel)) {
 		s.release()
 		return nil, &OutsideError{Path: path, Symlink: true}
 	}
@@ -283,18 +283,49 @@ func (r *Root) Check(path string) (*Path, error) {
 // resolveExisting resolves the symlinks of the longest existing prefix of
 // path and appends the rest.
 func resolveExisting(path string) string {
-	rest := ""
+	prefix, rest := splitExisting(path)
+	return filepath.Join(prefix, rest)
+}
+
+// splitExisting returns the longest prefix of path whose symlinks resolve,
+// resolved, and the rest of path.
+func splitExisting(path string) (prefix, rest string) {
 	for {
 		if resolved, err := filepath.EvalSymlinks(path); err == nil {
-			return filepath.Join(resolved, rest)
+			return resolved, rest
 		}
 		parent := filepath.Dir(path)
 		if parent == path {
-			return filepath.Join(path, rest)
+			return path, rest
 		}
 		rest = filepath.Join(filepath.Base(path), rest)
 		path = parent
 	}
+}
+
+// danglingOut reports whether path goes through a symlink that does not
+// resolve and points outside root: a directory of the path, not its last
+// name, which an upload replaces like the desktop. os.Root refuses to go
+// through such a symlink too, but in words that depend on the Go release:
+// creating a directory below it fails with "path escapes from parent" in
+// newer releases and with EEXIST in Go 1.25. Refusing it here answers the
+// same with every toolchain.
+func danglingOut(root, path string) bool {
+	prefix, rest := splitExisting(path)
+	first, below, _ := strings.Cut(rest, string(filepath.Separator))
+	if below == "" {
+		return false
+	}
+	link := filepath.Join(prefix, first)
+	target, err := os.Readlink(link)
+	if err != nil {
+		return false // not a symlink, or gone
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(prefix, target)
+	}
+	_, inside := within(root, resolveExisting(filepath.Clean(target)))
+	return !inside
 }
 
 // Escaped reports whether os.Root refused a path leading outside the root.

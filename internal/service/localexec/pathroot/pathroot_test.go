@@ -332,3 +332,22 @@ func TestRelativeExpandsHome(t *testing.T) {
 		assert.Equal(t, in, outside.Path, "the refusal names the path as requested")
 	}
 }
+
+// A path through a dangling symlink out of the root is refused by Check, in
+// the same words with every Go release; os.Root alone answers EEXIST in Go
+// 1.25 when an upload creates a directory below it. The symlink itself, as
+// the last name, still passes: an upload replaces it like the desktop. One
+// that dangles inside the root passes too.
+func TestCheckThroughDanglingSymlink(t *testing.T) {
+	r := open(t)
+	require.NoError(t, os.Symlink(filepath.Join(t.TempDir(), "gone"), filepath.Join(r.Dir(), "out")))
+	require.NoError(t, os.Symlink("missing", filepath.Join(r.Dir(), "in")))
+	for _, path := range []string{"out/x", "out/x/y"} {
+		_, err := r.Check(path)
+		require.ErrorIs(t, err, pathroot.ErrOutside, path)
+		require.EqualError(t, err, "Path resolves through a symlink to outside the allowed local-exec root and was refused: "+path)
+	}
+	for _, path := range []string{"out", "in", "in/x", "missing/x"} {
+		check(t, r, path)
+	}
+}
