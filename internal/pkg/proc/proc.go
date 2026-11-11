@@ -25,6 +25,26 @@ func Kill(c *exec.Cmd) {
 	time.AfterFunc(killDelay, func() { signalGroup(pid, syscall.SIGKILL) })
 }
 
+// forwarded are the signals that, when one kills a shell, the desktop sends
+// on to the rest of its process group (FTt).
+var forwarded = map[syscall.Signal]bool{
+	syscall.SIGTERM: true, syscall.SIGINT: true, syscall.SIGHUP: true, syscall.SIGQUIT: true, syscall.SIGKILL: true,
+}
+
+// Forward sends the signal that killed the reaped c, if it is one of those,
+// to c's process group, like the desktop since 1.0.1 (Np) for a shell that
+// was not aborted: the jobs a command started do not outlive a shell that
+// was killed. The caller skips it for a shell it killed itself.
+func Forward(c *exec.Cmd) {
+	if c.Process == nil || c.ProcessState == nil {
+		return
+	}
+	ws, ok := c.ProcessState.Sys().(syscall.WaitStatus)
+	if ok && ws.Signaled() && forwarded[ws.Signal()] {
+		signalGroup(c.Process.Pid, ws.Signal())
+	}
+}
+
 func signalGroup(pid int, sig syscall.Signal) {
 	if err := syscall.Kill(-pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
 		log.Printf("signal process group %d: %v", pid, err)

@@ -1,0 +1,20 @@
+{
+  "ranges": "eLt",
+  "streamReader": "W$e",
+  "trimToMaxChars": "vle",
+  "mostlyUtf8": "sm",
+  "discoveryMissing": "Hse",
+  "discoveryTitle": "Bl",
+  "commandTitle": "Xbe",
+  "parseCommand": "Hp",
+  "denylist": "fT",
+  "terminalHeader": "cb",
+  "classifyFormat": "UT",
+  "format": "Bke",
+  "imageFit": "v$e",
+  "fs": "Ole",
+  "jschardet": "vke",
+  "iconv": "Kl",
+  "iconvName": "N0",
+  "encodingLabel": "B0"
+}

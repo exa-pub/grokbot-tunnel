@@ -69,7 +69,9 @@ import (
 const (
 	// maxSnapshot only guards memory; the desktop has no limit.
 	maxSnapshot = 64 << 20
-	initTimeout = 10 * time.Second
+	// initTimeout bounds reading the profile, like the desktop's state init
+	// since 1.0.1 (Bp, zTt): a startup file that blocks longer is killed.
+	initTimeout = 60 * time.Second
 	// sectionPrefix tags the non-environment parts of a state snapshot.
 	sectionPrefix    = "GROK_SHELL_"
 	sectionEnvSaved  = sectionPrefix + "ENV_SAVED"
@@ -279,7 +281,7 @@ func (s *Session) profileState() (State, error) {
 	proc.Wait(c)
 	close(done)
 	if ctx.Err() != nil {
-		return State{}, errors.New("profile did not finish within 10s")
+		return State{}, fmt.Errorf("profile did not finish within %s; a startup file is blocking", initTimeout)
 	}
 	b, err := readSnapshot(snapshot)
 	if err != nil {

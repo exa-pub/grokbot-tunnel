@@ -1,0 +1,83 @@
+{
+  "scenario": "ls/terminals",
+  "digest": "sha256:5949584196025750ae42ce4b0da39293e715cbe4f4396b4397bb9fd56773e24a",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "lsResult": {
+            "success": {
+              "directoryTreeRoot": {
+                "absPath": "$ROOT/terminals",
+                "childrenFiles": [
+                  {
+                    "name": "5.txt"
+                  },
+                  {
+                    "name": "notes.txt"
+                  }
+                ],
+                "childrenWereProcessed": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "lsResult": {
+            "success": {
+              "directoryTreeRoot": {
+                "absPath": "$ROOT",
+                "childrenDirs": [
+                  {
+                    "absPath": "$ROOT/terminals",
+                    "childrenFiles": [
+                      {
+                        "name": "5.txt"
+                      },
+                      {
+                        "name": "notes.txt"
+                      }
+                    ],
+                    "childrenWereProcessed": true
+                  }
+                ],
+                "childrenWereProcessed": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ]
+  }
+}

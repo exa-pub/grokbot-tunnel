@@ -3,10 +3,12 @@ package proc_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -75,4 +77,51 @@ func TestKillProcessGroup(t *testing.T) {
 			5*time.Second, 10*time.Millisecond, "process group survived")
 	}
 	proc.Kill(&exec.Cmd{}) // not started: no-op
+}
+
+// gone reports whether pid has exited: it no longer exists or is a zombie
+// waiting for init.
+func gone(pid int) bool {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return true
+	}
+	_, after, _ := strings.Cut(string(b), ") ")
+	return strings.HasPrefix(after, "Z")
+}
+
+// A shell killed by a terminating signal takes its process group with it;
+// one that exits on its own or by another signal does not (Np).
+func TestForward(t *testing.T) {
+	if _, err := os.Stat("/proc/self/stat"); err != nil {
+		t.Skip("needs /proc")
+	}
+	for _, tc := range []struct {
+		script string
+		killed bool
+	}{
+		{"sleep 30 & echo $!; kill -KILL $$", true},
+		{"sleep 30 & echo $!; kill -HUP $$", true},
+		{"sleep 30 & echo $!; kill -USR1 $$", false},
+		{"sleep 30 & echo $!; exit 3", false},
+	} {
+		c := exec.CommandContext(context.Background(), "/bin/sh", "-c", tc.script)
+		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		out, err := c.StdoutPipe()
+		require.NoError(t, err)
+		require.NoError(t, c.Start())
+		var pid int
+		_, err = fmt.Fscan(out, &pid)
+		require.NoError(t, err, tc.script)
+		proc.Wait(c)
+		proc.Forward(c)
+		if tc.killed {
+			assert.Eventually(t, func() bool { return gone(pid) }, 5*time.Second, 10*time.Millisecond, tc.script)
+		} else {
+			time.Sleep(100 * time.Millisecond)
+			assert.False(t, gone(pid), tc.script)
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	}
+	proc.Forward(&exec.Cmd{}) // not started: no-op
 }

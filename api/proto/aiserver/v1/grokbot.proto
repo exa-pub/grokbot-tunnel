@@ -25,11 +25,13 @@ message GetMeResponse {
   optional bool email_is_synthetic = 21;
   optional string signup_source = 22;
   bool admin_session_management_enabled = 23;
+  optional bool has_individual_plan = 24;
 }
 message GetMeRequest {
   optional int32 team_id = 1;
   optional string source_site_hostname = 2;
   optional bool include_mobile_app_status = 3;
+  optional bool include_individual_plan = 4;
 }
 message RegisterSandMachineResponse {
   string credential = 1;

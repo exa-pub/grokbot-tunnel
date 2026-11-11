@@ -1,0 +1,67 @@
+{
+  "scenario": "read/image-range",
+  "digest": "sha256:8845a9806142f037a90b4576ea94f006c48ac778d186343eed813fbe004a71f1",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "success": {
+              "data": {
+                "height": 48,
+                "image": "png",
+                "width": 64
+              },
+              "fileSize": 154,
+              "path": "$ROOT/small.png"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "success": {
+              "data": {
+                "height": 48,
+                "image": "png",
+                "width": 64
+              },
+              "fileSize": 154,
+              "path": "$ROOT/small.png"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ]
+  }
+}

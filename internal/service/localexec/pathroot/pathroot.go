@@ -46,7 +46,7 @@ func (e *OutsideError) StackTrace() string { return "SandLocalExecPathError: " +
 
 // RootError fails a path below a root directory that cannot be opened, such
 // as one removed while the tunnel runs. The desktop's realpath of the root
-// then fails, the path is used as it is (n9) and opening it fails, so the
+// then fails, the path is used as it is (_5) and opening it fails, so the
 // tools report it as a failure to open Path.
 type RootError struct {
 	Path string // absolute, as requested
@@ -58,7 +58,7 @@ func (e *RootError) Unwrap() error { return e.Err }
 
 // Root is a root directory, opened again whenever its path names another
 // directory: the desktop's root (ult) is a path whose realpath its check
-// takes on every call (n9), so a symlink root that is retargeted, such as a
+// takes on every call (_5), so a symlink root that is retargeted, such as a
 // release directory switched with ln -sfn, and a root removed and created
 // again are followed. A request uses the snapshot of the root taken by its
 // check.
@@ -86,7 +86,7 @@ const openAttempts = 3
 // openSnapshot opens dir and resolves its realpath, which must name the
 // directory opened. If the realpath cannot be resolved, or the root keeps
 // changing, it is left unknown and the realpath check is skipped, like the
-// desktop's n9 when the realpath of the root fails, until a later request
+// desktop's _5 when the realpath of the root fails, until a later request
 // resolves it and opens the root again.
 func openSnapshot(dir string) (*snapshot, error) {
 	var s *snapshot
@@ -210,12 +210,9 @@ func (r *Root) Remove(rel string) error {
 // or a file:// URL, to a path relative to the root. It rejects lexical
 // escapes; os.Root rejects symlink escapes.
 //
-// Like the desktop's read and ls (cr), "~" and file:// URLs are expanded.
-// Unlike the desktop, whose root check (n9) looks at the path before that
-// expansion, the expanded path is checked: there "~/secret" passes as
-// <root>/~/secret and is then read from the home directory, outside a root
-// that does not hold it. Upload and download expand them too, where the
-// desktop writes below a directory named "~" in the root.
+// Like the desktop's root check (_5, since 1.0.1), "~" and file:// URLs are
+// expanded (Ir) and the expanded path is checked, for reads, listings,
+// uploads and downloads alike.
 func (r *Root) Relative(path string) (string, error) {
 	rel, ok := r.inside(path)
 	if !ok {
@@ -249,7 +246,7 @@ func (p *Path) Close() { p.snap.release() }
 
 // Check converts path like Relative and also refuses a path whose existing
 // part leads outside the root through a symlink, like the desktop's check
-// of file paths (n9): the realpath of the path against the realpath of the
+// of file paths (_5): the realpath of the path against the realpath of the
 // root, both taken now. A root directory that cannot be opened fails with a
 // *RootError. The caller closes the path.
 func (r *Root) Check(path string) (*Path, error) {
@@ -275,7 +272,7 @@ func (r *Root) Check(path string) (*Path, error) {
 	// s.real has no symlinks, so the path resolves from it as from the
 	// root's path, and in the directory that s.fs has open.
 	resolved, ok := within(s.real, resolveExisting(filepath.Join(s.real, rel)))
-	if !ok {
+	if !ok || danglingOut(s.real, filepath.Join(s.real, rel)) {
 		s.release()
 		return nil, &OutsideError{Path: path, Symlink: true}
 	}
@@ -286,18 +283,49 @@ func (r *Root) Check(path string) (*Path, error) {
 // resolveExisting resolves the symlinks of the longest existing prefix of
 // path and appends the rest.
 func resolveExisting(path string) string {
-	rest := ""
+	prefix, rest := splitExisting(path)
+	return filepath.Join(prefix, rest)
+}
+
+// splitExisting returns the longest prefix of path whose symlinks resolve,
+// resolved, and the rest of path.
+func splitExisting(path string) (prefix, rest string) {
 	for {
 		if resolved, err := filepath.EvalSymlinks(path); err == nil {
-			return filepath.Join(resolved, rest)
+			return resolved, rest
 		}
 		parent := filepath.Dir(path)
 		if parent == path {
-			return filepath.Join(path, rest)
+			return path, rest
 		}
 		rest = filepath.Join(filepath.Base(path), rest)
 		path = parent
 	}
+}
+
+// danglingOut reports whether path goes through a symlink that does not
+// resolve and points outside root: a directory of the path, not its last
+// name, which an upload replaces like the desktop. os.Root refuses to go
+// through such a symlink too, but in words that depend on the Go release:
+// creating a directory below it fails with "path escapes from parent" in
+// newer releases and with EEXIST in Go 1.25. Refusing it here answers the
+// same with every toolchain.
+func danglingOut(root, path string) bool {
+	prefix, rest := splitExisting(path)
+	first, below, _ := strings.Cut(rest, string(filepath.Separator))
+	if below == "" {
+		return false
+	}
+	link := filepath.Join(prefix, first)
+	target, err := os.Readlink(link)
+	if err != nil {
+		return false // not a symlink, or gone
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(prefix, target)
+	}
+	_, inside := within(root, resolveExisting(filepath.Clean(target)))
+	return !inside
 }
 
 // Escaped reports whether os.Root refused a path leading outside the root.

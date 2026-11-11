@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 )
 
@@ -267,4 +270,29 @@ func TestShellOutputCap(t *testing.T) {
 	if len(r.stdout) > 1<<20 || len(r.stdout) == 0 || strings.Trim(r.stdout, "a") != "" || r.stderr != "done\n" || r.exit.Code != 0 {
 		t.Fatalf("stdout %d bytes, stderr %q, exit %v", len(r.stdout), r.stderr, r.exit)
 	}
+}
+
+// A shell killed by a terminating signal of its own takes the jobs it started
+// with it, as on the desktop since 1.0.1 (Np), instead of leaving them to
+// hold its output open; an aborted one is killed as before.
+func TestShellKilledBySignalTakesItsJobs(t *testing.T) {
+	if _, err := os.Stat("/proc/self/stat"); err != nil {
+		t.Skip("needs /proc")
+	}
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		start := time.Now()
+		r := runShell(t, e, `sleep 30 & echo $!; kill -KILL $$`)
+		assert.Less(t, time.Since(start), 4*time.Second, "waited for the job's output")
+		pid, err := strconv.Atoi(strings.TrimSpace(r.stdout))
+		require.NoError(t, err, r.stdout)
+		assert.Eventually(t, func() bool {
+			b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+			if err != nil {
+				return true
+			}
+			_, state, _ := strings.Cut(string(b), ") ")
+			return strings.HasPrefix(state, "Z")
+		}, 5*time.Second, 10*time.Millisecond, "job survived its shell")
+	})
 }

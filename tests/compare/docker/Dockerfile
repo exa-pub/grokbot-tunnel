@@ -13,7 +13,7 @@
 # Pinned by digest so that recordings and their checks see the same programs.
 ARG UBUNTU=ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
 # The Node of the desktop's Electron runtime (process.versions.node).
-ARG NODE=node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df
+ARG NODE=node:24.22.1-bookworm-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c
 
 FROM ${UBUNTU} AS base
 ARG UBUNTU

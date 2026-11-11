@@ -1,0 +1,1414 @@
+{
+  "provenance": {
+    "version": "1.0.1",
+    "platform": "linux",
+    "method": "isolated pure functions from source; not desktop traffic",
+    "source": "local-exec-daemon/main.cjs"
+  },
+  "ranges": [
+    {
+      "text": "",
+      "args": {},
+      "result": {
+        "content": "",
+        "rangeApplied": false
+      }
+    },
+    {
+      "text": "one\ntwo\nthree\n",
+      "args": {
+        "offset": 2,
+        "limit": 1
+      },
+      "result": {
+        "content": "two",
+        "rangeApplied": true
+      }
+    },
+    {
+      "text": "one\ntwo\n",
+      "args": {
+        "offset": 20
+      },
+      "result": {
+        "content": "one\ntwo\n",
+        "rangeApplied": false
+      }
+    },
+    {
+      "text": "one\ntwo\nthree",
+      "args": {
+        "offset": -2
+      },
+      "result": {
+        "content": "two\nthree",
+        "rangeApplied": true
+      }
+    }
+  ],
+  "streaming": [
+    {
+      "text": "",
+      "args": {},
+      "result": {
+        "content": "",
+        "totalLines": 1,
+        "truncated": false,
+        "rangeApplied": false
+      }
+    },
+    {
+      "text": "one\ntwo\nthree\n",
+      "args": {
+        "offset": 2,
+        "limit": 1
+      },
+      "result": {
+        "content": "two",
+        "totalLines": 4,
+        "truncated": false,
+        "rangeApplied": true
+      }
+    },
+    {
+      "text": "one\ntwo\n",
+      "args": {
+        "offset": 20
+      },
+      "result": {
+        "content": "one\ntwo\n",
+        "totalLines": 3,
+        "truncated": false,
+        "rangeApplied": false
+      }
+    },
+    {
+      "text": "one\ntwo\nthree",
+      "args": {
+        "offset": -2
+      },
+      "result": {
+        "content": "two\nthree",
+        "totalLines": 3,
+        "truncated": false,
+        "rangeApplied": true
+      }
+    },
+    {
+      "text": "one\ntwo\nthree\n",
+      "args": {
+        "maxChars": 5
+      },
+      "result": {
+        "content": "one\ntwo",
+        "totalLines": 4,
+        "truncated": true,
+        "rangeApplied": false
+      }
+    },
+    {
+      "text": "one\ntwo\nthree\n",
+      "args": {
+        "maxChars": 7
+      },
+      "result": {
+        "content": "one\ntwo\nthree",
+        "totalLines": 4,
+        "truncated": true,
+        "rangeApplied": false
+      }
+    },
+    {
+      "text": "one\ntwo\nthree",
+      "args": {
+        "maxChars": 100
+      },
+      "result": {
+        "content": "one\ntwo\nthree",
+        "totalLines": 3,
+        "truncated": false,
+        "rangeApplied": false
+      }
+    },
+    {
+      "text": "one\ntwo\nthree\nfour\n",
+      "args": {
+        "offset": 2,
+        "maxChars": 4
+      },
+      "result": {
+        "content": "two\nthree",
+        "totalLines": 5,
+        "truncated": true,
+        "rangeApplied": true
+      }
+    },
+    {
+      "text": "one\ntwo\nthree\nfour\n",
+      "args": {
+        "offset": 2,
+        "limit": 1,
+        "maxChars": 1
+      },
+      "result": {
+        "content": "two",
+        "totalLines": 5,
+        "truncated": false,
+        "rangeApplied": true
+      }
+    },
+    {
+      "text": "one\ntwo\nthree\nfour",
+      "args": {
+        "offset": -2,
+        "maxChars": 1
+      },
+      "result": {
+        "content": "three\nfour",
+        "totalLines": 4,
+        "truncated": false,
+        "rangeApplied": true
+      }
+    },
+    {
+      "text": "one\ntwo\n",
+      "args": {
+        "offset": 20,
+        "maxChars": 1
+      },
+      "result": {
+        "content": "one\ntwo\n",
+        "totalLines": 3,
+        "truncated": false,
+        "rangeApplied": false
+      }
+    },
+    {
+      "text": "ab\r\ncd\r\nef\r\n",
+      "args": {
+        "maxChars": 5
+      },
+      "result": {
+        "content": "ab\ncd\nef",
+        "totalLines": 4,
+        "truncated": true,
+        "rangeApplied": false
+      }
+    },
+    {
+      "text": "ab\r\ncd\r\nef\r\n",
+      "args": {
+        "maxChars": 4
+      },
+      "result": {
+        "content": "ab\ncd",
+        "totalLines": 4,
+        "truncated": true,
+        "rangeApplied": false
+      }
+    },
+    {
+      "text": "😀😀\nx",
+      "args": {
+        "maxChars": 1
+      },
+      "result": {
+        "content": "😀😀",
+        "totalLines": 2,
+        "truncated": true,
+        "rangeApplied": false
+      }
+    },
+    {
+      "textRuns": [
+        {
+          "char": "a",
+          "count": 70000
+        },
+        {
+          "char": "\n",
+          "count": 1
+        },
+        {
+          "char": "b",
+          "count": 1
+        }
+      ],
+      "args": {
+        "maxChars": 10
+      },
+      "result": {
+        "contentRuns": [
+          {
+            "char": "a",
+            "count": 65536
+          }
+        ],
+        "totalLines": 2,
+        "truncated": true,
+        "rangeApplied": false
+      }
+    },
+    {
+      "textRuns": [
+        {
+          "char": "a",
+          "count": 1
+        },
+        {
+          "char": "é",
+          "count": 40000
+        }
+      ],
+      "args": {
+        "maxChars": 10
+      },
+      "result": {
+        "contentRuns": [
+          {
+            "char": "a",
+            "count": 1
+          },
+          {
+            "char": "é",
+            "count": 32767
+          }
+        ],
+        "totalLines": 1,
+        "truncated": true,
+        "rangeApplied": false
+      }
+    },
+    {
+      "textRuns": [
+        {
+          "char": "﻿",
+          "count": 1
+        },
+        {
+          "char": "a",
+          "count": 70000
+        }
+      ],
+      "args": {
+        "maxChars": 10
+      },
+      "result": {
+        "contentRuns": [
+          {
+            "char": "a",
+            "count": 65533
+          }
+        ],
+        "totalLines": 1,
+        "truncated": true,
+        "rangeApplied": false
+      }
+    },
+    {
+      "textRuns": [
+        {
+          "char": "x",
+          "count": 1
+        },
+        {
+          "char": "\n",
+          "count": 1
+        },
+        {
+          "char": "a",
+          "count": 140000
+        },
+        {
+          "char": "\n",
+          "count": 1
+        },
+        {
+          "char": "y",
+          "count": 1
+        }
+      ],
+      "args": {
+        "offset": 2,
+        "maxChars": 70000
+      },
+      "result": {
+        "contentRuns": [
+          {
+            "char": "a",
+            "count": 131070
+          }
+        ],
+        "totalLines": 3,
+        "truncated": true,
+        "rangeApplied": true
+      }
+    }
+  ],
+  "fallback": [
+    {
+      "hex": "636166e920617520616974",
+      "mostlyUtf8": false,
+      "lossy": "caf� au ait"
+    },
+    {
+      "hex": "d0bfd180d0b8d0b2d0b5d18220ff20d0bcd0b8d180",
+      "mostlyUtf8": true,
+      "lossy": "привет � мир"
+    },
+    {
+      "hex": "e28220616263",
+      "mostlyUtf8": false,
+      "lossy": "� abc"
+    },
+    {
+      "hex": "e697a5e69cace8aa9efffee697a5",
+      "mostlyUtf8": false,
+      "lossy": "日本語��日"
+    },
+    {
+      "hex": "61fffe62",
+      "mostlyUtf8": false,
+      "lossy": "a��b"
+    }
+  ],
+  "discoveryMissing": {
+    "source": "codex",
+    "found": false,
+    "sessionCount": 0,
+    "items": []
+  },
+  "discoveryTitles": [
+    {
+      "text": "fix the bug in /home/me/project/main.go and mail me@example.com",
+      "title": "fix the bug in [path] and mail [email]",
+      "whole": "fix the bug in [path] and mail [email]"
+    },
+    {
+      "text": "see https://example.com/a?b=c, then src/main/java and ./a/b",
+      "title": "see [link] then src/main/java and [path]",
+      "whole": "see [link] then src/main/java and [path]"
+    },
+    {
+      "text": "open C:\\Users\\me\\file.txt or ~/notes/todo.md",
+      "title": "open [path] or [path]",
+      "whole": "open [path] or [path]"
+    },
+    {
+      "text": "  several\n lines\tand spaces  ",
+      "title": "several lines and spaces",
+      "whole": "several lines and spaces"
+    },
+    {
+      "text": "use sk-abcdefghijklmnop1234 and ghp_abcdefghijklmnop1234",
+      "title": "use [redacted] and [redacted]",
+      "whole": "use [redacted] and [redacted]"
+    },
+    {
+      "text": "xoxb-1234567890-abc AKIA0123456789ABCDEF AIzaSyA-abcdefghijklmnopqrstuvwxyz0123",
+      "title": "[redacted] [redacted] [redacted]",
+      "whole": "[redacted] [redacted] [redacted]"
+    },
+    {
+      "text": "Bearer abcdefghijklmnop.qrst",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "xBearer abcdefghijklmnop.qrst",
+      "title": "xBearer abcdefghijklmnop.qrst",
+      "whole": "xBearer abcdefghijklmnop.qrst"
+    },
+    {
+      "text": "BEARER   abcdefghijklmnop",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "token=AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "token=[redacted]",
+      "whole": "token=[redacted]"
+    },
+    {
+      "text": "token: AbCdEfGhIjKlMnOpQrStUvWxYz012345==",
+      "title": "token: [redacted]",
+      "whole": "token: [redacted]"
+    },
+    {
+      "text": "token:  AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "token: [redacted]",
+      "whole": "token: [redacted]"
+    },
+    {
+      "text": "token=\"AbCdEfGhIjKlMnOpQrStUvWxYz012345\"",
+      "title": "token=\"AbCdEfGhIjKlMnOpQrStUvWxYz012345\"",
+      "whole": "token=\"AbCdEfGhIjKlMnOpQrStUvWxYz012345\""
+    },
+    {
+      "text": "a=AbCdEfGhIjKlMnOpQrStUvWxYz012345==AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "a=[redacted]=[redacted]",
+      "whole": "a=[redacted]=[redacted]"
+    },
+    {
+      "text": "a=AbCdEfGhIjKlMnOpQrStUvWxYz012345=AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "a=[redacted]=[redacted]",
+      "whole": "a=[redacted]=[redacted]"
+    },
+    {
+      "text": "a=AbCdEfGhIjKlMnOpQrStUvWxYz012345===b",
+      "title": "a=[redacted]=b",
+      "whole": "a=[redacted]=b"
+    },
+    {
+      "text": "AbCdEfGhIjKlMnOpQrStUvWxYz012345 AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "AbCdEfGhIjKlMnOpQrStUvWxYz012345 AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "whole": "AbCdEfGhIjKlMnOpQrStUvWxYz012345 AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    },
+    {
+      "text": "0123456789abcdef0123456789abcdef",
+      "title": "[redacted]",
+      "whole": "[redacted]"
+    },
+    {
+      "text": "x0123456789abcdef0123456789abcdefg",
+      "title": "x0123456789abcdef0123456789abcdefg",
+      "whole": "x0123456789abcdef0123456789abcdefg"
+    },
+    {
+      "text": "key=0123456789abcdef0123456789abcdef!",
+      "title": "key=[redacted]!",
+      "whole": "key=[redacted]!"
+    },
+    {
+      "text": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN",
+      "title": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN",
+      "whole": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"
+    },
+    {
+      "text": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "title": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "whole": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    },
+    {
+      "text": "sk_live_a1a1a1a1a1a1a1a1a1a1a1a1 glpat-c3c3c3c3c3c3c3c3c3c3",
+      "title": "sk_live_a1a1a1a1a1a1a1a1a1a1a1a1 glpat-c3c3c3c3c3c3c3c3c3c3",
+      "whole": "sk_live_a1a1a1a1a1a1a1a1a1a1a1a1 glpat-c3c3c3c3c3c3c3c3c3c3"
+    },
+    {
+      "text": "ſ://host/path K://x/y HTTP://Example.COM",
+      "title": "ſ:/[path] [link] [link]",
+      "whole": "ſ:/[path] [link] [link]"
+    },
+    {
+      "text": "a@b.c a@b.co @b.co a@.co",
+      "title": "a@b.c [email] @b.co a@.co",
+      "whole": "a@b.c [email] @b.co a@.co"
+    },
+    {
+      "text": ".../a/b x/a/b -/a/b (/a/b) /a /a/b/ //a//b",
+      "title": ".../a/b x/a/b -/a/b ([path]) /a [path] //a//b",
+      "whole": ".../a/b x/a/b -/a/b ([path]) /a [path] //a//b"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  tail",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx tail"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx /home/me/project/file",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [path]",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [path]"
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx AbCdEfGhIjKlMnOpQr…",
+      "whole": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx AbCdEfGhIjKlMnOpQrStUvWxYz012345AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    }
+  ],
+  "commandTitles": [
+    {
+      "parts": [
+        "ns",
+        "/home/me/x",
+        "cmd"
+      ],
+      "title": "ns:[path]:cmd"
+    },
+    {
+      "parts": [
+        "review"
+      ],
+      "title": "review"
+    },
+    {
+      "parts": [
+        "a",
+        "k=AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "title": "a:k=[redacted]:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+    },
+    {
+      "parts": [
+        "  a  b ",
+        "me@example.com"
+      ],
+      "title": "a b:[email]"
+    }
+  ],
+  "denylist": [
+    {
+      "command": "rm -f x; echo one",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm -f x",
+        "echo one"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo ok",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "echo ok"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "r\\m -f x",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "r\\m -f x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "'rm' -f x",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "'rm' -f x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "/bin/rm -rf x",
+      "rules": [
+        "rm -rf"
+      ],
+      "reason": null,
+      "commands": [
+        "/bin/rm -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "sudo rm -rf /",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "sudo rm -rf /"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "sudo rm -rf /",
+      "rules": [
+        "*rm*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: *rm*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "sudo rm -rf /"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "git push --force origin main",
+      "rules": [
+        "git:*--force*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: git:*--force*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "git push --force origin main"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "git push origin main",
+      "rules": [
+        "git:*--force*"
+      ],
+      "reason": null,
+      "commands": [
+        "git push origin main"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "aws s3 rm s3://b --recursive",
+      "rules": [
+        "aws:*s3 rm*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: aws:*s3 rm*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "aws s3 rm s3://b --recursive"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [
+        "*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: *) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [
+        ":x"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: :x) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [
+        "  ",
+        ""
+      ],
+      "reason": null,
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo hi",
+      "rules": [],
+      "reason": null,
+      "commands": [
+        "echo hi"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command could not be conclusively analyzed against your team's administrator command denylist, so it was blocked (fail-closed) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [],
+      "parsingFailed": false
+    },
+    {
+      "command": "A=1 B=2",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command could not be conclusively analyzed against your team's administrator command denylist, so it was blocked (fail-closed) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [],
+      "parsingFailed": false
+    },
+    {
+      "command": "ls | xargs rm",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "ls",
+        "xargs rm"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "ls | xargs rm",
+      "rules": [
+        "xargs:rm*"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: xargs:rm*) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "ls",
+        "xargs rm"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo \"$(rm x)\"",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo \"$(rm x)\"",
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "cat <<EOF\nbody $(rm x)\nEOF",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "cat",
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "if [ -f x ]; then rm x; fi",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "for f in *; do echo $f; done",
+      "rules": [
+        "rm",
+        "echo"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: echo) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo $f"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "time rm x",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "time rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "time rm x",
+      "rules": [
+        "time"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: time) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "time rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "FOO=1 rm x > out y",
+      "rules": [
+        "rm x y"
+      ],
+      "reason": null,
+      "commands": [
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "FOO=1 rm x > out y",
+      "rules": [
+        "rm x"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm x) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "unset A; export B=1; [ -f x ] && local c=2",
+      "rules": [
+        "unset",
+        "export",
+        "local",
+        "["
+      ],
+      "reason": "Denied: this command could not be conclusively analyzed against your team's administrator command denylist, so it was blocked (fail-closed) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [],
+      "parsingFailed": false
+    },
+    {
+      "command": "! unset A",
+      "rules": [
+        "unset"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: unset) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "unset A"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "let x=1+2",
+      "rules": [
+        "let"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: let) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "let x=1+2"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "rm    -rf\t x",
+      "rules": [
+        "rm -rf"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm -rf) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "RM -rf x",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "RM -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo rm",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "echo rm"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "$'r\\x6d' -rf x",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "$'r\\x6d' -rf x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "f() { rm x; }; f",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "rm x",
+        "f"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "( cd /tmp && rm x ) &",
+      "rules": [
+        "rm"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: rm) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "cd /tmp",
+        "rm x"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "git commit -m \"rm old files\"",
+      "rules": [
+        "rm"
+      ],
+      "reason": null,
+      "commands": [
+        "git commit -m \"rm old files\""
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo a\nrm b",
+      "rules": [
+        "e*b"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: e*b) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo a",
+        "rm b"
+      ],
+      "parsingFailed": false
+    },
+    {
+      "command": "echo a b",
+      "rules": [
+        "e*b"
+      ],
+      "reason": "Denied: this command was blocked by administrator policy (denylist rule: e*b) and was not executed. It cannot be approved from this conversation; only a user can run it manually outside the agent. You may continue working on the task.",
+      "commands": [
+        "echo a b"
+      ],
+      "parsingFailed": false
+    }
+  ],
+  "terminalHeader": "---\npid: 42\ncwd: \"/workspace\"\ncommand: \"printf hello\"\nstatus: running  \nstarted_at: 2026-01-01T00:00:00.000Z\nrunning_for_ms: 0        \n---\n",
+  "format": [
+    {
+      "hex": "",
+      "encoding": "utf8",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "68656c6c6f0a",
+      "encoding": "UTF-8",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616100",
+      "encoding": "UTF-8",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a1b5b33316d7265641b5b306d0a",
+      "encoding": "binary",
+      "isBinaryFile": true,
+      "isImageFile": false
+    },
+    {
+      "hex": "636166c3a9201b5b306d",
+      "encoding": "binary",
+      "isBinaryFile": true,
+      "isImageFile": false
+    },
+    {
+      "hex": "680065006c006c006f00200077006f0072006c0064000a00",
+      "encoding": "UTF-16LE",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "00680065006c006c006f00200077006f0072006c0064000a",
+      "encoding": "UTF-16BE",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "fffe68006900200074006800650072006500",
+      "encoding": "UTF-16LE",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "feff00680069002000740068006500720065",
+      "encoding": "UTF-16BE",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "fffe00006800000069000000200000007400000068000000650000007200000065000000",
+      "encoding": "UTF-32LE",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "0000feff0000006800000069",
+      "encoding": "UTF-32BE",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "68000000650000006c0000006c0000006f000000",
+      "encoding": "UTF-32LE",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "00000068000000650000006c0000006c0000006f",
+      "encoding": "UTF-32BE",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "6162006364",
+      "encoding": "binary",
+      "isBinaryFile": true,
+      "isImageFile": false
+    },
+    {
+      "hex": "89504e470d0a1a0a0000000d49484452",
+      "encoding": "binary",
+      "isBinaryFile": true,
+      "isImageFile": true
+    },
+    {
+      "hex": "ffd8ffe000104a464946",
+      "encoding": "binary",
+      "isBinaryFile": true,
+      "isImageFile": true
+    },
+    {
+      "hex": "474946383961010001000000",
+      "encoding": "binary",
+      "isBinaryFile": true,
+      "isImageFile": true
+    },
+    {
+      "hex": "52494646240000005745425056503820",
+      "encoding": "binary",
+      "isBinaryFile": true,
+      "isImageFile": true
+    },
+    {
+      "hex": "01010101016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+      "encoding": "binary",
+      "isBinaryFile": true,
+      "isImageFile": false
+    },
+    {
+      "hex": "01010101616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+      "encoding": "UTF-8",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b661d0",
+      "encoding": "UTF-8",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b6d0b661d0b6010101010101010101010101010101010101010101010101010101010101",
+      "encoding": "UTF-8",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "d0bfd180d0b8d0b2d0b5d18220d0bcd0b8d180ff",
+      "encoding": "UTF-8",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "6100620063",
+      "encoding": "UTF-16LE",
+      "isBinaryFile": false,
+      "isImageFile": false
+    },
+    {
+      "hex": "0061006200630064",
+      "encoding": "UTF-16BE",
+      "isBinaryFile": false,
+      "isImageFile": false
+    }
+  ],
+  "imageFit": [
+    {
+      "width": 1,
+      "height": 1,
+      "side": 1024,
+      "result": {
+        "width": 1,
+        "height": 1,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 1,
+      "height": 1,
+      "side": 1280,
+      "result": {
+        "width": 1,
+        "height": 1,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 1024,
+      "height": 1024,
+      "side": 1024,
+      "result": {
+        "width": 1024,
+        "height": 1024,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 1024,
+      "height": 1024,
+      "side": 1280,
+      "result": {
+        "width": 1024,
+        "height": 1024,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 1025,
+      "height": 10,
+      "side": 1024,
+      "result": {
+        "width": 1024,
+        "height": 10,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 1025,
+      "height": 10,
+      "side": 1280,
+      "result": {
+        "width": 1025,
+        "height": 10,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 4000,
+      "height": 3000,
+      "side": 1024,
+      "result": {
+        "width": 1024,
+        "height": 768,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 4000,
+      "height": 3000,
+      "side": 1280,
+      "result": {
+        "width": 1280,
+        "height": 960,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 3840,
+      "height": 2160,
+      "side": 1024,
+      "result": {
+        "width": 1024,
+        "height": 576,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 3840,
+      "height": 2160,
+      "side": 1280,
+      "result": {
+        "width": 1280,
+        "height": 720,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 2160,
+      "height": 3840,
+      "side": 1024,
+      "result": {
+        "width": 576,
+        "height": 1024,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 2160,
+      "height": 3840,
+      "side": 1280,
+      "result": {
+        "width": 720,
+        "height": 1280,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 10000,
+      "height": 9,
+      "side": 1024,
+      "result": {
+        "width": 8889,
+        "height": 8,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 10000,
+      "height": 9,
+      "side": 1280,
+      "result": {
+        "width": 8889,
+        "height": 8,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 10000,
+      "height": 7,
+      "side": 1024,
+      "result": {
+        "width": 10000,
+        "height": 7,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 10000,
+      "height": 7,
+      "side": 1280,
+      "result": {
+        "width": 10000,
+        "height": 7,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 7,
+      "height": 10000,
+      "side": 1024,
+      "result": {
+        "width": 7,
+        "height": 10000,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 7,
+      "height": 10000,
+      "side": 1280,
+      "result": {
+        "width": 7,
+        "height": 10000,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 2000,
+      "height": 8,
+      "side": 1024,
+      "result": {
+        "width": 2000,
+        "height": 8,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 2000,
+      "height": 8,
+      "side": 1280,
+      "result": {
+        "width": 2000,
+        "height": 8,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 1281,
+      "height": 800,
+      "side": 1024,
+      "result": {
+        "width": 1024,
+        "height": 640,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 1281,
+      "height": 800,
+      "side": 1280,
+      "result": {
+        "width": 1280,
+        "height": 799,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 0,
+      "height": 5,
+      "side": 1024,
+      "result": {
+        "width": 0,
+        "height": 5,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 0,
+      "height": 5,
+      "side": 1280,
+      "result": {
+        "width": 0,
+        "height": 5,
+        "needsResize": false
+      }
+    },
+    {
+      "width": 1500,
+      "height": 1501,
+      "side": 1024,
+      "result": {
+        "width": 1023,
+        "height": 1024,
+        "needsResize": true
+      }
+    },
+    {
+      "width": 1500,
+      "height": 1501,
+      "side": 1280,
+      "result": {
+        "width": 1279,
+        "height": 1280,
+        "needsResize": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "scenario": "ls/missing",
+  "digest": "sha256:4639b8bcf947a8a7a7e2923222ff91403809a9e3d86a2f978c6df35cb67f83d7",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "lsResult": {
+            "error": {
+              "error": "Path does not exist: $ROOT/tree/zzz",
+              "path": "$ROOT/tree/zzz"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  }
+}

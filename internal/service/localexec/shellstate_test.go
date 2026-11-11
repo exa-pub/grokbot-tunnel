@@ -793,3 +793,18 @@ func TestShellExportedIFSRestored(t *testing.T) {
 		expectStdout(t, e, `printf '[%s]' "$IFS"; echo a:b | { read -r x y; printf '%s|%s' "$x" "$y"; }`, "[:]a|b")
 	})
 }
+
+// Like the desktop since 1.0.1, every command runs without Node's module
+// compile cache, whatever the environment or an earlier command set.
+func TestShellDisablesNodeCompileCache(t *testing.T) {
+	t.Setenv("NODE_COMPILE_CACHE", "/tmp/cache")
+	t.Setenv("NODE_DISABLE_COMPILE_CACHE", "")
+	eachShell(t, func(t *testing.T, home string) {
+		e := setupHome(t, home)
+		want := "1:unset"
+		cmd := `printf %s "$NODE_DISABLE_COMPILE_CACHE:${NODE_COMPILE_CACHE-unset}"`
+		expectStdout(t, e, cmd, want)
+		runShell(t, e, "export NODE_COMPILE_CACHE=/x NODE_DISABLE_COMPILE_CACHE=0")
+		expectStdout(t, e, cmd, want)
+	})
+}

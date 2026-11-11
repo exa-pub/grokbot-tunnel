@@ -1,0 +1,26 @@
+{
+  "scenario": "channel/hello-always-server",
+  "digest": "sha256:7d8acfcb5996f44690b38717e82a7c3019b8c6eca4b1240ae35049e1f1f7b280",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "hello": {
+    "capabilities": {
+      "aiToolSetup": true,
+      "messagesOpGeneration": 4
+    },
+    "label": "compare",
+    "localRoot": "$ROOT",
+    "serverAuthoritative": true,
+    "supervised": true,
+    "terminalsFolder": "$ROOT/terminals",
+    "variant": "sand"
+  },
+  "requests": {}
+}

@@ -3675,6 +3675,7 @@ type ReadArgs struct {
 	EncodingHint  *string                `protobuf:"bytes,6,opt,name=encoding_hint,json=encodingHint,proto3,oneof" json:"encoding_hint,omitempty"`
 	DigestOnly    *bool                  `protobuf:"varint,7,opt,name=digest_only,json=digestOnly,proto3,oneof" json:"digest_only,omitempty"`
 	MaxChars      *uint32                `protobuf:"varint,8,opt,name=max_chars,json=maxChars,proto3,oneof" json:"max_chars,omitempty"`
+	MaxVideoBytes *uint32                `protobuf:"varint,9,opt,name=max_video_bytes,json=maxVideoBytes,proto3,oneof" json:"max_video_bytes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3754,6 +3755,13 @@ func (x *ReadArgs) GetDigestOnly() bool {
 func (x *ReadArgs) GetMaxChars() uint32 {
 	if x != nil && x.MaxChars != nil {
 		return *x.MaxChars
+	}
+	return 0
+}
+
+func (x *ReadArgs) GetMaxVideoBytes() uint32 {
+	if x != nil && x.MaxVideoBytes != nil {
+		return *x.MaxVideoBytes
 	}
 	return 0
 }
@@ -4209,7 +4217,7 @@ const file_agent_v1_exec_proto_rawDesc = "" +
 	"\n" +
 	"timeout_ms\x18\x05 \x01(\rH\x01R\ttimeoutMs\x88\x01\x01B\x11\n" +
 	"\x0f_sandbox_policyB\r\n" +
-	"\v_timeout_ms\"\xaf\x02\n" +
+	"\v_timeout_ms\"\xf0\x02\n" +
 	"\bReadArgs\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12 \n" +
 	"\ftool_call_id\x18\x02 \x01(\tR\n" +
@@ -4219,13 +4227,15 @@ const file_agent_v1_exec_proto_rawDesc = "" +
 	"\rencoding_hint\x18\x06 \x01(\tH\x02R\fencodingHint\x88\x01\x01\x12$\n" +
 	"\vdigest_only\x18\a \x01(\bH\x03R\n" +
 	"digestOnly\x88\x01\x01\x12 \n" +
-	"\tmax_chars\x18\b \x01(\rH\x04R\bmaxChars\x88\x01\x01B\t\n" +
+	"\tmax_chars\x18\b \x01(\rH\x04R\bmaxChars\x88\x01\x01\x12+\n" +
+	"\x0fmax_video_bytes\x18\t \x01(\rH\x05R\rmaxVideoBytes\x88\x01\x01B\t\n" +
 	"\a_offsetB\b\n" +
 	"\x06_limitB\x10\n" +
 	"\x0e_encoding_hintB\x0e\n" +
 	"\f_digest_onlyB\f\n" +
 	"\n" +
-	"_max_chars*\x8f\x01\n" +
+	"_max_charsB\x12\n" +
+	"\x10_max_video_bytes*\x8f\x01\n" +
 	"\x15ShellBackgroundReason\x12'\n" +
 	"#SHELL_BACKGROUND_REASON_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fSHELL_BACKGROUND_REASON_TIMEOUT\x10\x01\x12(\n" +

@@ -1,0 +1,259 @@
+{
+  "scenario": "shell/sandbox-policy",
+  "digest": "sha256:14b7b4a0ad8f41200e7e4a17844c9ed6e42a0addd6e956471e9ac4a2dc86cfde",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "additionalReadPaths": [
+                  "/tmp/read"
+                ],
+                "additionalReadonlyPaths": [
+                  "/tmp/ro"
+                ],
+                "additionalReadwritePaths": [
+                  "/tmp/rw"
+                ],
+                "captureDenies": true,
+                "debugOutputDir": "/tmp/debug",
+                "disableTmpWrite": true,
+                "enableSharedBuildCache": false,
+                "networkAccess": true,
+                "networkPolicy": {
+                  "defaultAction": "DEFAULT_ACTION_ALLOW",
+                  "version": 1
+                },
+                "networkPolicyStrict": false,
+                "readBoundary": "READ_BOUNDARY_MODE_WORKSPACE",
+                "skipStatsigDefaults": true,
+                "type": "TYPE_WORKSPACE_READWRITE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "sandboxUnsupported": {
+              "command": "echo one",
+              "reason": "Sandbox binary path was not configured",
+              "sandboxPolicyType": "workspace_readwrite",
+              "workingDirectory": "$ROOT"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "additionalReadonlyPaths": [
+                  "/tmp/ro"
+                ],
+                "networkAccess": true,
+                "networkPolicy": {
+                  "allow": [
+                    "good.example"
+                  ],
+                  "defaultAction": "DEFAULT_ACTION_DENY",
+                  "deny": [
+                    "bad.example"
+                  ],
+                  "logging": {
+                    "decisionLogPath": "/tmp/log"
+                  }
+                },
+                "readBoundary": "READ_BOUNDARY_MODE_SYSTEM",
+                "type": "TYPE_WORKSPACE_READONLY"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "sandboxUnsupported": {
+              "command": "echo two",
+              "isReadonly": true,
+              "reason": "Sandbox binary path was not configured",
+              "sandboxPolicyType": "workspace_readonly",
+              "workingDirectory": "$ROOT"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ],
+    "r3": [
+      {
+        "client": {
+          "id": 3,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "networkAccess": false,
+                "networkPolicy": {},
+                "type": "TYPE_WORKSPACE_READONLY"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 3,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "sandboxUnsupported": {
+              "command": "echo three",
+              "isReadonly": true,
+              "reason": "Sandbox binary path was not configured",
+              "sandboxPolicyType": "workspace_readonly",
+              "workingDirectory": "$ROOT"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 3
+          }
+        }
+      }
+    ],
+    "r4": [
+      {
+        "client": {
+          "id": 4,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "networkAccess": true,
+                "networkPolicy": {
+                  "defaultAction": "DEFAULT_ACTION_ALLOW",
+                  "logging": {
+                    "logFormat": "jsonl"
+                  },
+                  "version": 1
+                },
+                "type": "TYPE_WORKSPACE_READONLY"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 4,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "sandboxUnsupported": {
+              "command": "echo four",
+              "isReadonly": true,
+              "reason": "Sandbox binary path was not configured",
+              "sandboxPolicyType": "workspace_readonly",
+              "workingDirectory": "$ROOT"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 4
+          }
+        }
+      }
+    ],
+    "r5": [
+      {
+        "client": {
+          "id": 5,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "allowlistEscalated": true,
+                "captureDenies": true,
+                "debugOutputDir": "/tmp/debug",
+                "enableSharedBuildCache": true,
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 5,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "stdout": {
+              "data": "five\n"
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 5,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "exit": {
+              "cwd": "$ROOT",
+              "localExecutionTimeMs": "<MS>"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 5
+          }
+        }
+      }
+    ]
+  }
+}

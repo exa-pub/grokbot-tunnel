@@ -1,0 +1,66 @@
+{
+  "scenario": "shell/stdin-open",
+  "digest": "sha256:32f6663bf08773be08a3a9e0505b9a8d6316432799fff99187846c7cd0cd6503",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "start": {
+              "sandboxPolicy": {
+                "type": "TYPE_INSECURE_NONE"
+              }
+            }
+          }
+        }
+      },
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "shellStream": {
+            "backgrounded": {
+              "command": "cat; echo rc=$? > rc1.txt",
+              "msToWait": 1000,
+              "pid": "<PID>",
+              "reason": "SHELL_BACKGROUND_REASON_TIMEOUT",
+              "shellId": "<SHELL#1>",
+              "workingDirectory": "$ROOT"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "rc1.txt": {
+      "missing": true
+    },
+    "terminals": {
+      "dir": true,
+      "mode": "0755"
+    },
+    "terminals/<SHELL#1>.txt": {
+      "mode": "0644",
+      "text": "---\npid: <PID>\ncwd: \"$ROOT\"\ncommand: \"cat; echo rc=$? > rc1.txt\"\nstatus: running  \nstarted_at: <TS>\nrunning_for_ms: <MS>     \n---\n"
+    }
+  }
+}

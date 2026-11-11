@@ -9,7 +9,7 @@ import (
 )
 
 func script(version string) []byte {
-	return []byte("#!/bin/sh\necho 'grokbot-tunnel " + version + " (Sand protocol 0.79.3)'\n")
+	return []byte("#!/bin/sh\necho 'grokbot-tunnel " + version + " (Sand protocol 1.0.1)'\n")
 }
 
 func TestReplace(t *testing.T) {
@@ -65,7 +65,7 @@ func TestVersions(t *testing.T) {
 	for v, want := range map[string]bool{
 		"v1.2.3": true, "v0.2.0-rc1": true,
 		"dev": false, "dev-abc1234": false, "v0.77.0-3-gabc1234": false, "v0.77.0-3-gabc1234-dirty": false,
-		"v0.77.0-dirty": false, "1.2.3": false, "abc1234": false,
+		"v0.77.0-dirty": false, "v1.6.0-gabc1234": false, "1.2.3": false, "abc1234": false,
 	} {
 		if IsRelease(v) != want {
 			t.Errorf("IsRelease(%q) = %v", v, !want)

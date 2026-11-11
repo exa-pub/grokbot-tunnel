@@ -1,0 +1,86 @@
+{
+  "scenario": "transfer/download-large",
+  "digest": "sha256:27fcee339b8303f3e58111f1fd30accb75c3db45460151bc98bc7049d319ca1d",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "file": {
+          "last": false,
+          "seq": 0,
+          "sha256": "7974191283d321758e3dbd7133d003e368d762a29503941c0911730d8678029c",
+          "size": 1048576
+        }
+      },
+      {
+        "file": {
+          "last": false,
+          "seq": 1,
+          "sha256": "43f77eee59ac4f1cba65138c7e5be34052e8ecd30082fe3358b7efb0e3d7a850",
+          "size": 1048576
+        }
+      },
+      {
+        "file": {
+          "last": false,
+          "seq": 2,
+          "sha256": "a85aaa1afa4d813f011b718b36b05c1b341cf73a9ba0b78e606dbd14880453d7",
+          "size": 1048576
+        }
+      },
+      {
+        "file": {
+          "last": false,
+          "seq": 3,
+          "sha256": "24b86777fec7a35dd13c89d528597fdfa7013a352d4a0fd8a593338b6dd78ee5",
+          "size": 1048576
+        }
+      },
+      {
+        "file": {
+          "last": true,
+          "seq": 4,
+          "sha256": "638b7f4f733430b675096ab77c0d4faf34797b8f9de073bad6c8555f0942f840",
+          "size": 1048576
+        }
+      }
+    ],
+    "r2": [
+      {
+        "file": {
+          "last": true,
+          "seq": 0,
+          "sha256": "7974191283d321758e3dbd7133d003e368d762a29503941c0911730d8678029c",
+          "size": 1048576
+        }
+      }
+    ],
+    "r3": [
+      {
+        "file": {
+          "last": false,
+          "seq": 0,
+          "sha256": "7974191283d321758e3dbd7133d003e368d762a29503941c0911730d8678029c",
+          "size": 1048576
+        }
+      },
+      {
+        "file": {
+          "last": true,
+          "seq": 1,
+          "sha256": "a9f51566bd6705f7ea6ad54bb9deb449f795582d6529a0e22207b8981233ec58",
+          "size": 1,
+          "text": "E"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "scenario": "read/video-limit",
+  "digest": "sha256:6dc17365be196f2b24a6b278c9522f31376c19840bbb366f8fab42f0fdc8e636",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "success": {
+              "fileSize": 4096,
+              "path": "$ROOT/clip.mp4",
+              "truncated": true
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "success": {
+              "data": {
+                "sha256": "fdbe3a6d6ad0efc2c26c62371518c217e5d05e0129ab4c64d81adda3812dbf73",
+                "size": 4096
+              },
+              "fileSize": 4096,
+              "path": "$ROOT/clip.mp4"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ]
+  }
+}

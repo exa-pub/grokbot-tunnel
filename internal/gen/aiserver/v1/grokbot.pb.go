@@ -153,6 +153,7 @@ type GetMeResponse struct {
 	EmailIsSynthetic                         *bool                  `protobuf:"varint,21,opt,name=email_is_synthetic,json=emailIsSynthetic,proto3,oneof" json:"email_is_synthetic,omitempty"`
 	SignupSource                             *string                `protobuf:"bytes,22,opt,name=signup_source,json=signupSource,proto3,oneof" json:"signup_source,omitempty"`
 	AdminSessionManagementEnabled            bool                   `protobuf:"varint,23,opt,name=admin_session_management_enabled,json=adminSessionManagementEnabled,proto3" json:"admin_session_management_enabled,omitempty"`
+	HasIndividualPlan                        *bool                  `protobuf:"varint,24,opt,name=has_individual_plan,json=hasIndividualPlan,proto3,oneof" json:"has_individual_plan,omitempty"`
 	unknownFields                            protoimpl.UnknownFields
 	sizeCache                                protoimpl.SizeCache
 }
@@ -348,11 +349,19 @@ func (x *GetMeResponse) GetAdminSessionManagementEnabled() bool {
 	return false
 }
 
+func (x *GetMeResponse) GetHasIndividualPlan() bool {
+	if x != nil && x.HasIndividualPlan != nil {
+		return *x.HasIndividualPlan
+	}
+	return false
+}
+
 type GetMeRequest struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	TeamId                 *int32                 `protobuf:"varint,1,opt,name=team_id,json=teamId,proto3,oneof" json:"team_id,omitempty"`
 	SourceSiteHostname     *string                `protobuf:"bytes,2,opt,name=source_site_hostname,json=sourceSiteHostname,proto3,oneof" json:"source_site_hostname,omitempty"`
 	IncludeMobileAppStatus *bool                  `protobuf:"varint,3,opt,name=include_mobile_app_status,json=includeMobileAppStatus,proto3,oneof" json:"include_mobile_app_status,omitempty"`
+	IncludeIndividualPlan  *bool                  `protobuf:"varint,4,opt,name=include_individual_plan,json=includeIndividualPlan,proto3,oneof" json:"include_individual_plan,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -404,6 +413,13 @@ func (x *GetMeRequest) GetSourceSiteHostname() string {
 func (x *GetMeRequest) GetIncludeMobileAppStatus() bool {
 	if x != nil && x.IncludeMobileAppStatus != nil {
 		return *x.IncludeMobileAppStatus
+	}
+	return false
+}
+
+func (x *GetMeRequest) GetIncludeIndividualPlan() bool {
+	if x != nil && x.IncludeIndividualPlan != nil {
+		return *x.IncludeIndividualPlan
 	}
 	return false
 }
@@ -3777,7 +3793,7 @@ var File_aiserver_v1_grokbot_proto protoreflect.FileDescriptor
 
 const file_aiserver_v1_grokbot_proto_rawDesc = "" +
 	"\n" +
-	"\x19aiserver/v1/grokbot.proto\x12\vaiserver.v1\"\xb4\v\n" +
+	"\x19aiserver/v1/grokbot.proto\x12\vaiserver.v1\"\x81\f\n" +
 	"\rGetMeResponse\x12\x17\n" +
 	"\aauth_id\x18\x01 \x01(\tR\x06authId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x05R\x06userId\x12\x19\n" +
@@ -3805,7 +3821,8 @@ const file_aiserver_v1_grokbot_proto_rawDesc = "" +
 	"\x13scm_only_restricted\x18\x14 \x01(\bH\x11R\x11scmOnlyRestricted\x88\x01\x01\x121\n" +
 	"\x12email_is_synthetic\x18\x15 \x01(\bH\x12R\x10emailIsSynthetic\x88\x01\x01\x12(\n" +
 	"\rsignup_source\x18\x16 \x01(\tH\x13R\fsignupSource\x88\x01\x01\x12G\n" +
-	" admin_session_management_enabled\x18\x17 \x01(\bR\x1dadminSessionManagementEnabledB\b\n" +
+	" admin_session_management_enabled\x18\x17 \x01(\bR\x1dadminSessionManagementEnabled\x123\n" +
+	"\x13has_individual_plan\x18\x18 \x01(\bH\x14R\x11hasIndividualPlan\x88\x01\x01B\b\n" +
 	"\x06_emailB\r\n" +
 	"\v_first_nameB\f\n" +
 	"\n" +
@@ -3830,15 +3847,18 @@ const file_aiserver_v1_grokbot_proto_rawDesc = "" +
 	"\x0f_public_user_idB\x16\n" +
 	"\x14_scm_only_restrictedB\x15\n" +
 	"\x13_email_is_syntheticB\x10\n" +
-	"\x0e_signup_source\"\xe6\x01\n" +
+	"\x0e_signup_sourceB\x16\n" +
+	"\x14_has_individual_plan\"\xbf\x02\n" +
 	"\fGetMeRequest\x12\x1c\n" +
 	"\ateam_id\x18\x01 \x01(\x05H\x00R\x06teamId\x88\x01\x01\x125\n" +
 	"\x14source_site_hostname\x18\x02 \x01(\tH\x01R\x12sourceSiteHostname\x88\x01\x01\x12>\n" +
-	"\x19include_mobile_app_status\x18\x03 \x01(\bH\x02R\x16includeMobileAppStatus\x88\x01\x01B\n" +
+	"\x19include_mobile_app_status\x18\x03 \x01(\bH\x02R\x16includeMobileAppStatus\x88\x01\x01\x12;\n" +
+	"\x17include_individual_plan\x18\x04 \x01(\bH\x03R\x15includeIndividualPlan\x88\x01\x01B\n" +
 	"\n" +
 	"\b_team_idB\x17\n" +
 	"\x15_source_site_hostnameB\x1c\n" +
-	"\x1a_include_mobile_app_status\"\x8a\x01\n" +
+	"\x1a_include_mobile_app_statusB\x1a\n" +
+	"\x18_include_individual_plan\"\x8a\x01\n" +
 	"\x1bRegisterSandMachineResponse\x12\x1e\n" +
 	"\n" +
 	"credential\x18\x01 \x01(\tR\n" +

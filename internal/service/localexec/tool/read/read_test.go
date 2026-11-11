@@ -159,6 +159,39 @@ func TestReadImages(t *testing.T) {
 	assert.Equal(t, "text", readFile(t, rd, &agentv1.ReadArgs{Path: "notes.mp4"}).GetSuccess().GetContent())
 }
 
+// A binary video larger than max_video_bytes comes without its data, as
+// truncated; one within the limit, or text named like a video, as before
+// (desktop 1.0.1).
+func TestReadVideoLimit(t *testing.T) {
+	rd, root := newReader(t)
+	write(t, root, "clip.mp4", []byte("\x00\x01binary"))
+	write(t, root, "notes.mp4", []byte("text"))
+
+	got := readFile(t, rd, &agentv1.ReadArgs{Path: "clip.mp4", MaxVideoBytes: ptr[uint32](7)}).GetSuccess()
+	require.NotNil(t, got)
+	assert.Equal(t, filepath.Join(root.Dir(), "clip.mp4"), got.Path)
+	assert.Equal(t, int64(8), got.FileSize)
+	assert.True(t, got.Truncated)
+	assert.Nil(t, got.Output)
+	assert.Zero(t, got.TotalLines)
+
+	got = readFile(t, rd, &agentv1.ReadArgs{Path: "clip.mp4", MaxVideoBytes: ptr[uint32](8)}).GetSuccess()
+	assert.Equal(t, []byte("\x00\x01binary"), got.GetData())
+	assert.False(t, got.GetTruncated())
+
+	got = readFile(t, rd, &agentv1.ReadArgs{Path: "notes.mp4", MaxVideoBytes: ptr[uint32](1)}).GetSuccess()
+	assert.Equal(t, "text", got.GetContent())
+}
+
+// An empty path is the root, as on the desktop since 1.0.1.
+func TestReadEmptyPath(t *testing.T) {
+	rd, root := newReader(t)
+	got := readFile(t, rd, &agentv1.ReadArgs{Path: ""}).GetInvalidFile()
+	require.NotNil(t, got)
+	assert.Equal(t, root.Dir(), got.Path)
+	assert.Equal(t, "Path is a directory, not a file", got.Reason)
+}
+
 // Other failures read as Node's error texts, as the desktop passes them on
 // (F13).
 func TestReadNodeErrors(t *testing.T) {

@@ -45,7 +45,7 @@ func uploadTarget(t *testing.T, r *pathroot.Root, rel string) (string, error) {
 	return check(t, r, rel).UploadTarget()
 }
 
-// L2-1: like the desktop (wft, n9), a root given through a symlink is kept
+// L2-1: like the desktop (dqe, _5), a root given through a symlink is kept
 // as it is: paths are checked lexically against it, and only their realpath
 // against its realpath. Its target is outside the root.
 func TestOpenKeepsSymlinks(t *testing.T) {
@@ -303,10 +303,9 @@ func TestCheck(t *testing.T) {
 	}
 }
 
-// N1: like the desktop's read and ls (cr: kOe, FNt), "~" and file:// URLs are
-// expanded; "~user" and a URL with a host stay as they are. The expanded
-// path is checked against the root, unlike the desktop's n9, which checks
-// <root>/~/secret and so lets read leave a root without the home directory.
+// N1: like the desktop's root check (_5 with Ir: Nye, l4t), "~" and file://
+// URLs are expanded; "~user" and a URL with a host stay as they are. The
+// expanded path is checked against the root.
 func TestRelativeExpandsHome(t *testing.T) {
 	r := open(t)
 	t.Setenv("HOME", r.Dir())
@@ -331,5 +330,24 @@ func TestRelativeExpandsHome(t *testing.T) {
 		var outside *pathroot.OutsideError
 		require.ErrorAs(t, err, &outside, in)
 		assert.Equal(t, in, outside.Path, "the refusal names the path as requested")
+	}
+}
+
+// A path through a dangling symlink out of the root is refused by Check, in
+// the same words with every Go release; os.Root alone answers EEXIST in Go
+// 1.25 when an upload creates a directory below it. The symlink itself, as
+// the last name, still passes: an upload replaces it like the desktop. One
+// that dangles inside the root passes too.
+func TestCheckThroughDanglingSymlink(t *testing.T) {
+	r := open(t)
+	require.NoError(t, os.Symlink(filepath.Join(t.TempDir(), "gone"), filepath.Join(r.Dir(), "out")))
+	require.NoError(t, os.Symlink("missing", filepath.Join(r.Dir(), "in")))
+	for _, path := range []string{"out/x", "out/x/y"} {
+		_, err := r.Check(path)
+		require.ErrorIs(t, err, pathroot.ErrOutside, path)
+		require.EqualError(t, err, "Path resolves through a symlink to outside the allowed local-exec root and was refused: "+path)
+	}
+	for _, path := range []string{"out", "in", "in/x", "missing/x"} {
+		check(t, r, path)
 	}
 }

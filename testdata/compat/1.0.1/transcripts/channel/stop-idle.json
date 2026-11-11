@@ -1,0 +1,40 @@
+{
+  "scenario": "channel/stop-idle",
+  "digest": "sha256:1f4768f9c1f661d0610f7224c9d7c954ee35c3f092b3a914e449f7f7908e225a",
+  "subject": "desktop-1.0.1",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {},
+  "calls": [
+    {
+      "request": {
+        "credential": "fixture-credential",
+        "machineId": "<MACHINE>",
+        "presenceToken": "<TOKEN>"
+      },
+      "rpc": "Watch"
+    },
+    {
+      "request": {
+        "credential": "fixture-credential",
+        "limit": 64,
+        "machineId": "<MACHINE>"
+      },
+      "rpc": "Poll"
+    },
+    {
+      "request": {
+        "credential": "fixture-credential",
+        "machineId": "<MACHINE>",
+        "presenceToken": "<TOKEN>"
+      },
+      "rpc": "Withdraw"
+    }
+  ]
+}
