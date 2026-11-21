@@ -11,8 +11,10 @@ import (
 //
 // All but the WebP show the same gradient, red growing to the right and
 // green downward: small.png, small.jpg and small.gif at 64x48, tiny.png at
-// 8x8, large.png at 3000x2000 and big.jpg, of quality 90, at 4000x3000.
-// pixel.webp is a lossless WebP of one pixel.
+// 8x8, large.png at 3000x2000 and big.jpg, of quality 90, at 4000x3000;
+// kept.png at 1280x800 and near.png at 1281x800; kept.jpg, of quality 90,
+// at 1456x840 with EXIF Orientation 6. pixel.webp is a lossless WebP of one
+// pixel.
 //
 //go:embed testdata
 var images embed.FS

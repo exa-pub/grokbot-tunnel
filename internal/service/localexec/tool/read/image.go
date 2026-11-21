@@ -40,8 +40,10 @@ const (
 	webpAsJPEG              = 90
 )
 
-// webpKeptSizes are WEBP sizes the desktop passes on without resizing (W3r).
-var webpKeptSizes = []image.Point{{1280, 800}, {1456, 840}}
+// keptSizes are sizes the desktop passes an image on at without resizing,
+// within maxImageBytes (a7t; WEBP only before 1.2, since 1.2 also PNG and
+// JPEG by the size in their header, d7t).
+var keptSizes = []image.Point{{1280, 800}, {1456, 840}}
 
 // decodeSlot lets one image at a time be decoded in the process, so that
 // parallel reads do not multiply the memory decoding takes.
@@ -97,11 +99,12 @@ type imageHeader struct {
 	rows *pngRows
 }
 
-// prepareImage prepares an image for the model like the desktop's tdt: an
-// image within 1024 pixels (WEBP: 1280) and 1 MiB is passed on as it is once
-// it decodes; a larger one is scaled down and encoded again in its format,
-// smaller by a fifth until it fits 1 MiB. A JPEG is turned by its EXIF
-// Orientation first, as jimp does.
+// prepareImage prepares an image for the model like the desktop's WNe: an
+// image within 1024 pixels (WEBP: 1280), or of a kept size, and within 1 MiB
+// is passed on as it is once it decodes; a larger one is scaled down and
+// encoded again in its format, smaller by a fifth until it fits 1 MiB. A
+// JPEG is turned by its EXIF Orientation first, as jimp does; one of a kept
+// size by its header is passed on unturned, as the desktop does.
 //
 // Images are decoded one at a time and within maxDecodeBytes; a PNG to
 // scale down is scaled as it is inflated where it can be, as the desktop
@@ -126,7 +129,7 @@ func prepareImage(ctx context.Context, data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !hdr.resize && len(data) <= maxImageBytes {
+	if hdr.asIs(kind, len(data)) {
 		if _, err = decode(data, kind, hdr); err != nil {
 			return nil, err
 		}
@@ -153,7 +156,7 @@ func webpAsIs(b []byte) bool {
 		return false
 	}
 	_, _, resize := fitImage(size.X, size.Y, maxWebPSide)
-	return !resize || slices.Contains(webpKeptSizes, size)
+	return !resize || slices.Contains(keptSizes, size)
 }
 
 // webpSize reads the size of a WEBP from its header, as the desktop's toe
@@ -270,6 +273,14 @@ func imageSize(data []byte, kind imageKind) (int, int, error) {
 	return cfg.Width, cfg.Height, nil
 }
 
+// asIs reports whether an image of size bytes is passed on as it is: within
+// 1 MiB, and within its side limit or of a kept size by its header, as the
+// desktop's d7t checks it before turning a JPEG.
+func (hdr imageHeader) asIs(kind imageKind, size int) bool {
+	kept := kind != kindGIF && slices.Contains(keptSizes, image.Pt(hdr.w, hdr.h))
+	return (!hdr.resize || kept) && size <= maxImageBytes
+}
+
 // fit returns the size to pass an image on at, its sides turned by its
 // orientation.
 func (hdr imageHeader) fit(kind imageKind) (int, int, bool) {
@@ -278,7 +289,7 @@ func (hdr imageHeader) fit(kind imageKind) (int, int, bool) {
 		w, h = h, w
 	}
 	switch {
-	case kind == kindWebP && slices.Contains(webpKeptSizes, image.Pt(w, h)):
+	case kind == kindWebP && slices.Contains(keptSizes, image.Pt(w, h)):
 		return w, h, false
 	case kind == kindWebP:
 		return fitImage(w, h, maxWebPSide)

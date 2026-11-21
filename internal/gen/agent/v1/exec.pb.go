@@ -3097,6 +3097,7 @@ type ReadSuccess struct {
 	RangeApplied  bool                 `protobuf:"varint,8,opt,name=range_applied,json=rangeApplied,proto3" json:"range_applied,omitempty"`
 	Sha256        *string              `protobuf:"bytes,9,opt,name=sha256,proto3,oneof" json:"sha256,omitempty"`
 	SizeBytes     *int64               `protobuf:"varint,10,opt,name=size_bytes,json=sizeBytes,proto3,oneof" json:"size_bytes,omitempty"`
+	Redacted      *bool                `protobuf:"varint,11,opt,name=redacted,proto3,oneof" json:"redacted,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3210,6 +3211,13 @@ func (x *ReadSuccess) GetSizeBytes() int64 {
 		return *x.SizeBytes
 	}
 	return 0
+}
+
+func (x *ReadSuccess) GetRedacted() bool {
+	if x != nil && x.Redacted != nil {
+		return *x.Redacted
+	}
+	return false
 }
 
 type isReadSuccess_Output interface {
@@ -4147,7 +4155,7 @@ const file_agent_v1_exec_proto_rawDesc = "" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"5\n" +
 	"\tReadError\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"\xf7\x02\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\xa5\x03\n" +
 	"\vReadSuccess\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1a\n" +
 	"\acontent\x18\x02 \x01(\tH\x00R\acontent\x12\x14\n" +
@@ -4161,11 +4169,13 @@ const file_agent_v1_exec_proto_rawDesc = "" +
 	"\x06sha256\x18\t \x01(\tH\x02R\x06sha256\x88\x01\x01\x12\"\n" +
 	"\n" +
 	"size_bytes\x18\n" +
-	" \x01(\x03H\x03R\tsizeBytes\x88\x01\x01B\b\n" +
+	" \x01(\x03H\x03R\tsizeBytes\x88\x01\x01\x12\x1f\n" +
+	"\bredacted\x18\v \x01(\bH\x04R\bredacted\x88\x01\x01B\b\n" +
 	"\x06outputB\x11\n" +
 	"\x0f_output_blob_idB\t\n" +
 	"\a_sha256B\r\n" +
-	"\v_size_bytes\"\xcf\x02\n" +
+	"\v_size_bytesB\v\n" +
+	"\t_redacted\"\xcf\x02\n" +
 	"\x11ExecServerMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x17\n" +
 	"\aexec_id\x18\x0f \x01(\tR\x06execId\x121\n" +

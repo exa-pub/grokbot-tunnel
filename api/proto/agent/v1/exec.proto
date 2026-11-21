@@ -273,6 +273,7 @@ message ReadSuccess {
   bool range_applied = 8;
   optional string sha256 = 9;
   optional int64 size_bytes = 10;
+  optional bool redacted = 11;
 }
 message ExecServerMessage {
   uint32 id = 1;
