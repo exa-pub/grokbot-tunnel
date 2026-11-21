@@ -3,10 +3,12 @@ package read
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"image"
 	"image/color"
 	"image/gif"
+	"image/png"
 	"os"
 	"slices"
 	"testing"
@@ -83,4 +85,43 @@ func TestImageWebPFrameSize(t *testing.T) {
 	data := slices.Concat([]byte("RIFF\x00\x00\x00\x00WEBP"), vp8x, frame)
 	_, err := prepareImage(context.Background(), data)
 	require.EqualError(t, err, msgWebPCodec)
+}
+
+// A PNG or JPEG of a kept size within 1 MiB is passed on as it is, a JPEG
+// unturned, as the desktop does since 1.2 (d7t); a size next to it is
+// scaled down as before. A kept PNG must still hold all its pixel data.
+func TestImageKeptSizes(t *testing.T) {
+	encodePNG := func(w, h int) []byte {
+		var b bytes.Buffer
+		require.NoError(t, png.Encode(&b, quadrants(w, h)))
+		return b.Bytes()
+	}
+	size := func(b []byte) image.Point {
+		cfg, _, err := image.DecodeConfig(bytes.NewReader(b))
+		require.NoError(t, err)
+		return image.Pt(cfg.Width, cfg.Height)
+	}
+	for _, kept := range keptSizes {
+		data := encodePNG(kept.X, kept.Y)
+		out, err := prepareImage(context.Background(), data)
+		require.NoError(t, err)
+		assert.Equal(t, data, out, "PNG %v", kept)
+
+		data = exifJPEG(t, quadrants(kept.X, kept.Y), 6, binary.BigEndian)
+		out, err = prepareImage(context.Background(), data)
+		require.NoError(t, err)
+		assert.Equal(t, data, out, "JPEG %v, turned by its orientation", kept)
+	}
+
+	out, err := prepareImage(context.Background(), encodePNG(1281, 800))
+	require.NoError(t, err)
+	assert.Equal(t, image.Pt(1024, 640), size(out), "scaled down, not kept")
+
+	data := encodePNG(1280, 800)
+	end := bytes.Index(data, []byte("IEND")) - 4
+	idat := bytes.LastIndex(data[:end], []byte("IDAT")) - 4
+	truncated := slices.Concat(data[:idat], data[end:]) // no pixel data
+	_, err = prepareImage(context.Background(), truncated)
+	var bad *undecodableError
+	require.ErrorAs(t, err, &bad)
 }

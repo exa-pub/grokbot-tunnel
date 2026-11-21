@@ -4,7 +4,8 @@
 //   node launcher.mjs <config.json>
 //
 // The main process writes the daemon's files into the data root (the
-// credential it was issued, the settings, a heartbeat), starts
+// credential it was issued, sealed with the file key, the settings, a
+// heartbeat), starts
 // local-exec-daemon/main.cjs with an IPC channel and hands it the file key and
 // the machine id in one message. The launcher repeats that with the values of
 // the config. Its stdout is a protocol for the test harness: one JSON object a
@@ -31,16 +32,31 @@ if (process.env.GROKBOT_COMPARE_IMAGE !== 'desktop') {
 const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const say = message => process.stdout.write(JSON.stringify(message) + '\n');
 const file = name => path.join(config.dataRoot, name);
-const write = (name, value) => {
+const write = (name, value, text = JSON.stringify(value)) => {
   // Like the desktop's durable files: a temporary file renamed into place, so
   // the daemon never reads half of one.
   const tmp = file(`.${name}.${process.pid}.tmp`);
-  fs.writeFileSync(tmp, JSON.stringify(value), {mode: 0o600});
+  fs.writeFileSync(tmp, text, {mode: 0o600});
   fs.renameSync(tmp, file(name));
 };
 
+// The key the daemon is handed. A daemon that knows the envelope reads its
+// credential sealed with it ({"sandSealedFile": 1, data: base64(iv, tag,
+// text)}, AES-256-GCM), as the main process writes it; since 1.2 it also
+// ignores a plain one once it has a key. Older releases read it plain.
+const entry = path.join(config.dist, 'local-exec-daemon', 'main.cjs');
+const fileKey = crypto.randomBytes(32);
+const seals = fs.readFileSync(entry, 'utf8').includes('"sandSealedFile"');
+const seal = value => {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', fileKey, iv);
+  const body = Buffer.concat([cipher.update(JSON.stringify(value), 'utf8'), cipher.final()]);
+  const data = Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64');
+  return JSON.stringify({sandSealedFile: 1, data});
+};
+
 function writeCredential(c) {
-  write('local-exec-daemon-credential.json', {
+  const value = {
     backendUrl: c.backendUrl,
     userComputers: [{
       credential: c.credential,
@@ -49,7 +65,8 @@ function writeCredential(c) {
       accountScope: c.accountScope,
       ...(c.serverAuthoritative ? {serverAuthoritative: true} : {}),
     }],
-  });
+  };
+  write('local-exec-daemon-credential.json', value, seals ? seal(value) : undefined);
 }
 
 function writeSettings(s) {
@@ -84,14 +101,13 @@ const env = {
   SAND_DISABLE_TELEMETRY: '1',
   NODE_USE_SYSTEM_CA: '1',
 };
-const entry = path.join(config.dist, 'local-exec-daemon', 'main.cjs');
 // Patches of the bundle a scenario asks for, see preload.cjs.
 const patches = config.patches ?? [];
 if (patches.length > 0) env.GROKBOT_COMPARE_PATCHES = patches.join(',');
 const preload = patches.length > 0 ? ['--require', path.join(import.meta.dirname, 'preload.cjs')] : [];
 const daemon = spawn(process.execPath, [...preload, entry], {stdio: ['ignore', 2, 2, 'ipc'], env});
 daemon.once('spawn', () => {
-  daemon.send({type: 'sand-local-exec-file-key', key: crypto.randomBytes(32).toString('base64'), computerId: config.machineId});
+  daemon.send({type: 'sand-local-exec-file-key', key: fileKey.toString('base64'), computerId: config.machineId});
   say({event: 'spawned', pid: daemon.pid, node: process.versions.node});
 });
 daemon.once('error', error => {
