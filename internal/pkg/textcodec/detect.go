@@ -141,14 +141,15 @@ func allZero(b []byte) bool {
 }
 
 // textual reports whether b has no NUL byte and less than 5% control bytes
-// other than tab, newline and carriage return (SQt).
+// other than tab, newline, carriage return and, since 1.3, escape: text
+// with ANSI colors is text ($St).
 func textual(b []byte) bool {
 	if bytes.IndexByte(b, 0) >= 0 {
 		return false
 	}
 	control := 0
 	for _, c := range b {
-		if c < 32 && c != '\t' && c != '\n' && c != '\r' {
+		if c < 32 && c != '\t' && c != '\n' && c != '\r' && c != 0x1b {
 			control++
 		}
 	}

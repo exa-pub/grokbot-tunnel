@@ -63,7 +63,11 @@ export function open(dist) {
   // getFormatForFile's classifier of the start of a file, and the function
   // that cuts a chunk at a character boundary first.
   const classify = daemon.find('classifyFormat', String.raw`function (ID)\(\w\)\{if\(\w\.length===0\)return ID\(\);let \w=ID\(\w\)\?\?ID\(\w\);`);
-  const format = daemon.find('format', String.raw`function (ID)\(\w\)\{return ${classify}\(\w\.length===ID\?ID\(\w\):\w\)\}`);
+  // Since 1.3 what takes jschardet is a function of its own, asked when the
+  // classifier has no answer.
+  const detect = daemon.find('detectFormat', String.raw`function ID\(\w\)\{return ${classify}\(\w\)\?\?(ID)\(\w\)\}`);
+  const classifyAll = daemon.find('classifyAll', String.raw`function (ID)\(\w\)\{return ${classify}\(\w\)\?\?${detect}\(\w\)\}`);
+  const format = daemon.find('format', String.raw`function (ID)\(\w\)\{return ${classifyAll}\(\w\.length===ID\?ID\(\w\):\w\)\}`);
   const fit = daemon.find('imageFit',
     String.raw`function (ID)\(\w,\w,\w=ID\)\{if\(\w<1\|\|\w<1\)return\{width:\w,height:\w,needsResize:!1\};`);
 
@@ -74,7 +78,7 @@ export function open(dist) {
   });
   const classifySource = daemon.functionSource(classify);
   // jschardet is not run: inputs that would reach it are left out.
-  daemon.stub(daemon.find('jschardet', String.raw`(ID)\.default\.detect\(`, classifySource), {
+  daemon.stub(daemon.find('jschardet', String.raw`(ID)\.default\.detect\(`, daemon.functionSource(detect)), {
     default: {detect() { throw new Error('jschardet'); }},
   });
   const decode = String.raw`(ID)\.default\.decode\(\w\.subarray\(0,ID\),(?:ID)\((?:ID)\(\w\)\)\)`;

@@ -1675,6 +1675,7 @@ type SandboxPolicy struct {
 	ReadBoundary               SandboxPolicy_ReadBoundaryMode `protobuf:"varint,14,opt,name=read_boundary,json=readBoundary,proto3,enum=agent.v1.SandboxPolicy_ReadBoundaryMode" json:"read_boundary,omitempty"`
 	AdditionalReadPaths        []string                       `protobuf:"bytes,15,rep,name=additional_read_paths,json=additionalReadPaths,proto3" json:"additional_read_paths,omitempty"`
 	AllowUserOverrideReadPaths *bool                          `protobuf:"varint,16,opt,name=allow_user_override_read_paths,json=allowUserOverrideReadPaths,proto3,oneof" json:"allow_user_override_read_paths,omitempty"`
+	PrivateTmp                 *bool                          `protobuf:"varint,17,opt,name=private_tmp,json=privateTmp,proto3,oneof" json:"private_tmp,omitempty"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -1810,6 +1811,13 @@ func (x *SandboxPolicy) GetAdditionalReadPaths() []string {
 func (x *SandboxPolicy) GetAllowUserOverrideReadPaths() bool {
 	if x != nil && x.AllowUserOverrideReadPaths != nil {
 		return *x.AllowUserOverrideReadPaths
+	}
+	return false
+}
+
+func (x *SandboxPolicy) GetPrivateTmp() bool {
+	if x != nil && x.PrivateTmp != nil {
+		return *x.PrivateTmp
 	}
 	return false
 }
@@ -3996,7 +4004,7 @@ const file_agent_v1_exec_proto_rawDesc = "" +
 	"\acommand\x18\x02 \x01(\tH\x01R\acommand\x88\x01\x01B\x11\n" +
 	"\x0f_sandbox_policyB\n" +
 	"\n" +
-	"\b_command\"\xc7\n" +
+	"\b_command\"\xfd\n" +
 	"\n" +
 	"\rSandboxPolicy\x120\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x1c.agent.v1.SandboxPolicy.TypeR\x04type\x12*\n" +
@@ -4014,7 +4022,10 @@ const file_agent_v1_exec_proto_rawDesc = "" +
 	"\x15skip_statsig_defaults\x18\r \x01(\bH\bR\x13skipStatsigDefaults\x88\x01\x01\x12M\n" +
 	"\rread_boundary\x18\x0e \x01(\x0e2(.agent.v1.SandboxPolicy.ReadBoundaryModeR\freadBoundary\x122\n" +
 	"\x15additional_read_paths\x18\x0f \x03(\tR\x13additionalReadPaths\x12G\n" +
-	"\x1eallow_user_override_read_paths\x18\x10 \x01(\bH\tR\x1aallowUserOverrideReadPaths\x88\x01\x01\"w\n" +
+	"\x1eallow_user_override_read_paths\x18\x10 \x01(\bH\tR\x1aallowUserOverrideReadPaths\x88\x01\x01\x12$\n" +
+	"\vprivate_tmp\x18\x11 \x01(\bH\n" +
+	"R\n" +
+	"privateTmp\x88\x01\x01\"w\n" +
 	"\x10ReadBoundaryMode\x12\"\n" +
 	"\x1eREAD_BOUNDARY_MODE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19READ_BOUNDARY_MODE_SYSTEM\x10\x01\x12 \n" +
@@ -4033,7 +4044,8 @@ const file_agent_v1_exec_proto_rawDesc = "" +
 	"\x16_network_policy_strictB\x11\n" +
 	"\x0f_capture_deniesB\x18\n" +
 	"\x16_skip_statsig_defaultsB!\n" +
-	"\x1f_allow_user_override_read_paths\"\xff\x02\n" +
+	"\x1f_allow_user_override_read_pathsB\x0e\n" +
+	"\f_private_tmp\"\xff\x02\n" +
 	"\rNetworkPolicy\x12\x1d\n" +
 	"\aversion\x18\x01 \x01(\rH\x00R\aversion\x88\x01\x01\x12Q\n" +
 	"\x0edefault_action\x18\x02 \x01(\x0e2%.agent.v1.NetworkPolicy.DefaultActionH\x01R\rdefaultAction\x88\x01\x01\x12\x12\n" +

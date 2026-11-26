@@ -86,6 +86,8 @@ func TestReadDetectsEncoding(t *testing.T) {
 		{"nul past 8 KiB", strings.Repeat("a", 9000) + "\x00", nil, strings.Repeat("a", 9000) + "\x00"},
 		{"latin1 keeps a utf-8 bom", "\xef\xbb\xbf\xff\na", nil, "ï»¿ÿ\na"},
 		{"hint", "caf\xe9", ptr("latin1"), "café"},
+		// Since 1.3 escape is no control byte: a colored log is text.
+		{"colored log", strings.Repeat("\x1b[31mred\x1b[0m\n", 10), nil, strings.Repeat("\x1b[31mred\x1b[0m\n", 10)},
 	} {
 		write(t, root, "f", []byte(tc.data))
 		got := readFile(t, rd, &agentv1.ReadArgs{Path: "f", EncodingHint: tc.hint})
@@ -96,7 +98,6 @@ func TestReadDetectsEncoding(t *testing.T) {
 		hint       *string
 	}{
 		{"nul with a hint", "ab\x00cd", ptr("latin1")},
-		{"colored log", strings.Repeat("\x1b[31mred\x1b[0m\n", 10), nil},
 	} {
 		write(t, root, "f", []byte(tc.data))
 		assert.Equal(t, "File content is binary data, not text", readFile(t, rd, &agentv1.ReadArgs{Path: "f", EncodingHint: tc.hint}).GetInvalidFile().GetReason(), tc.name)

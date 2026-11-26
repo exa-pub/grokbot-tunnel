@@ -9,7 +9,7 @@ func FuzzParseLogin(f *testing.F) {
 	f.Add([]byte(`{"selectedTeamId":"x"}`))
 	f.Add([]byte(`[]`))
 	f.Fuzz(func(t *testing.T, body []byte) {
-		id, err := parseLogin(body)
+		id, err := parseLogin(body, nil)
 		if err == nil && (id.AccessToken == "" || id.RefreshToken == "") {
 			t.Fatalf("%+v from %q", id, body)
 		}

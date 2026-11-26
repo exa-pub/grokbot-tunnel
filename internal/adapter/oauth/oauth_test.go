@@ -160,12 +160,12 @@ func TestSelectedTeamID(t *testing.T) {
 		`12`: "12", `12.0`: "12", `1e3`: "1000", `9007199254740991`: "9007199254740991",
 		`0`: "", `-1`: "", `1.5`: "", `9007199254740992`: "", `"12"`: "", `null`: "", `true`: "",
 	} {
-		id, err := parseLogin([]byte(`{"accessToken":"a","refreshToken":"r","selectedTeamId":` + raw + `}`))
+		id, err := parseLogin([]byte(`{"accessToken":"a","refreshToken":"r","selectedTeamId":`+raw+`}`), nil)
 		if err != nil || id.TeamID != want {
 			t.Errorf("%s: got %q, %v; want %q", raw, id.TeamID, err, want)
 		}
 	}
-	if id, err := parseLogin([]byte(`{"accessToken":"a","refreshToken":"r"}`)); err != nil || id.TeamID != "" {
+	if id, err := parseLogin([]byte(`{"accessToken":"a","refreshToken":"r"}`), nil); err != nil || id.TeamID != "" {
 		t.Fatal(id, err)
 	}
 }

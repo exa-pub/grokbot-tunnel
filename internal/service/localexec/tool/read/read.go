@@ -12,6 +12,7 @@ import (
 
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/textcodec"
+	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/credstore"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/execstream"
 	"github.com/exa-pub/grokbot-tunnel/internal/service/localexec/pathroot"
 )
@@ -55,11 +56,25 @@ func (rd *Executor) Execute(ctx context.Context, x *agentv1.ReadArgs, send execs
 	return send(readMessage(result))
 }
 
-// result reads a file into a typed result, deciding like the desktop: image,
-// PDF, video, other binary data, text. Only failures that the desktop
-// reports as errors rather than results are returned as errors.
+// result reads a file into a typed result. Like the desktop since 1.3, a
+// credential file is refused before the read, and again after it in case
+// the path changed meanwhile (credentialStoreBlock).
 func (rd *Executor) result(ctx context.Context, p *pathroot.Path, x *agentv1.ReadArgs) (*agentv1.ReadResult, error) {
 	path := rd.root.Abs(p.Rel)
+	if credstore.Blocked(path) {
+		return permissionDenied(path), nil
+	}
+	r, err := rd.read(ctx, p, path, x)
+	if err == nil && r.GetSuccess() != nil && credstore.Blocked(path) {
+		return permissionDenied(path), nil
+	}
+	return r, err
+}
+
+// read reads a file into a typed result, deciding like the desktop: image,
+// PDF, video, other binary data, text. Only failures that the desktop
+// reports as errors rather than results are returned as errors.
+func (rd *Executor) read(ctx context.Context, p *pathroot.Path, path string, x *agentv1.ReadArgs) (*agentv1.ReadResult, error) {
 	if refused, err := rd.check(p, path); refused != nil || err != nil {
 		return refused, err
 	}

@@ -7,9 +7,14 @@ package fakesand
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,6 +25,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/oauth"
 	agentv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/agent/v1"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
 	rpc "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1/aiserverv1connect"
@@ -61,6 +67,8 @@ type Server struct {
 	permissions []string
 	// unknown are the paths of requests no handler serves.
 	unknown []string
+	// intents are the DPoP key thumbprints of login intents, by login.
+	intents map[string]string
 	// calls are the calls of the user-computer channel, failures the codes
 	// the next calls of an RPC fail with.
 	calls    []Call
@@ -79,6 +87,7 @@ func New(t testing.TB) *Server {
 	mux.Handle(path, handler)
 	path, handler = rpc.NewGrokBotServiceHandler(s)
 	mux.Handle(path, handler)
+	mux.HandleFunc("/auth/login_intent", s.loginIntent)
 	mux.HandleFunc("/auth/poll", s.authPoll)
 	mux.HandleFunc("/", s.notFound)
 	srv := httptest.NewServer(mux)
@@ -89,7 +98,11 @@ func New(t testing.TB) *Server {
 
 // Env returns the environment that points the CLI at s.
 func (s *Server) Env() []string {
-	return []string{"SAND_BACKEND_URL=" + s.URL, "SAND_CURSOR_WEBSITE_URL=https://example.invalid"}
+	// The production OAuth client: its logins are bound to a DPoP key.
+	return []string{
+		"SAND_BACKEND_URL=" + s.URL, "SAND_CURSOR_WEBSITE_URL=https://example.invalid",
+		"SAND_AUTH_CLIENT_ID=" + oauth.ClientID,
+	}
 }
 
 // Setenv points the CLI in this process at s for the duration of the test.
@@ -416,19 +429,121 @@ func (s *Server) signal() {
 	s.changed = make(chan struct{})
 }
 
+// loginIntent registers a login bound to a DPoP key, as the backend does
+// for the desktop since 1.3.
+func (s *Server) loginIntent(w http.ResponseWriter, r *http.Request) {
+	var v struct {
+		UUID, Challenge, DeviceName, Platform string
+		Jkt                                   string `json:"dpop_jkt"`
+	}
+	if r.Method != http.MethodPost || r.Header.Get("User-Agent") != "undici" || json.NewDecoder(r.Body).Decode(&v) != nil ||
+		v.UUID == "" || v.Challenge == "" || v.DeviceName == "" || v.Platform != "linux" || v.Jkt == "" {
+		s.t.Errorf("fakesand: login intent %s %v %+v", r.Method, r.Header, v)
+		http.Error(w, "bad intent", http.StatusBadRequest)
+		return
+	}
+	s.mu.Lock()
+	if s.intents == nil {
+		s.intents = map[string]string{}
+	}
+	s.intents[v.UUID] = v.Jkt
+	s.mu.Unlock()
+	fmt.Fprint(w, `{"shortCode":"ABCD-1234"}`)
+}
+
 // authPoll completes every login at once, with the header profile of the
-// desktop's fetch.
+// desktop's fetch. A login with an intent is polled by POST with a DPoP
+// proof of its key, and gets tokens bound to it.
 func (s *Server) authPoll(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("User-Agent") != "undici" || r.Header.Get("Content-Type") != "application/json" {
 		s.t.Errorf("fakesand: auth header profile %v", r.Header)
 	}
+	refresh := "fixture-refresh"
+	if r.Method == http.MethodPost {
+		var v struct{ UUID, Verifier string }
+		if err := json.NewDecoder(r.Body).Decode(&v); err != nil || v.Verifier == "" {
+			s.t.Errorf("fakesand: poll body %v", err)
+		}
+		s.mu.Lock()
+		jkt := s.intents[v.UUID]
+		s.mu.Unlock()
+		if err := checkProof(r.Header.Get("DPoP"), http.MethodPost, "http://"+r.Host+r.URL.Path, jkt); err != nil {
+			s.t.Errorf("fakesand: DPoP proof: %v", err)
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"invalid_dpop_proof"}`)
+			return
+		}
+		refresh = "session_rt_fixture"
+	}
 	claims := fmt.Sprintf(`{"exp":%d,"sub":%q}`, time.Now().Add(time.Hour).Unix(), AccountID)
 	token := "fixture." + base64.RawURLEncoding.EncodeToString([]byte(claims)) + ".signature"
 	if err := json.NewEncoder(w).Encode(map[string]string{
-		"accessToken": token, "refreshToken": "fixture-refresh", "authId": AccountID,
+		"accessToken": token, "refreshToken": refresh, "authId": AccountID,
 	}); err != nil {
 		s.t.Error(err)
 	}
+}
+
+// checkProof verifies a DPoP proof (RFC 9449) for a request: its signature
+// by the key in its header, whose thumbprint is jkt, and its claims.
+func checkProof(proof, method, target, jkt string) error {
+	parts := strings.Split(proof, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("not a JWT: %q", proof)
+	}
+	var header struct {
+		Typ, Alg string
+		Jwk      struct{ Kty, Crv, X, Y string }
+	}
+	var claims struct {
+		Jti, Htm, Htu string
+		Iat           int64
+	}
+	if err := decodeSegment(parts[0], &header); err != nil {
+		return err
+	}
+	if err := decodeSegment(parts[1], &claims); err != nil {
+		return err
+	}
+	thumb, err := json.Marshal(map[string]string{"crv": header.Jwk.Crv, "kty": header.Jwk.Kty, "x": header.Jwk.X, "y": header.Jwk.Y})
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(thumb)
+	switch {
+	case header.Typ != "dpop+jwt" || header.Alg != "ES256" || header.Jwk.Kty != "EC" || header.Jwk.Crv != "P-256":
+		return fmt.Errorf("header %+v", header)
+	case base64.RawURLEncoding.EncodeToString(sum[:]) != jkt:
+		return fmt.Errorf("key %+v is not the intent's %q", header.Jwk, jkt)
+	case claims.Jti == "" || claims.Htm != method || claims.Htu != target || time.Since(time.Unix(claims.Iat, 0)).Abs() > time.Minute:
+		return fmt.Errorf("claims %+v, want %s %s", claims, method, target)
+	}
+	return checkSignature(parts, header.Jwk.X, header.Jwk.Y)
+}
+
+// checkSignature verifies the ES256 signature of a JWT by the P-256 key at
+// x, y.
+func checkSignature(parts []string, x64, y64 string) error {
+	x, errX := base64.RawURLEncoding.DecodeString(x64)
+	y, errY := base64.RawURLEncoding.DecodeString(y64)
+	sig, errS := base64.RawURLEncoding.DecodeString(parts[2])
+	if err := errors.Join(errX, errY, errS); err != nil || len(sig) != 64 {
+		return fmt.Errorf("encoding: %w", err)
+	}
+	pub := &ecdsa.PublicKey{Curve: elliptic.P256(), X: new(big.Int).SetBytes(x), Y: new(big.Int).SetBytes(y)}
+	digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	if !ecdsa.Verify(pub, digest[:], new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
+		return errors.New("bad signature")
+	}
+	return nil
+}
+
+func decodeSegment(seg string, v any) error {
+	b, err := base64.RawURLEncoding.DecodeString(seg)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, v)
 }
 
 // notFound records a request no handler serves.

@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf16"
 
 	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	"github.com/exa-pub/grokbot-tunnel/internal/pkg/uuid"
@@ -78,6 +80,12 @@ type Login struct {
 	UUID     string
 	Verifier string // PKCE verifier, kept secret until polling
 	URL      string // page the user opens to sign in
+	// Key binds the tokens of the login, and ShortCode is the code the
+	// sign-in page shows for it; both are set by RegisterIntent.
+	Key       *DPoPKey
+	ShortCode string
+
+	challenge string
 }
 
 // NewLogin starts a login on the given website.
@@ -87,20 +95,90 @@ func NewLogin(website string) Login {
 		panic(err)
 	}
 	verifier := base64.RawURLEncoding.EncodeToString(b)
-	challenge := sha256.Sum256([]byte(verifier))
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
 	id := uuid.New()
 	q := url.Values{
-		"challenge":                 {base64.RawURLEncoding.EncodeToString(challenge[:])},
+		"challenge":                 {challenge},
 		"uuid":                      {id},
 		"mode":                      {"login"},
 		"redirectTarget":            {"sand"},
 		"supportsSelectedTeamLogin": {"true"},
 	}
 	return Login{
-		UUID:     id,
-		Verifier: verifier,
-		URL:      strings.TrimRight(website, "/") + "/loginDeepControl?" + q.Encode(),
+		UUID:      id,
+		Verifier:  verifier,
+		URL:       strings.TrimRight(website, "/") + "/loginDeepControl?" + q.Encode(),
+		challenge: challenge,
 	}
+}
+
+// Device names in a login intent are at most this long, in UTF-16 units.
+const deviceNameMax = 120
+
+// DeviceName is the desktop's name of this device in a login intent: the
+// host name without control and format characters, trimmed and cut to
+// deviceNameMax, or "Cursor CLI".
+func DeviceName(hostname string) string {
+	cleaned := strings.Map(func(r rune) rune {
+		if unicode.In(r, unicode.Cc, unicode.Cf) {
+			return -1
+		}
+		return r
+	}, hostname)
+	name := entity.TrimSpace(cleaned)
+	units := 0
+	cut := strings.IndexFunc(name, func(r rune) bool {
+		units += utf16.RuneLen(r)
+		return units > deviceNameMax
+	})
+	if cut >= 0 {
+		name = entity.TrimSpace(name[:cut])
+	}
+	if name == "" {
+		return "Cursor CLI"
+	}
+	return name
+}
+
+// RegisterIntent binds the login to a new DPoP key before the user opens
+// its page, as the desktop does since 1.3 (nX, /auth/login_intent). On
+// success l.Key is set and the login is polled with proofs of it.
+func RegisterIntent(ctx context.Context, h *http.Client, base string, l *Login, deviceName string) error {
+	key, err := NewDPoPKey()
+	if err != nil {
+		return err
+	}
+	b, err := json.Marshal(struct {
+		UUID       string `json:"uuid"`
+		Challenge  string `json:"challenge"`
+		DeviceName string `json:"deviceName"`
+		Platform   string `json:"platform"`
+		DPoPJkt    string `json:"dpop_jkt"`
+	}{l.UUID, l.challenge, deviceName, "linux", key.Thumbprint()})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/auth/login_intent", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	r, err := send(h, req)
+	switch {
+	case err != nil:
+		return fmt.Errorf("login intent: %w", err)
+	case r.status < 200 || r.status >= 300:
+		return fmt.Errorf("login intent: %w", errHTTP(r.status))
+	}
+	var v struct {
+		ShortCode *string `json:"shortCode"`
+	}
+	if json.Unmarshal(r.body, &v) != nil || v.ShortCode == nil {
+		return errors.New("login_intent response did not include shortCode")
+	}
+	l.Key, l.ShortCode = key, *v.ShortCode
+	return nil
 }
 
 func sleep(ctx context.Context, d time.Duration) error {
@@ -118,31 +196,27 @@ func sleep(ctx context.Context, d time.Duration) error {
 // desktop's Ddn: "not signed in yet" (404) is polled again, and
 // pollMaxFailures other failures in a row, network errors included, end the
 // login. A 403 ends it at once only for a sign-in policy violation. Errors
-// never contain the poll URL, whose query holds the PKCE verifier.
+// never contain the poll URL, whose query holds the PKCE verifier. A login
+// with a key is polled by POST with a proof (zve, IL).
 func Poll(ctx context.Context, h *http.Client, base string, l Login) (entity.Identity, error) {
-	q := url.Values{"uuid": {l.UUID}, "verifier": {l.Verifier}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/auth/poll?"+q.Encode(), nil)
-	if err != nil {
-		return entity.Identity{}, fmt.Errorf("login polling: %w", withoutURL(err))
-	}
-	req.Header.Set("Content-Type", "application/json")
+	var clock serverClock
 	delay := pollFirstDelay
 	failures := 0
 	for range pollAttempts {
-		status, body, err := do(h, req)
+		r, err := pollOnce(ctx, h, base, l, &clock)
 		switch {
 		case ctx.Err() != nil:
 			return entity.Identity{}, ctx.Err()
 		case err != nil:
 			err = withoutURL(err)
-		case status == http.StatusNotFound: // not signed in yet
+		case r.status == http.StatusNotFound: // not signed in yet
 			failures = 0
-		case status == http.StatusForbidden && policyViolation(body):
+		case r.status == http.StatusForbidden && policyViolation(r.body):
 			return entity.Identity{}, ErrSignInPolicy
-		case status >= 200 && status < 300:
-			return parseLogin(body)
+		case r.status >= 200 && r.status < 300:
+			return parseLogin(r.body, l.Key)
 		default:
-			err = fmt.Errorf("HTTP %d", status)
+			err = errHTTP(r.status)
 		}
 		if err != nil {
 			if failures++; failures >= pollMaxFailures {
@@ -155,6 +229,57 @@ func Poll(ctx context.Context, h *http.Client, base string, l Login) (entity.Ide
 		delay = min(delay*6/5, pollMaxDelay)
 	}
 	return entity.Identity{}, errors.New("login polling timed out")
+}
+
+// pollOnce polls the login once. With a key, a proof the server refused
+// for the time is sent again once the answer moved the clock (IL).
+func pollOnce(ctx context.Context, h *http.Client, base string, l Login, clock *serverClock) (response, error) {
+	r, err := pollRequest(ctx, h, base, l, clock)
+	if err != nil || l.Key == nil {
+		return r, err
+	}
+	// The clock follows every answer; a refusal of the proof for the
+	// time is retried if it moved.
+	if !clock.shifted(r.header) || r.status != http.StatusUnauthorized || !invalidProof(r.body) {
+		return r, nil
+	}
+	r, err = pollRequest(ctx, h, base, l, clock)
+	if err == nil {
+		clock.observe(r.header)
+	}
+	return r, err
+}
+
+func pollRequest(ctx context.Context, h *http.Client, base string, l Login, clock *serverClock) (response, error) {
+	target := base + "/auth/poll"
+	var req *http.Request
+	var err error
+	if l.Key == nil {
+		q := url.Values{"uuid": {l.UUID}, "verifier": {l.Verifier}}
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, target+"?"+q.Encode(), nil)
+	} else {
+		var b []byte
+		b, err = json.Marshal(struct {
+			UUID     string `json:"uuid"`
+			Verifier string `json:"verifier"`
+		}{l.UUID, l.Verifier})
+		if err != nil {
+			return response{}, err
+		}
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(b))
+	}
+	if err != nil {
+		return response{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if l.Key != nil {
+		proof, err := l.Key.Proof(http.MethodPost, target, clock.now())
+		if err != nil {
+			return response{}, err
+		}
+		req.Header.Set(dpopHeader, proof)
+	}
+	return send(h, req)
 }
 
 // policyViolation reports whether a 403 body is the desktop's hVe:
@@ -176,20 +301,17 @@ func withoutURL(err error) error {
 	return fmt.Errorf("%s: %w", ue.Op, ue.Err)
 }
 
-func do(h *http.Client, req *http.Request) (int, []byte, error) {
-	r, err := h.Do(req)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer r.Body.Close()
-	b, err := io.ReadAll(io.LimitReader(r.Body, maxBody))
-	return r.StatusCode, b, err
-}
+func limitReader(r *http.Response) io.Reader { return io.LimitReader(r.Body, maxBody) }
 
-func parseLogin(body []byte) (entity.Identity, error) {
+// parseLogin reads the tokens of a login (lUt). Tokens the server bound to
+// key, by a token type of DPoP or the form of the refresh token, keep it
+// with the refresh token.
+func parseLogin(body []byte, key *DPoPKey) (entity.Identity, error) {
 	var v struct {
 		AccessToken    string          `json:"accessToken"`
 		RefreshToken   string          `json:"refreshToken"`
+		TokenTypeSnake any             `json:"token_type"`
+		TokenType      any             `json:"tokenType"`
 		AuthID         string          `json:"authId"`
 		SelectedTeamID json.RawMessage `json:"selectedTeamId"`
 	}
@@ -199,9 +321,17 @@ func parseLogin(body []byte) (entity.Identity, error) {
 	if v.AccessToken == "" || v.RefreshToken == "" {
 		return entity.Identity{}, errors.New("login returned empty tokens")
 	}
+	tokenType := v.TokenTypeSnake // token_type ?? tokenType
+	if tokenType == nil {
+		tokenType = v.TokenType
+	}
+	refresh := v.RefreshToken
+	if tokenType == "DPoP" || strings.HasPrefix(refresh, boundRefreshPrefix) {
+		refresh = wrapRefresh(refresh, key)
+	}
 	return entity.Identity{
 		AccessToken:  v.AccessToken,
-		RefreshToken: v.RefreshToken,
+		RefreshToken: refresh,
 		AuthID:       v.AuthID,
 		TeamID:       teamID(v.SelectedTeamID),
 	}, nil
@@ -223,33 +353,43 @@ func teamID(raw json.RawMessage) string {
 
 // Refresh exchanges a refresh token for new tokens with the OAuth client
 // clientID; empty means ClientIDFor(base, ""). The refresh token in the
-// result is empty if the server did not rotate it.
+// result is empty if the server did not rotate it. A refresh token bound to
+// a DPoP key (dpop:v1:) is sent with a proof, and a rotated one stays bound
+// to the same key (vwe); one whose key cannot be read ends the session, as
+// the desktop revokes it.
 func Refresh(ctx context.Context, h *http.Client, base, clientID, refreshToken string) (entity.Identity, error) {
 	if clientID == "" {
 		clientID = ClientIDFor(base, "")
 	}
+	token, key, err := unwrapRefresh(refreshToken)
+	if err != nil {
+		return entity.Identity{}, fmt.Errorf("%w: %w", entity.ErrLogout, err)
+	}
 	b, err := json.Marshal(map[string]string{
 		"client_id":     clientID,
 		"grant_type":    "refresh_token",
-		"refresh_token": refreshToken,
+		"refresh_token": token,
 	})
 	if err != nil {
 		return entity.Identity{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/oauth/token", bytes.NewReader(b))
+	r, err := refreshRequest(ctx, h, base, b, key)
+	// A proof the server refused for the time is sent once more (Ewe).
+	if err == nil && key != nil && ctx.Err() == nil && retryProof(&refreshClock, r.status, r.header, r.body) {
+		r, err = refreshRequest(ctx, h, base, b, key)
+	}
 	if err != nil {
 		return entity.Identity{}, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", RefreshUserAgent)
-	status, body, err := do(h, req)
-	if err != nil {
-		return entity.Identity{}, err
-	}
-	// Like the desktop's runRefreshAccessToken, only a successful response
-	// is read: a failed one is temporary whatever its body says.
-	if status < 200 || status >= 300 {
-		return entity.Identity{}, fmt.Errorf("refresh failed: HTTP %d", status)
+	return parseRefresh(r, key)
+}
+
+// parseRefresh reads the answer of a refresh. Like the desktop's
+// runRefreshAccessToken, only a successful one is read: a failed one is
+// temporary whatever its body says.
+func parseRefresh(r response, key *DPoPKey) (entity.Identity, error) {
+	if r.status < 200 || r.status >= 300 {
+		return entity.Identity{}, fmt.Errorf("refresh failed: %w", errHTTP(r.status))
 	}
 	var v struct {
 		AccessToken  string      `json:"access_token"`
@@ -257,7 +397,7 @@ func Refresh(ctx context.Context, h *http.Client, base, clientID, refreshToken s
 		ExpiresIn    json.Number `json:"expires_in"` // seconds; optional
 		ShouldLogout bool        `json:"shouldLogout"`
 	}
-	switch err := json.Unmarshal(body, &v); {
+	switch err := json.Unmarshal(r.body, &v); {
 	case err != nil:
 		return entity.Identity{}, fmt.Errorf("refresh failed: %w", err)
 	case v.ShouldLogout:
@@ -265,9 +405,30 @@ func Refresh(ctx context.Context, h *http.Client, base, clientID, refreshToken s
 	case v.AccessToken == "":
 		return entity.Identity{}, errors.New("refresh failed: empty access token")
 	}
-	next := entity.Identity{AccessToken: v.AccessToken, RefreshToken: v.RefreshToken}
+	next := entity.Identity{AccessToken: v.AccessToken}
+	if v.RefreshToken != "" {
+		next.RefreshToken = wrapRefresh(v.RefreshToken, key)
+	}
 	if secs, err := v.ExpiresIn.Float64(); err == nil && secs > 0 {
 		next.ExpiresAtMS = time.Now().Add(time.Duration(secs * float64(time.Second))).UnixMilli()
 	}
 	return next, nil
+}
+
+func refreshRequest(ctx context.Context, h *http.Client, base string, body []byte, key *DPoPKey) (response, error) {
+	target := base + "/oauth/token"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
+	if err != nil {
+		return response{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", RefreshUserAgent)
+	if key != nil {
+		proof, err := key.Proof(http.MethodPost, target, refreshClock.now())
+		if err != nil {
+			return response{}, err
+		}
+		req.Header.Set(dpopHeader, proof)
+	}
+	return send(h, req)
 }
