@@ -80,8 +80,10 @@ type Login struct {
 	UUID     string
 	Verifier string // PKCE verifier, kept secret until polling
 	URL      string // page the user opens to sign in
-	// Key binds the tokens of the login; set by RegisterIntent.
-	Key *DPoPKey
+	// Key binds the tokens of the login, and ShortCode is the code the
+	// sign-in page shows for it; both are set by RegisterIntent.
+	Key       *DPoPKey
+	ShortCode string
 
 	challenge string
 }
@@ -175,7 +177,7 @@ func RegisterIntent(ctx context.Context, h *http.Client, base string, l *Login, 
 	if json.Unmarshal(r.body, &v) != nil || v.ShortCode == nil {
 		return errors.New("login_intent response did not include shortCode")
 	}
-	l.Key = key
+	l.Key, l.ShortCode = key, *v.ShortCode
 	return nil
 }
 

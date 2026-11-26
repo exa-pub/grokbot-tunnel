@@ -71,6 +71,9 @@ func (l Login) Run(ctx context.Context, opts Options, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintln(out, "Open this URL to sign in:\n"+pending.URL)
+	if pending.ShortCode != "" {
+		fmt.Fprintln(out, "The sign-in page shows this code for this login: "+pending.ShortCode)
+	}
 	if !opts.NoBrowser {
 		openBrowser(ctx, pending.URL)
 	}

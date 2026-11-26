@@ -220,6 +220,7 @@ func TestPollDPoP(t *testing.T) {
 		l := NewLogin("https://cursor.com")
 		require.NoError(t, RegisterIntent(context.Background(), s.Client(), s.URL, &l, "dev"))
 		require.NotNil(t, l.Key)
+		assert.Equal(t, "X", l.ShortCode)
 		assert.Equal(t, l.Key.Thumbprint(), d.jkt.Load())
 		id, err := Poll(context.Background(), s.Client(), s.URL, l)
 		require.NoError(t, err)
