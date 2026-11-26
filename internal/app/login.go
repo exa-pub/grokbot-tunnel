@@ -6,6 +6,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/exa-pub/grokbot-tunnel/internal/adapter/oauth"
 	"github.com/exa-pub/grokbot-tunnel/internal/api/cli"
 	"github.com/exa-pub/grokbot-tunnel/internal/entity"
 	aiserverv1 "github.com/exa-pub/grokbot-tunnel/internal/gen/aiserver/v1"
@@ -22,6 +23,7 @@ func Login(ctx context.Context, opts cli.LoginOptions, out io.Writer) error {
 		return err
 	}
 	l := login.Login{Store: e.store, HTTP: e.rest, Base: e.base, Website: websiteURL(),
+		DPoP: oauth.ClientIDFor(e.base, authClientID()) == oauth.ClientID,
 		Profile: func(ctx context.Context, identity entity.Identity) (entity.Identity, error) {
 			u := e.user(identity)
 			me, err := u.dashboard.GetMe(ctx, connect.NewRequest(&aiserverv1.GetMeRequest{}))

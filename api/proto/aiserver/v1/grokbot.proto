@@ -26,12 +26,15 @@ message GetMeResponse {
   optional string signup_source = 22;
   bool admin_session_management_enabled = 23;
   optional bool has_individual_plan = 24;
+  optional string membership_type = 25;
 }
 message GetMeRequest {
   optional int32 team_id = 1;
   optional string source_site_hostname = 2;
   optional bool include_mobile_app_status = 3;
   optional bool include_individual_plan = 4;
+  optional bool include_context = 5;
+  optional bool include_unification = 6;
 }
 message RegisterSandMachineResponse {
   string credential = 1;
@@ -43,6 +46,7 @@ message RegisterSandMachineRequest {
   optional string local_tool_permission = 2;
   optional bool messages_enabled = 3;
   string kind = 4;
+  optional string replaced_machine_id = 5;
 }
 message UpdateSandMachineLocalToolPermissionRequest {
   string machine_id = 1;
@@ -281,6 +285,7 @@ message GrokBotUserComputerLocalTool {
   string state = 2;
   repeated string data_types = 3;
   repeated string features = 4;
+  repeated string asked_data_types = 5;
 }
 message WithdrawGrokBotUserComputerPresenceResponse {
   bool withdrawn = 1;

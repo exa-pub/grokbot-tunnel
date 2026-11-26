@@ -17,7 +17,7 @@ import (
 //nolint:revive,staticcheck // user-facing sentence
 var ErrMessagesOff = errors.New("Messages is turned off in the user's settings, so their Messages cannot be read or sent from here. " +
 	"Do not retry while it stays off. If the user wants this, ask them to turn it back on in " +
-	"[Messages](grokbot://app/v1/messages) (Connect Apps → Mac → Messages).")
+	"[Messages](grokbot://app/v1/messages) (Connect apps → Mac → Messages).")
 
 // NoLocalTool answers a call of a local tool the computer does not have, in
 // the desktop's words. A Linux computer announces none.

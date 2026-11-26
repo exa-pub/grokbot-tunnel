@@ -1,0 +1,82 @@
+{
+  "scenario": "read/ansi",
+  "digest": "sha256:0c612e0b44f2d35ae00f4f7148438506cc17e5205daee950d4abb18c29532533",
+  "subject": "desktop-1.3.0",
+  "env": {
+    "base": "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+    "bash": "5.2.21(1)-release",
+    "git": "git version 2.43.0",
+    "rg": "ripgrep 14.1.0",
+    "runtime": "node v24.22.1",
+    "zsh": "5.9"
+  },
+  "requests": {
+    "r1": [
+      {
+        "client": {
+          "id": 1,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "success": {
+              "content": "\u001b[31mred\u001b[0m\n\u001b[31mred\u001b[0m\n\u001b[31mred\u001b[0m\n\u001b[31mred\u001b[0m\n\u001b[31mred\u001b[0m\n\u001b[31mred\u001b[0m\n\u001b[31mred\u001b[0m\n\u001b[31mred\u001b[0m\n\u001b[31mred\u001b[0m\n\u001b[31mred\u001b[0m\n",
+              "fileSize": 130,
+              "path": "$ROOT/color.log",
+              "totalLines": 11
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 1
+          }
+        }
+      }
+    ],
+    "r2": [
+      {
+        "client": {
+          "id": 2,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "success": {
+              "content": "café \u001b[0m",
+              "fileSize": 10,
+              "path": "$ROOT/cafe.log",
+              "totalLines": 1
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 2
+          }
+        }
+      }
+    ],
+    "r3": [
+      {
+        "client": {
+          "id": 3,
+          "localExecutionTimeMs": "<MS>",
+          "readResult": {
+            "invalidFile": {
+              "path": "$ROOT/bell.log",
+              "reason": "File content is binary data, not text"
+            }
+          }
+        }
+      },
+      {
+        "control": {
+          "streamClose": {
+            "id": 3
+          }
+        }
+      }
+    ]
+  }
+}

@@ -36,6 +36,8 @@ func TestDecode(t *testing.T) {
 		{"latin1 fallback", nil, []byte{'c', 0xe9, 'z'}, "céz"},
 		{"latin1 fallback keeps a utf-8 bom", nil, []byte{0xef, 0xbb, 0xbf, 0xff, '\n', 'a'}, "ï»¿ÿ\na"},
 		{"lossy fallback", nil, []byte("привет\xff"), "привет\xef\xbf\xbd"},
+		// Since 1.3 escape is no control byte: ANSI colors are text.
+		{"escape sequences", nil, []byte("\x1b[31mred\x1b[0m\n"), "\x1b[31mred\x1b[0m\n"},
 		{"nul after the sniffed start", nil, []byte(strings.Repeat("a", 9000) + "\x00"), strings.Repeat("a", 9000) + "\x00"},
 	} {
 		got, err := textcodec.Decode(tc.in, tc.hint)
@@ -49,7 +51,6 @@ func TestDecode(t *testing.T) {
 	}{
 		{"nul", nil, "a\x00b"},
 		{"nul with a hint", hint("latin1"), "ab\x00cd"},
-		{"escape sequences", nil, "\x1b[31mred\x1b[0m\n"},
 	} {
 		_, err := textcodec.Decode([]byte(tc.in), tc.hint)
 		require.ErrorIs(t, err, textcodec.ErrBinary, tc.name)

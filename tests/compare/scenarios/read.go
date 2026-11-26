@@ -35,6 +35,31 @@ const terminalFile = "---\npid: 4242\ncwd: \"/work\"\ncommand: \"echo tick\"\nst
 	"started_at: 2026-01-01T00:00:00.000Z\nrunning_for_ms: 1000     \n---\ntick\n\n---\nexit_code: 0\nelapsed_ms: 1000\n" +
 	"ended_at: 2026-01-01T00:00:01.000Z\n---\n"
 
+// credentialStore reads credential files, which the desktop refuses since
+// 1.3. The home directories of Cursor, the Grok Bot CLI and the agent host
+// daemon are links into the root, so the files are reached the only way the
+// root allows: by where the links lead.
+var credentialStore = Scenario{
+	ID: "read/credential-store", About: "credential files of Cursor clients, in directories the home links to",
+	Home: []File{
+		Link(".cursor", "$DIR/../root/cursor"), Link(".gb", "$DIR/../root/gb"), Link(".grok", "$DIR/../root/grok"),
+	},
+	Files: []File{
+		Text("cursor/auth.json", "{}"), Text("cursor/auth.json.bak", "{}"), Text("cursor/.auth.json.tmp", "{}"),
+		Text("cursor/other.json", "{}"), Text("cursor/projects/p1/mcp-auth.json", "{}"),
+		Text("gb/acct/auth.json", "{}"), Text("gb/auth.json", "{}"),
+		Text("grok/agent-host-daemon-dev/backends/b1/mcp/mcp-auth.json", "{}"), Text("grok/agent-host-daemon/mcp/mcp-auth.json", "{}"),
+		Link("alias.json", "cursor/auth.json"), Text("auth.json", "{}"),
+	},
+	Steps: []Step{
+		Do(Read("r1", "cursor/auth.json")), Do(Read("r2", "cursor/auth.json.bak")), Do(Read("r3", "cursor/.auth.json.tmp")),
+		Do(Read("r4", "cursor/other.json")), Do(Read("r5", "cursor/projects/p1/mcp-auth.json")), Do(Read("r6", "gb/acct/auth.json")),
+		Do(Read("r7", "gb/auth.json")), Do(Read("r8", "grok/agent-host-daemon-dev/backends/b1/mcp/mcp-auth.json")),
+		Do(Read("r9", "grok/agent-host-daemon/mcp/mcp-auth.json")), Do(Read("r10", "alias.json")), Do(Read("r11", "auth.json")),
+		Do(Read("r12", "cursor/sdk/auth.json")), Do(Read("r13", "cursor")),
+	},
+}
+
 var read = []Scenario{
 	reads("read/text", "F-1", "a short text file, whole", []File{Text("lines.txt", fiveLines)}, path("lines.txt")),
 	reads("read/range", "F-2", "offset and limit", []File{Text("lines.txt", fiveLines)},
@@ -65,6 +90,12 @@ var read = []Scenario{
 		&agentv1.ReadArgs{Path: "latin1.txt", EncodingHint: proto.String("latin1")},
 		&agentv1.ReadArgs{Path: "latin1.txt", EncodingHint: proto.String("utf8")}),
 	reads("read/empty", "F-8", "an empty file", []File{Text("empty.txt", "")}, path("empty.txt"), ranged("empty.txt", 1, 1)),
+	reads("read/ansi", "", "text with ANSI colors, binary before 1.3",
+		[]File{
+			{Path: "color.log", Data: []byte("\x1b[31mred\x1b[0m\n"), Repeat: 10}, Bytes("cafe.log", []byte("caf\xc3\xa9 \x1b[0m")),
+			Bytes("bell.log", []byte("\x07\x07\x07abcdefghijklmnopqrstuvwxyz\n")),
+		},
+		path("color.log"), path("cafe.log"), path("bell.log")),
 	reads("read/binary", "F-9", "a file that is not text", []File{Bytes("bin.dat", noise(4096)), Bytes("nul.txt", []byte("ab\x00cd\n"))},
 		path("bin.dat"), path("nul.txt")),
 	reads("read/big", "F-10", "a file of 14 MB", []File{Seq("big.txt", 2000000)},
@@ -91,6 +122,7 @@ var read = []Scenario{
 	reads("read/too-large", "", "a file over the size limit", []File{Sparse("huge.bin", 101<<20), Sparse("zeros.bin", 1<<20)},
 		path("huge.bin"), path("zeros.bin")),
 	reads("read/special", "", "a FIFO-like path and a device", nil, path("/dev/null"), path("/proc/self/status")),
+	credentialStore,
 	reads("read/terminal-file", "E-2", "a terminal file: header, output and footer",
 		[]File{Text("terminals/5.txt", terminalFile), Text("terminals/notes.txt", terminalFile), Text("copy.txt", terminalFile)},
 		path("terminals/5.txt"), ranged("terminals/5.txt", 2, 3), path("terminals/notes.txt"), path("copy.txt"),

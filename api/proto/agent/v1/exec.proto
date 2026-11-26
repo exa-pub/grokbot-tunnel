@@ -134,6 +134,7 @@ message SandboxPolicy {
   .agent.v1.SandboxPolicy.ReadBoundaryMode read_boundary = 14;
   repeated string additional_read_paths = 15;
   optional bool allow_user_override_read_paths = 16;
+  optional bool private_tmp = 17;
 }
 message NetworkPolicy {
   enum DefaultAction {

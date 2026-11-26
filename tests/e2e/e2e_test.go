@@ -103,6 +103,11 @@ func TestLoginConnectShellSigterm(t *testing.T) {
 	out, code := c.run(t, "login", "--no-browser")
 	require.Equal(t, 0, code, out)
 	require.Contains(t, out, "Logged in as "+fakesand.Email)
+	require.NotContains(t, out, "login without DPoP")
+	// The login was bound to a DPoP key, which the refresh token keeps.
+	auth, err := os.ReadFile(filepath.Join(c.home, ".grok", "bot-tunnel", "auth.json"))
+	require.NoError(t, err)
+	require.Contains(t, string(auth), `"refresh_token": "dpop:v1:`)
 
 	root := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

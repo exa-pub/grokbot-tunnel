@@ -64,6 +64,13 @@ func readError(path string, err error) *agentv1.ReadResult {
 	return r
 }
 
+// permissionDenied refuses a path, as the desktop refuses a credential file.
+func permissionDenied(path string) *agentv1.ReadResult {
+	return &agentv1.ReadResult{Result: &agentv1.ReadResult_PermissionDenied{
+		PermissionDenied: &agentv1.ReadPermissionDenied{Path: path},
+	}}
+}
+
 func invalidFile(path, reason string) *agentv1.ReadResult {
 	return &agentv1.ReadResult{Result: &agentv1.ReadResult_InvalidFile{
 		InvalidFile: &agentv1.ReadInvalidFile{Path: path, Reason: reason},

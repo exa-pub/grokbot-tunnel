@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"time"
@@ -19,7 +20,12 @@ import (
 	"github.com/exa-pub/grokbot-tunnel/internal/repository/staterepo"
 )
 
-const profileTimeout = 20 * time.Second
+const (
+	profileTimeout = 20 * time.Second
+	// intentTimeout bounds the DPoP login intent before the desktop falls
+	// back to a login without it (dY, Nzt).
+	intentTimeout = 20 * time.Second
+)
 
 // Options configure Run.
 type Options struct {
@@ -44,6 +50,10 @@ type Login struct {
 	HTTP    *http.Client // login polling
 	Base    string       // backend URL
 	Website string       // site with the login page
+	// DPoP binds the login to a key. The desktop does for its production
+	// OAuth client only: other clients take its development flow
+	// (usesDevAuthFlow).
+	DPoP bool
 	// Profile fetches the user's profile with identity's tokens and returns
 	// the identity as it stands afterwards: tokens possibly refreshed, Email
 	// and AuthID set.
@@ -56,7 +66,10 @@ func (l Login) Run(ctx context.Context, opts Options, out io.Writer) error {
 	if err := opts.Validate(); err != nil {
 		return err
 	}
-	pending := oauth.NewLogin(l.Website)
+	pending, err := l.prepare(ctx)
+	if err != nil {
+		return err
+	}
 	fmt.Fprintln(out, "Open this URL to sign in:\n"+pending.URL)
 	if !opts.NoBrowser {
 		openBrowser(ctx, pending.URL)
@@ -91,6 +104,28 @@ func (l Login) Run(ctx context.Context, opts Options, out io.Writer) error {
 	fmt.Fprintf(out, "Logged in as %s\n", identity.Email)
 	warnStaleConnect(l.Store, previous, identity, out)
 	return nil
+}
+
+// prepare starts a login bound to a DPoP key, as the desktop does since 1.3
+// (dY). If the backend does not take the login intent in time, it starts
+// one without a key, the desktop's way before 1.3.
+func (l Login) prepare(ctx context.Context) (oauth.Login, error) {
+	pending := oauth.NewLogin(l.Website)
+	if !l.DPoP {
+		return pending, nil
+	}
+	host, _ := os.Hostname() //nolint:errcheck // an unknown host name gets the default device name
+	ictx, cancel := context.WithTimeout(ctx, intentTimeout)
+	err := oauth.RegisterIntent(ictx, l.HTTP, l.Base, &pending, oauth.DeviceName(host))
+	cancel()
+	switch {
+	case ctx.Err() != nil:
+		return oauth.Login{}, ctx.Err()
+	case err != nil:
+		log.Printf("login without DPoP: %v", err)
+		return oauth.NewLogin(l.Website), nil
+	}
+	return pending, nil
 }
 
 // warnStaleConnect tells the user that a running connect keeps the account it

@@ -154,6 +154,7 @@ type GetMeResponse struct {
 	SignupSource                             *string                `protobuf:"bytes,22,opt,name=signup_source,json=signupSource,proto3,oneof" json:"signup_source,omitempty"`
 	AdminSessionManagementEnabled            bool                   `protobuf:"varint,23,opt,name=admin_session_management_enabled,json=adminSessionManagementEnabled,proto3" json:"admin_session_management_enabled,omitempty"`
 	HasIndividualPlan                        *bool                  `protobuf:"varint,24,opt,name=has_individual_plan,json=hasIndividualPlan,proto3,oneof" json:"has_individual_plan,omitempty"`
+	MembershipType                           *string                `protobuf:"bytes,25,opt,name=membership_type,json=membershipType,proto3,oneof" json:"membership_type,omitempty"`
 	unknownFields                            protoimpl.UnknownFields
 	sizeCache                                protoimpl.SizeCache
 }
@@ -356,12 +357,21 @@ func (x *GetMeResponse) GetHasIndividualPlan() bool {
 	return false
 }
 
+func (x *GetMeResponse) GetMembershipType() string {
+	if x != nil && x.MembershipType != nil {
+		return *x.MembershipType
+	}
+	return ""
+}
+
 type GetMeRequest struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	TeamId                 *int32                 `protobuf:"varint,1,opt,name=team_id,json=teamId,proto3,oneof" json:"team_id,omitempty"`
 	SourceSiteHostname     *string                `protobuf:"bytes,2,opt,name=source_site_hostname,json=sourceSiteHostname,proto3,oneof" json:"source_site_hostname,omitempty"`
 	IncludeMobileAppStatus *bool                  `protobuf:"varint,3,opt,name=include_mobile_app_status,json=includeMobileAppStatus,proto3,oneof" json:"include_mobile_app_status,omitempty"`
 	IncludeIndividualPlan  *bool                  `protobuf:"varint,4,opt,name=include_individual_plan,json=includeIndividualPlan,proto3,oneof" json:"include_individual_plan,omitempty"`
+	IncludeContext         *bool                  `protobuf:"varint,5,opt,name=include_context,json=includeContext,proto3,oneof" json:"include_context,omitempty"`
+	IncludeUnification     *bool                  `protobuf:"varint,6,opt,name=include_unification,json=includeUnification,proto3,oneof" json:"include_unification,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -420,6 +430,20 @@ func (x *GetMeRequest) GetIncludeMobileAppStatus() bool {
 func (x *GetMeRequest) GetIncludeIndividualPlan() bool {
 	if x != nil && x.IncludeIndividualPlan != nil {
 		return *x.IncludeIndividualPlan
+	}
+	return false
+}
+
+func (x *GetMeRequest) GetIncludeContext() bool {
+	if x != nil && x.IncludeContext != nil {
+		return *x.IncludeContext
+	}
+	return false
+}
+
+func (x *GetMeRequest) GetIncludeUnification() bool {
+	if x != nil && x.IncludeUnification != nil {
+		return *x.IncludeUnification
 	}
 	return false
 }
@@ -490,6 +514,7 @@ type RegisterSandMachineRequest struct {
 	LocalToolPermission *string                `protobuf:"bytes,2,opt,name=local_tool_permission,json=localToolPermission,proto3,oneof" json:"local_tool_permission,omitempty"`
 	MessagesEnabled     *bool                  `protobuf:"varint,3,opt,name=messages_enabled,json=messagesEnabled,proto3,oneof" json:"messages_enabled,omitempty"`
 	Kind                string                 `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`
+	ReplacedMachineId   *string                `protobuf:"bytes,5,opt,name=replaced_machine_id,json=replacedMachineId,proto3,oneof" json:"replaced_machine_id,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -548,6 +573,13 @@ func (x *RegisterSandMachineRequest) GetMessagesEnabled() bool {
 func (x *RegisterSandMachineRequest) GetKind() string {
 	if x != nil {
 		return x.Kind
+	}
+	return ""
+}
+
+func (x *RegisterSandMachineRequest) GetReplacedMachineId() string {
+	if x != nil && x.ReplacedMachineId != nil {
+		return *x.ReplacedMachineId
 	}
 	return ""
 }
@@ -3362,13 +3394,14 @@ func (x *GrokBotUserComputerCapabilities) GetLocalToolImageUploads() bool {
 }
 
 type GrokBotUserComputerLocalTool struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ToolId        string                 `protobuf:"bytes,1,opt,name=tool_id,json=toolId,proto3" json:"tool_id,omitempty"`
-	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
-	DataTypes     []string               `protobuf:"bytes,3,rep,name=data_types,json=dataTypes,proto3" json:"data_types,omitempty"`
-	Features      []string               `protobuf:"bytes,4,rep,name=features,proto3" json:"features,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ToolId         string                 `protobuf:"bytes,1,opt,name=tool_id,json=toolId,proto3" json:"tool_id,omitempty"`
+	State          string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	DataTypes      []string               `protobuf:"bytes,3,rep,name=data_types,json=dataTypes,proto3" json:"data_types,omitempty"`
+	Features       []string               `protobuf:"bytes,4,rep,name=features,proto3" json:"features,omitempty"`
+	AskedDataTypes []string               `protobuf:"bytes,5,rep,name=asked_data_types,json=askedDataTypes,proto3" json:"asked_data_types,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GrokBotUserComputerLocalTool) Reset() {
@@ -3425,6 +3458,13 @@ func (x *GrokBotUserComputerLocalTool) GetDataTypes() []string {
 func (x *GrokBotUserComputerLocalTool) GetFeatures() []string {
 	if x != nil {
 		return x.Features
+	}
+	return nil
+}
+
+func (x *GrokBotUserComputerLocalTool) GetAskedDataTypes() []string {
+	if x != nil {
+		return x.AskedDataTypes
 	}
 	return nil
 }
@@ -3793,7 +3833,7 @@ var File_aiserver_v1_grokbot_proto protoreflect.FileDescriptor
 
 const file_aiserver_v1_grokbot_proto_rawDesc = "" +
 	"\n" +
-	"\x19aiserver/v1/grokbot.proto\x12\vaiserver.v1\"\x81\f\n" +
+	"\x19aiserver/v1/grokbot.proto\x12\vaiserver.v1\"\xc3\f\n" +
 	"\rGetMeResponse\x12\x17\n" +
 	"\aauth_id\x18\x01 \x01(\tR\x06authId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x05R\x06userId\x12\x19\n" +
@@ -3822,7 +3862,8 @@ const file_aiserver_v1_grokbot_proto_rawDesc = "" +
 	"\x12email_is_synthetic\x18\x15 \x01(\bH\x12R\x10emailIsSynthetic\x88\x01\x01\x12(\n" +
 	"\rsignup_source\x18\x16 \x01(\tH\x13R\fsignupSource\x88\x01\x01\x12G\n" +
 	" admin_session_management_enabled\x18\x17 \x01(\bR\x1dadminSessionManagementEnabled\x123\n" +
-	"\x13has_individual_plan\x18\x18 \x01(\bH\x14R\x11hasIndividualPlan\x88\x01\x01B\b\n" +
+	"\x13has_individual_plan\x18\x18 \x01(\bH\x14R\x11hasIndividualPlan\x88\x01\x01\x12,\n" +
+	"\x0fmembership_type\x18\x19 \x01(\tH\x15R\x0emembershipType\x88\x01\x01B\b\n" +
 	"\x06_emailB\r\n" +
 	"\v_first_nameB\f\n" +
 	"\n" +
@@ -3848,30 +3889,37 @@ const file_aiserver_v1_grokbot_proto_rawDesc = "" +
 	"\x14_scm_only_restrictedB\x15\n" +
 	"\x13_email_is_syntheticB\x10\n" +
 	"\x0e_signup_sourceB\x16\n" +
-	"\x14_has_individual_plan\"\xbf\x02\n" +
+	"\x14_has_individual_planB\x12\n" +
+	"\x10_membership_type\"\xcf\x03\n" +
 	"\fGetMeRequest\x12\x1c\n" +
 	"\ateam_id\x18\x01 \x01(\x05H\x00R\x06teamId\x88\x01\x01\x125\n" +
 	"\x14source_site_hostname\x18\x02 \x01(\tH\x01R\x12sourceSiteHostname\x88\x01\x01\x12>\n" +
 	"\x19include_mobile_app_status\x18\x03 \x01(\bH\x02R\x16includeMobileAppStatus\x88\x01\x01\x12;\n" +
-	"\x17include_individual_plan\x18\x04 \x01(\bH\x03R\x15includeIndividualPlan\x88\x01\x01B\n" +
+	"\x17include_individual_plan\x18\x04 \x01(\bH\x03R\x15includeIndividualPlan\x88\x01\x01\x12,\n" +
+	"\x0finclude_context\x18\x05 \x01(\bH\x04R\x0eincludeContext\x88\x01\x01\x124\n" +
+	"\x13include_unification\x18\x06 \x01(\bH\x05R\x12includeUnification\x88\x01\x01B\n" +
 	"\n" +
 	"\b_team_idB\x17\n" +
 	"\x15_source_site_hostnameB\x1c\n" +
 	"\x1a_include_mobile_app_statusB\x1a\n" +
-	"\x18_include_individual_plan\"\x8a\x01\n" +
+	"\x18_include_individual_planB\x12\n" +
+	"\x10_include_contextB\x16\n" +
+	"\x14_include_unification\"\x8a\x01\n" +
 	"\x1bRegisterSandMachineResponse\x12\x1e\n" +
 	"\n" +
 	"credential\x18\x01 \x01(\tR\n" +
 	"credential\x12\"\n" +
 	"\rexpires_at_ms\x18\x02 \x01(\x03R\vexpiresAtMs\x12'\n" +
-	"\x0fcredential_held\x18\x03 \x01(\bR\x0ecredentialHeld\"\xde\x01\n" +
+	"\x0fcredential_held\x18\x03 \x01(\bR\x0ecredentialHeld\"\xab\x02\n" +
 	"\x1aRegisterSandMachineRequest\x12\x14\n" +
 	"\x05label\x18\x01 \x01(\tR\x05label\x127\n" +
 	"\x15local_tool_permission\x18\x02 \x01(\tH\x00R\x13localToolPermission\x88\x01\x01\x12.\n" +
 	"\x10messages_enabled\x18\x03 \x01(\bH\x01R\x0fmessagesEnabled\x88\x01\x01\x12\x12\n" +
-	"\x04kind\x18\x04 \x01(\tR\x04kindB\x18\n" +
+	"\x04kind\x18\x04 \x01(\tR\x04kind\x123\n" +
+	"\x13replaced_machine_id\x18\x05 \x01(\tH\x02R\x11replacedMachineId\x88\x01\x01B\x18\n" +
 	"\x16_local_tool_permissionB\x13\n" +
-	"\x11_messages_enabled\"\x80\x01\n" +
+	"\x11_messages_enabledB\x16\n" +
+	"\x14_replaced_machine_id\"\x80\x01\n" +
 	"+UpdateSandMachineLocalToolPermissionRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x122\n" +
@@ -4128,13 +4176,14 @@ const file_aiserver_v1_grokbot_proto_rawDesc = "" +
 	"\x16_local_tool_grant_seenB\x19\n" +
 	"\x17_local_tool_helper_nameB\x14\n" +
 	"\x12_url_file_transferB\x1b\n" +
-	"\x19_local_tool_image_uploads\"\x88\x01\n" +
+	"\x19_local_tool_image_uploads\"\xb2\x01\n" +
 	"\x1cGrokBotUserComputerLocalTool\x12\x17\n" +
 	"\atool_id\x18\x01 \x01(\tR\x06toolId\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12\x1d\n" +
 	"\n" +
 	"data_types\x18\x03 \x03(\tR\tdataTypes\x12\x1a\n" +
-	"\bfeatures\x18\x04 \x03(\tR\bfeatures\"K\n" +
+	"\bfeatures\x18\x04 \x03(\tR\bfeatures\x12(\n" +
+	"\x10asked_data_types\x18\x05 \x03(\tR\x0easkedDataTypes\"K\n" +
 	"+WithdrawGrokBotUserComputerPresenceResponse\x12\x1c\n" +
 	"\twithdrawn\x18\x01 \x01(\bR\twithdrawn\"\x92\x01\n" +
 	"*WithdrawGrokBotUserComputerPresenceRequest\x12\x1d\n" +

@@ -9,7 +9,7 @@ To connect to a different server, set `SAND_BACKEND_URL` (API address) and
 Shell tests run against bash and, when found, zsh: set `GROK_TEST_ZSH` to a zsh
 binary or put zsh on `PATH`.
 
-`testdata/compat/1.2.3/` holds reference data from the desktop client;
+`testdata/compat/1.3.0/` holds reference data from the desktop client;
 `make compare-record` regenerates it (see `tests/compare/README.md`).
 `scripts/extract-proto.py` reconstructs `.proto` schemas from the client's
 bundle without running it; `api/proto/` is a subset of its output.
@@ -40,7 +40,8 @@ Further rules:
   time and return what to do; goroutines and RPCs stay in the session.
 - `service/localexec` mirrors the desktop's local-exec daemon: a dispatcher,
   `execstream` (exec IDs, heartbeats, the final frame), `pathroot` (the root
-  check), `shellsession` (the shared shell state) and one module per tool under
+  check), `credstore` (the credential files reads refuse), `shellsession`
+  (the shared shell state) and one module per tool under
   `tool/`. Tools do not import each other, except `shell` → `background`.
 - A module's main file is named after it and holds its contract and `New`;
   the type comment of a module that mirrors a desktop component names a stable

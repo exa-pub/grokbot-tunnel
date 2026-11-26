@@ -1,0 +1,22 @@
+{
+  "ranges": "hTt",
+  "streamReader": "iJe",
+  "trimToMaxChars": "wae",
+  "mostlyUtf8": "Bp",
+  "discoveryMissing": "fte",
+  "discoveryTitle": "Bl",
+  "commandTitle": "gxe",
+  "parseCommand": "yp",
+  "denylist": "Iy",
+  "terminalHeader": "vw",
+  "classifyFormat": "_Pe",
+  "detectFormat": "BSt",
+  "classifyAll": "nw",
+  "format": "SPe",
+  "imageFit": "JLe",
+  "fs": "xae",
+  "jschardet": "dPe",
+  "iconv": "Yl",
+  "iconvName": "f0",
+  "encodingLabel": "p0"
+}
